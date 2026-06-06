@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Connect! — Interactive Tab Flow</title>
+<style>
+  :root{
+    --bg: #fafaf7;
+    --ink: #111;
+    --muted: #666;
+    --line: #e3e3e3;
+    --teal: #0e8a8a;
+    --teal-dark: #0a6e6e;
+    --teal-soft: #e6f4f4;
+    --blue: #1e6fd9;
+    --blue-dark: #155bb0;
+    --blue-soft: #eaf3ff;
+    --green: #2e8a4f;
+    --green-soft: #e9f6ee;
+    --amber: #d98a1f;
+    --amber-soft: #fff1dc;
+    --purple: #7547c6;
+    --purple-soft: #f1eaff;
+    --gray: #6b7280;
+    --gray-soft: #f1f2f4;
+    --toast-soft: #fef3c7;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;}
+  .wrap{max-width:1480px;margin:0 auto;padding:28px 24px 60px}
+  .header{margin-bottom:18px}
+  .header h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.2px}
+  .header p{margin:6px 0 0;font-size:12.5px;color:var(--muted);max-width:920px;line-height:1.5}
+
+  /* Tab bar — mimics the actual app bottom nav */
+  .tabbar{
+    display:flex;justify-content:center;gap:10px;
+    background:#fff;border:1px solid var(--line);
+    border-radius:36px;padding:8px;width:fit-content;margin:22px auto 24px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 16px -8px rgba(0,0,0,.08);
+  }
+  .tab{
+    appearance:none;border:0;background:transparent;cursor:pointer;
+    padding:12px 26px;border-radius:28px;font:600 13.5px ui-sans-serif,system-ui,sans-serif;color:#444;
+    display:inline-flex;align-items:center;gap:8px;transition:.18s ease;
+  }
+  .tab .ico{font-size:15px}
+  .tab:hover{background:#f3f4f6;color:#111}
+  .tab.is-active{color:#fff}
+  .tab.is-active.discover{background:var(--teal)}
+  .tab.is-active.home{background:var(--blue)}
+  .tab.is-active.chat{background:var(--gray)}
+
+  /* Panels */
+  .panels{position:relative;min-height:540px}
+  .panel{display:none;animation:fade .25s ease both}
+  .panel.is-active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .panel-head{
+    display:flex;align-items:center;gap:14px;margin:6px 0 14px;
+  }
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:6px 12px;border-radius:999px;font:600 11.5px ui-sans-serif,system-ui,sans-serif;
+  }
+  .pill.discover{background:var(--teal-soft);color:var(--teal-dark)}
+  .pill.home{background:var(--blue-soft);color:var(--blue-dark)}
+  .pill.chat{background:var(--gray-soft);color:#374151}
+  .pill.onboarding{background:var(--green-soft);color:#1f6b3a}
+
+  .onboarding-section{margin-bottom:20px}
+  .divider{
+    height:1px;background:linear-gradient(to right, transparent, #d1d5db, transparent);
+    margin:24px 0 8px;
+  }
+  .panel-head h2{margin:0;font-size:15.5px;font-weight:700}
+  .panel-head p{margin:0;font-size:12px;color:var(--muted)}
+
+  .frame{
+    background:#fff;border:1px solid var(--line);border-radius:14px;
+    padding:18px;box-shadow:0 1px 2px rgba(0,0,0,.03);
+    overflow:auto;
+  }
+  svg{display:block;max-width:100%;height:auto}
+
+  /* Chat placeholder */
+  .chat-placeholder{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:60px 24px;color:#374151
+  }
+  .chat-placeholder .badge{
+    background:var(--gray-soft);color:#374151;border:1px solid #e5e7eb;
+    padding:6px 12px;border-radius:999px;font:600 11px ui-sans-serif,system-ui,sans-serif;
+    margin-bottom:14px;letter-spacing:.5px;text-transform:uppercase
+  }
+  .chat-placeholder h3{margin:0 0 6px;font-size:18px;font-weight:700}
+  .chat-placeholder p{margin:0 0 22px;font-size:13px;color:var(--muted);max-width:520px;line-height:1.5}
+
+  .footer{margin-top:18px;text-align:center;font-size:11px;color:#999}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <h1>Connect! · Interactive Tab Flow</h1>
+    <p>Onboarding flow first (Splash → Sign Up / Login → 5 questions → Home). Then click a tab button below to reveal the user flow for that section. Tabs mirror the app's bottom navigation: Discover · Home · Chat.</p>
+  </div>
+
+  <!-- ============================ -->
+  <!-- ONBOARDING FLOW (always on)   -->
+  <!-- ============================ -->
+  <section class="onboarding-section">
+    <div class="panel-head" style="margin-top:0">
+      <span class="pill onboarding">🚀 Auth &amp; Onboarding</span>
+      <div>
+        <h2>Sign Up shows 5 questions on first login · Login goes straight to Home</h2>
+        <p>Returning users skip the questionnaire. Defaults: Country = Qatar, City = Doha.</p>
+      </div>
+    </div>
+
+    <div class="frame">
+      <svg viewBox="0 0 1400 260" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrGreenOnb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2e8a4f"/></marker>
+          <marker id="arrBlueOnb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1e6fd9"/></marker>
+        </defs>
+
+        <!-- Splash -->
+        <rect x="20" y="100" width="120" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="80" y="128" text-anchor="middle" font-size="14" font-weight="600">Splash</text>
+        <text x="80" y="146" text-anchor="middle" font-size="11" fill="#555">app launch</text>
+
+        <!-- Sign Up -->
+        <rect x="190" y="60" width="120" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="250" y="88" text-anchor="middle" font-size="14" font-weight="600">Sign Up</text>
+        <text x="250" y="106" text-anchor="middle" font-size="11" fill="#555">new user</text>
+
+        <!-- Login -->
+        <rect x="190" y="140" width="120" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="250" y="168" text-anchor="middle" font-size="14" font-weight="600">Login</text>
+        <text x="250" y="186" text-anchor="middle" font-size="11" fill="#555">returning user</text>
+
+        <path d="M140,120 C170,120 170,90 190,90" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+        <path d="M140,140 C170,140 170,170 190,170" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+
+        <!-- 5 Questions -->
+        <rect x="360" y="60" width="110" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="415" y="86" text-anchor="middle" font-size="13" font-weight="600">Q1 · Role</text>
+        <text x="415" y="104" text-anchor="middle" font-size="10.5" fill="#555">player / coach</text>
+
+        <rect x="490" y="60" width="110" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="545" y="86" text-anchor="middle" font-size="13" font-weight="600">Q2 · Sport</text>
+        <text x="545" y="104" text-anchor="middle" font-size="10.5" fill="#555">primary sport</text>
+
+        <rect x="620" y="60" width="110" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="675" y="86" text-anchor="middle" font-size="13" font-weight="600">Q3 · Level</text>
+        <text x="675" y="104" text-anchor="middle" font-size="10.5" fill="#555">skill level</text>
+
+        <rect x="750" y="60" width="110" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="805" y="86" text-anchor="middle" font-size="13" font-weight="600">Q4 · Country</text>
+        <text x="805" y="104" text-anchor="middle" font-size="10.5" fill="#555">Qatar (default)</text>
+
+        <rect x="880" y="60" width="110" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="935" y="86" text-anchor="middle" font-size="13" font-weight="600">Q5 · City</text>
+        <text x="935" y="104" text-anchor="middle" font-size="10.5" fill="#555">Doha (default)</text>
+
+        <rect x="1010" y="60" width="140" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+        <text x="1080" y="86" text-anchor="middle" font-size="13" font-weight="600">You're all set</text>
+        <text x="1080" y="104" text-anchor="middle" font-size="10.5" fill="#555">completion</text>
+
+        <!-- Arrows between Qs -->
+        <path d="M310,90 L360,90" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+        <path d="M470,90 L490,90" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+        <path d="M600,90 L620,90" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+        <path d="M730,90 L750,90" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+        <path d="M860,90 L880,90" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+        <path d="M990,90 L1010,90" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+
+        <!-- → HOME -->
+        <rect x="1220" y="100" width="160" height="60" rx="14" fill="#1e6fd9" stroke="#155bb0" stroke-width="1.5"/>
+        <text x="1300" y="128" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">→ HOME</text>
+        <text x="1300" y="146" text-anchor="middle" font-size="11" fill="#cfe2ff">default landing</text>
+
+        <path d="M1150,100 C1180,100 1180,118 1220,118" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4"/>
+        <!-- Login direct → Home (skips questions) -->
+        <path d="M310,170 L1180,170 C1210,170 1210,142 1220,142" marker-end="url(#arrGreenOnb)" fill="none" stroke="#2e8a4f" stroke-width="1.4" stroke-dasharray="5 4"/>
+        <text x="700" y="162" font-size="10.5" fill="#2e8a4f">direct → Home (skips 5 questions)</text>
+      </svg>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Tab bar -->
+  <div class="tabbar" role="tablist">
+    <button class="tab discover is-active" data-tab="discover" role="tab" aria-selected="true">
+      <span class="ico">🔍</span> Discover
+    </button>
+    <button class="tab home" data-tab="home" role="tab" aria-selected="false">
+      <span class="ico">🏠</span> Home
+    </button>
+    <button class="tab chat" data-tab="chat" role="tab" aria-selected="false">
+      <span class="ico">💬</span> Chat
+    </button>
+  </div>
+
+  <!-- Panels -->
+  <div class="panels">
+
+    <!-- ============================ -->
+    <!-- DISCOVER PANEL                -->
+    <!-- ============================ -->
+    <section class="panel is-active" id="panel-discover" role="tabpanel">
+      <div class="panel-head">
+        <span class="pill discover">🔍 Discover tab</span>
+        <div>
+          <h2>Browse open matches in Doha</h2>
+          <p>Two paths from Discover: host a match (creator) or open a match detail (joiner).</p>
+        </div>
+      </div>
+
+      <div class="frame">
+        <svg viewBox="0 0 1400 780" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e8a8a"/></marker>
+            <marker id="arrGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2e8a4f"/></marker>
+            <marker id="arrAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d98a1f"/></marker>
+            <marker id="arrBlue1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1e6fd9"/></marker>
+          </defs>
+
+          <!-- ROOT -->
+          <rect x="600" y="40" width="220" height="60" rx="14" fill="#0e8a8a" stroke="#0a6e6e" stroke-width="1.5"/>
+          <text x="710" y="68" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">🔍  Discover</text>
+          <text x="710" y="86" text-anchor="middle" font-size="11" fill="#cdeaea">browse open matches in Doha</text>
+
+          <path d="M650,100 C620,140 380,150 320,190" marker-end="url(#arrTeal)" fill="none" stroke="#0e8a8a" stroke-width="1.6"/>
+          <path d="M770,100 C800,140 1020,150 1080,190" marker-end="url(#arrTeal)" fill="none" stroke="#0e8a8a" stroke-width="1.6"/>
+          <text x="430" y="145" font-size="11" fill="#0e8a8a">tap "+" / Host CTA</text>
+          <text x="900" y="145" font-size="11" fill="#0e8a8a">tap a match card</text>
+
+          <!-- LEFT: create -->
+          <rect x="200" y="190" width="240" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+          <text x="320" y="218" text-anchor="middle" font-size="14" font-weight="600">create a match</text>
+          <text x="320" y="235" text-anchor="middle" font-size="11" fill="#555">"Let's set up your match"</text>
+          <path d="M320,250 L320,310" marker-end="url(#arrGreen)" fill="none" stroke="#2e8a4f" stroke-width="1.5"/>
+          <rect x="200" y="310" width="240" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+          <text x="320" y="338" text-anchor="middle" font-size="14" font-weight="600">match created</text>
+          <text x="320" y="355" text-anchor="middle" font-size="11" fill="#555">share link · add to calendar</text>
+          <path d="M320,370 L320,440" marker-end="url(#arrBlue1)" fill="none" stroke="#1e6fd9" stroke-width="1.5"/>
+          <rect x="180" y="440" width="280" height="68" rx="12" fill="#1e6fd9" stroke="#155bb0" stroke-width="1.5"/>
+          <text x="320" y="468" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">🏠  Home tab</text>
+          <text x="320" y="486" text-anchor="middle" font-size="11.5" fill="#cfe2ff">showing "You're hosting" section</text>
+          <text x="320" y="502" text-anchor="middle" font-size="10.5" fill="#cfe2ff">new match at the top</text>
+
+          <!-- RIGHT: match details -->
+          <rect x="960" y="190" width="240" height="60" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="1080" y="218" text-anchor="middle" font-size="14" font-weight="600">match details</text>
+          <text x="1080" y="235" text-anchor="middle" font-size="11" fill="#555">date · time · location · price · tags</text>
+
+          <path d="M1020,250 C1000,280 920,290 900,320" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+          <path d="M1140,250 C1160,280 1240,290 1260,320" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="855" y="290" font-size="10.5" fill="#d98a1f">open match</text>
+          <text x="1265" y="290" font-size="10.5" fill="#d98a1f">closed / paid match</text>
+
+          <!-- JOIN -->
+          <rect x="780" y="320" width="220" height="60" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="890" y="348" text-anchor="middle" font-size="14" font-weight="600">Join</text>
+          <text x="890" y="365" text-anchor="middle" font-size="11" fill="#555">tap "Join" CTA</text>
+          <path d="M890,380 L890,430" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+          <rect x="780" y="430" width="220" height="60" rx="30" fill="#fef3c7" stroke="#d98a1f" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="890" y="456" text-anchor="middle" font-size="13" font-weight="600">✓ Joined successfully</text>
+          <text x="890" y="473" text-anchor="middle" font-size="11" fill="#666">toast · auto-dismiss</text>
+          <path d="M890,490 L890,550" marker-end="url(#arrBlue1)" fill="none" stroke="#1e6fd9" stroke-width="1.5"/>
+          <rect x="750" y="550" width="280" height="68" rx="12" fill="#1e6fd9" stroke="#155bb0" stroke-width="1.5"/>
+          <text x="890" y="578" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">🏠  Home tab</text>
+          <text x="890" y="596" text-anchor="middle" font-size="11.5" fill="#cfe2ff">showing "Next up" section</text>
+          <text x="890" y="612" text-anchor="middle" font-size="10.5" fill="#cfe2ff">joined match appears as next up</text>
+
+          <!-- REQUEST -->
+          <rect x="1140" y="320" width="240" height="60" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="1260" y="348" text-anchor="middle" font-size="14" font-weight="600">Request to join</text>
+          <text x="1260" y="365" text-anchor="middle" font-size="11" fill="#555">"Request · QAR 25"</text>
+          <path d="M1260,380 L1260,430" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+          <rect x="1140" y="430" width="240" height="60" rx="30" fill="#fef3c7" stroke="#d98a1f" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <text x="1260" y="456" text-anchor="middle" font-size="13" font-weight="600">✓ Request sent</text>
+          <text x="1260" y="473" text-anchor="middle" font-size="11" fill="#666">toast · auto-dismiss</text>
+          <path d="M1260,490 L1260,550" marker-end="url(#arrTeal)" fill="none" stroke="#0e8a8a" stroke-width="1.5"/>
+          <rect x="1120" y="550" width="280" height="68" rx="12" fill="#0e8a8a" stroke="#0a6e6e" stroke-width="1.5"/>
+          <text x="1260" y="578" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">🔍  Discover tab</text>
+          <text x="1260" y="596" text-anchor="middle" font-size="11.5" fill="#cdeaea">continue browsing</text>
+          <text x="1260" y="612" text-anchor="middle" font-size="10.5" fill="#cdeaea">requested card shows "Pending"</text>
+
+          <!-- Legend -->
+          <g transform="translate(40,680)">
+            <rect x="0" y="0" width="1320" height="80" rx="10" fill="#fafafa" stroke="#e3e3e3"/>
+            <text x="20" y="24" font-size="12" font-weight="700" fill="#333">LEGEND</text>
+            <rect x="20" y="40" width="20" height="20" rx="4" fill="#0e8a8a"/><text x="50" y="55" font-size="11.5">Tab root</text>
+            <rect x="160" y="40" width="20" height="20" rx="4" fill="#e9f6ee" stroke="#2e8a4f"/><text x="190" y="55" font-size="11.5">Create flow</text>
+            <rect x="310" y="40" width="20" height="20" rx="4" fill="#fff1dc" stroke="#d98a1f"/><text x="340" y="55" font-size="11.5">Join / details</text>
+            <rect x="460" y="40" width="20" height="20" rx="10" fill="#fef3c7" stroke="#d98a1f" stroke-dasharray="4 3"/><text x="490" y="55" font-size="11.5">Toast</text>
+            <rect x="580" y="40" width="20" height="20" rx="4" fill="#1e6fd9"/><text x="610" y="55" font-size="11.5">Return to Home</text>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- ============================ -->
+    <!-- HOME PANEL                    -->
+    <!-- ============================ -->
+    <section class="panel" id="panel-home" role="tabpanel">
+      <div class="panel-head">
+        <span class="pill home">🏠 Home tab</span>
+        <div>
+          <h2>Your matches at a glance</h2>
+          <p>Four sections: Next up · You're hosting · This week · Host a match CTA. Profile + Settings sits in the header.</p>
+        </div>
+      </div>
+
+      <div class="frame">
+        <svg viewBox="0 0 1400 980" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrBlue2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1e6fd9"/></marker>
+            <marker id="arrAmber2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d98a1f"/></marker>
+            <marker id="arrPurple2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7547c6"/></marker>
+            <marker id="arrSoft2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#888"/></marker>
+          </defs>
+
+          <!-- HOME root -->
+          <rect x="600" y="40" width="240" height="60" rx="14" fill="#1e6fd9" stroke="#155bb0" stroke-width="1.5"/>
+          <text x="720" y="68" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">🏠  Home</text>
+          <text x="720" y="86" text-anchor="middle" font-size="11" fill="#cfe2ff">your matches at a glance</text>
+
+          <!-- Profile + Settings button (header) -->
+          <rect x="1100" y="40" width="220" height="60" rx="30" fill="#7547c6" stroke="#5d36a3" stroke-width="1.5"/>
+          <text x="1210" y="68" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">👤  Profile + Settings</text>
+          <text x="1210" y="86" text-anchor="middle" font-size="11" fill="#e8dcfb">header button</text>
+          <path d="M840,70 L1100,70" marker-end="url(#arrPurple2)" fill="none" stroke="#7547c6" stroke-width="1.5"/>
+          <text x="900" y="62" font-size="10.5" fill="#7547c6">tap avatar / gear</text>
+
+          <!-- 4 home sections -->
+          <rect x="60" y="170" width="220" height="60" rx="10" fill="#eaf3ff" stroke="#1e6fd9" stroke-width="1.5"/>
+          <text x="170" y="205" text-anchor="middle" font-size="14" font-weight="600">NEXT UP</text>
+
+          <rect x="340" y="170" width="240" height="60" rx="10" fill="#eaf3ff" stroke="#1e6fd9" stroke-width="1.5"/>
+          <text x="460" y="205" text-anchor="middle" font-size="14" font-weight="600">You're hosting</text>
+
+          <rect x="780" y="170" width="220" height="60" rx="10" fill="#eaf3ff" stroke="#1e6fd9" stroke-width="1.5"/>
+          <text x="890" y="205" text-anchor="middle" font-size="14" font-weight="600">This week</text>
+
+          <rect x="1080" y="170" width="280" height="60" rx="10" fill="#eaf3ff" stroke="#1e6fd9" stroke-width="1.5"/>
+          <text x="1220" y="205" text-anchor="middle" font-size="14" font-weight="600">Host a match CTA  /  +</text>
+
+          <path d="M720,100 L720,140 L170,140 L170,170" marker-end="url(#arrBlue2)" fill="none" stroke="#1e6fd9" stroke-width="1.4"/>
+          <path d="M720,140 L460,140 L460,170" marker-end="url(#arrBlue2)" fill="none" stroke="#1e6fd9" stroke-width="1.4"/>
+          <path d="M720,140 L890,140 L890,170" marker-end="url(#arrBlue2)" fill="none" stroke="#1e6fd9" stroke-width="1.4"/>
+          <path d="M720,140 L1220,140 L1220,170" marker-end="url(#arrBlue2)" fill="none" stroke="#1e6fd9" stroke-width="1.4"/>
+
+          <!-- Next up → joined matches (card list) -->
+          <rect x="60" y="280" width="220" height="56" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="170" y="313" text-anchor="middle" font-size="14" font-weight="600">joined matches</text>
+          <path d="M170,230 L170,280" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+
+          <!-- You're hosting → see all + edit button -->
+          <rect x="300" y="280" width="180" height="64" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="390" y="307" text-anchor="middle" font-size="14" font-weight="600">see all my matches</text>
+          <text x="390" y="324" text-anchor="middle" font-size="11" fill="#555">link</text>
+
+          <rect x="500" y="280" width="160" height="64" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="580" y="307" text-anchor="middle" font-size="14" font-weight="600">edit button</text>
+          <text x="580" y="324" text-anchor="middle" font-size="11" fill="#555">on each card</text>
+
+          <path d="M440,230 L390,280" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+          <path d="M480,230 L580,280" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+
+          <!-- see all → upcoming and past -->
+          <rect x="290" y="400" width="200" height="72" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="390" y="425" text-anchor="middle" font-size="14" font-weight="600">upcoming and past</text>
+          <text x="390" y="442" text-anchor="middle" font-size="14" font-weight="600">matches</text>
+          <text x="390" y="460" text-anchor="middle" font-size="10.5" fill="#d98a1f">hosting only</text>
+          <path d="M390,344 L390,400" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+
+          <!-- edit → edit my match -->
+          <rect x="500" y="400" width="180" height="56" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="590" y="425" text-anchor="middle" font-size="14" font-weight="600">edit my match</text>
+          <text x="590" y="442" text-anchor="middle" font-size="14" font-weight="600">details</text>
+          <path d="M580,344 L580,400" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+
+          <!-- Toasts -->
+          <rect x="445" y="490" width="125" height="36" rx="18" fill="#2e8a4f" stroke="#246c3e" stroke-width="1"/>
+          <text x="507" y="513" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">✓  saved</text>
+          <rect x="615" y="490" width="135" height="36" rx="18" fill="#4a4a4a" stroke="#2f2f2f" stroke-width="1"/>
+          <text x="682" y="513" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">✕  cancelled</text>
+          <path d="M560,456 L520,490" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+          <path d="M620,456 L670,490" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+
+          <!-- This week → other joined -->
+          <rect x="780" y="280" width="220" height="56" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="890" y="305" text-anchor="middle" font-size="14" font-weight="600">other joined</text>
+          <text x="890" y="322" text-anchor="middle" font-size="14" font-weight="600">matches</text>
+          <path d="M890,230 L890,280" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+
+          <!-- Host CTA → create → match created -->
+          <rect x="1080" y="280" width="280" height="56" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="1220" y="313" text-anchor="middle" font-size="14" font-weight="600">create a match</text>
+          <path d="M1220,230 L1220,280" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+          <rect x="1080" y="400" width="280" height="56" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+          <text x="1220" y="433" text-anchor="middle" font-size="14" font-weight="600">match created</text>
+          <path d="M1220,336 L1220,400" marker-end="url(#arrAmber2)" fill="none" stroke="#d98a1f" stroke-width="1.4"/>
+
+          <!-- Profile sub-flow (compact) -->
+          <line x1="40" y1="590" x2="1360" y2="590" stroke="#ddd" stroke-dasharray="2 4"/>
+          <text x="40" y="620" font-size="13" font-weight="700">PROFILE + SETTINGS  ·  sub-flow</text>
+          <text x="40" y="638" font-size="11" fill="#666">Tap header button → Settings landing → view/edit profile (saved toast) OR detail settings</text>
+
+          <rect x="600" y="670" width="220" height="50" rx="25" fill="#7547c6" stroke="#5d36a3" stroke-width="1.5"/>
+          <text x="710" y="700" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">👤  profile + settings</text>
+
+          <rect x="600" y="770" width="220" height="56" rx="10" fill="#f1eaff" stroke="#7547c6" stroke-width="1.5"/>
+          <text x="710" y="803" text-anchor="middle" font-size="14" font-weight="600">settings</text>
+          <path d="M710,720 L710,770" marker-end="url(#arrPurple2)" fill="none" stroke="#7547c6" stroke-width="1.5"/>
+
+          <rect x="380" y="870" width="220" height="56" rx="10" fill="#f1eaff" stroke="#7547c6" stroke-width="1.5"/>
+          <text x="490" y="903" text-anchor="middle" font-size="14" font-weight="600">view / edit profile</text>
+          <rect x="820" y="870" width="220" height="56" rx="10" fill="#f1eaff" stroke="#7547c6" stroke-width="1.5"/>
+          <text x="930" y="897" text-anchor="middle" font-size="14" font-weight="600">detail settings</text>
+          <text x="930" y="914" text-anchor="middle" font-size="11" fill="#555">app preferences</text>
+
+          <path d="M660,826 L520,870" marker-end="url(#arrPurple2)" fill="none" stroke="#7547c6" stroke-width="1.5"/>
+          <path d="M760,826 L900,870" marker-end="url(#arrPurple2)" fill="none" stroke="#7547c6" stroke-width="1.5"/>
+
+          <!-- Toast: changes saved -->
+          <rect x="395" y="945" width="190" height="32" rx="16" fill="#2e8a4f" stroke="#246c3e"/>
+          <text x="490" y="966" text-anchor="middle" font-size="12" font-weight="600" fill="#fff">✓  changes saved</text>
+          <path d="M490,926 L490,945" marker-end="url(#arrPurple2)" fill="none" stroke="#7547c6" stroke-width="1.5"/>
+        </svg>
+      </div>
+    </section>
+
+    <!-- ============================ -->
+    <!-- CHAT PANEL                    -->
+    <!-- ============================ -->
+    <section class="panel" id="panel-chat" role="tabpanel">
+      <div class="panel-head">
+        <span class="pill chat">💬 Chat tab</span>
+        <div>
+          <h2>Match conversations</h2>
+          <p>Proposed structure — screens not yet designed. Group chat auto-creates when a match has 2+ joined players.</p>
+        </div>
+      </div>
+
+      <div class="frame">
+        <svg viewBox="0 0 1400 600" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker>
+            <marker id="arrPurple3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7547c6"/></marker>
+          </defs>
+
+          <!-- ROOT -->
+          <rect x="600" y="40" width="220" height="60" rx="14" fill="#6b7280" stroke="#4b5563" stroke-width="1.5"/>
+          <text x="710" y="68" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">💬  Chat</text>
+          <text x="710" y="86" text-anchor="middle" font-size="11" fill="#e5e7eb">your match conversations</text>
+
+          <!-- Branches -->
+          <path d="M650,100 C620,140 380,150 320,190" marker-end="url(#arrGray)" fill="none" stroke="#6b7280" stroke-width="1.6"/>
+          <path d="M770,100 C800,140 1020,150 1080,190" marker-end="url(#arrGray)" fill="none" stroke="#6b7280" stroke-width="1.6"/>
+          <text x="420" y="150" font-size="11" fill="#6b7280">has conversations</text>
+          <text x="940" y="150" font-size="11" fill="#6b7280">no conversations yet</text>
+
+          <!-- LEFT: chat list -->
+          <rect x="200" y="190" width="240" height="60" rx="10" fill="#f1f2f4" stroke="#6b7280" stroke-width="1.5"/>
+          <text x="320" y="218" text-anchor="middle" font-size="14" font-weight="600">chat list</text>
+          <text x="320" y="235" text-anchor="middle" font-size="11" fill="#555">one row per match group</text>
+
+          <path d="M320,250 L320,310" marker-end="url(#arrGray)" fill="none" stroke="#6b7280" stroke-width="1.5"/>
+
+          <rect x="200" y="310" width="240" height="60" rx="10" fill="#f1f2f4" stroke="#6b7280" stroke-width="1.5"/>
+          <text x="320" y="338" text-anchor="middle" font-size="14" font-weight="600">group chat</text>
+          <text x="320" y="355" text-anchor="middle" font-size="11" fill="#555">messages · players · match info</text>
+
+          <path d="M250,370 C200,420 200,440 290,440" marker-end="url(#arrPurple3)" fill="none" stroke="#7547c6" stroke-width="1.4"/>
+          <rect x="80" y="410" width="220" height="56" rx="10" fill="#f1eaff" stroke="#7547c6" stroke-width="1.5"/>
+          <text x="190" y="435" text-anchor="middle" font-size="13" font-weight="600">other player profile</text>
+          <text x="190" y="452" text-anchor="middle" font-size="11" fill="#555">tap on avatar / name</text>
+
+          <path d="M390,370 C440,420 440,440 350,440" marker-end="url(#arrGray)" fill="none" stroke="#6b7280" stroke-width="1.4"/>
+          <rect x="360" y="410" width="220" height="56" rx="10" fill="#f1f2f4" stroke="#6b7280" stroke-width="1.5"/>
+          <text x="470" y="435" text-anchor="middle" font-size="13" font-weight="600">match details</text>
+          <text x="470" y="452" text-anchor="middle" font-size="11" fill="#555">jump back to match</text>
+
+          <!-- RIGHT: empty state -->
+          <rect x="960" y="190" width="240" height="80" rx="10" fill="#f1f2f4" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <text x="1080" y="220" text-anchor="middle" font-size="14" font-weight="600">empty state</text>
+          <text x="1080" y="240" text-anchor="middle" font-size="11" fill="#555">"Chats appear once you</text>
+          <text x="1080" y="255" text-anchor="middle" font-size="11" fill="#555">join or host a match"</text>
+
+          <path d="M1080,270 L1080,320" marker-end="url(#arrGray)" fill="none" stroke="#6b7280" stroke-width="1.5"/>
+          <rect x="940" y="320" width="280" height="60" rx="12" fill="#0e8a8a" stroke="#0a6e6e" stroke-width="1.5"/>
+          <text x="1080" y="348" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">→ Discover tab</text>
+          <text x="1080" y="365" text-anchor="middle" font-size="11" fill="#cdeaea">CTA "Find a match"</text>
+
+          <!-- Note -->
+          <g transform="translate(40,500)">
+            <rect x="0" y="0" width="1320" height="80" rx="10" fill="#fff8e1" stroke="#f0c040" stroke-width="1"/>
+            <text x="20" y="26" font-size="12" font-weight="700" fill="#7a5a00">📌  NOT YET DESIGNED</text>
+            <text x="20" y="48" font-size="11.5" fill="#5a4500">Chat screens haven't been built yet. This flow is proposed structure — it follows the standard messaging pattern (list → conversation) and ties back into the match flow via "other player profile" and "match details" exits.</text>
+            <text x="20" y="65" font-size="11.5" fill="#5a4500">Next step: design the chat-list row, the group chat screen, the empty state, and read-receipt / unread badges.</text>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="footer">Connect! · Doha Sports App  ·  click a tab above to switch flows</div>
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.panel');
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.tab;
+      tabs.forEach(t => {
+        const active = t === btn;
+        t.classList.toggle('is-active', active);
+        t.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      panels.forEach(p => {
+        p.classList.toggle('is-active', p.id === 'panel-' + name);
+      });
+    });
+  });
+</script>
+</body>
+</html>

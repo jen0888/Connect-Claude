@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 440" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block;">
+  <defs>
+    <linearGradient id="sunrise" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#C8E8F5"/>
+      <stop offset="15%"  stop-color="#D8EFF8"/>
+      <stop offset="32%"  stop-color="#EEE8C0"/>
+      <stop offset="52%"  stop-color="#F5D888"/>
+      <stop offset="70%"  stop-color="#F0B890"/>
+      <stop offset="85%"  stop-color="#E8A8B8"/>
+      <stop offset="100%" stop-color="#C8A0C8"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0.2" y1="0" x2="0.8" y2="0.7">
+      <stop offset="0%" stop-color="#EAFAFF" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#F0C8D8" stop-opacity="0.06"/>
+    </linearGradient>
+    <filter id="finegrain" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="8" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
+      <feComponentTransfer in="gray" result="softer">
+        <feFuncA type="linear" slope="0.7"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" in2="softer" mode="soft-light" result="blend"/>
+      <feComposite in="blend" in2="SourceGraphic" operator="in"/>
+    </filter>
+    <clipPath id="screen">
+      <rect x="10" y="10" width="200" height="420" rx="30"/>
+    </clipPath>
+  </defs>
+
+  <!-- Phone body -->
+  <rect x="0" y="0" width="220" height="440" rx="38" fill="#1a1820"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#glow)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" filter="url(#finegrain)" opacity="0.55" clip-path="url(#screen)"/>
+
+  <!-- Status bar -->
+  <rect x="78" y="17" width="64" height="9" rx="4.5" fill="#1a1820"/>
+  <text x="24" y="31" font-size="7.5" fill="rgba(42,40,64,0.55)" font-family="sans-serif" font-weight="600">9:41</text>
+  <text x="196" y="31" font-size="7" fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="end">▲ ▮</text>
+
+  <!-- Header -->
+  <text x="22" y="52" font-size="9" fill="rgba(42,40,64,0.5)" font-family="sans-serif">←</text>
+  <text x="110" y="52" font-size="11" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">Post a Match</text>
+  <rect x="182" y="41" width="22" height="14" rx="7" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="193" y="51" font-size="9" fill="rgba(42,40,64,0.5)" font-family="sans-serif" text-anchor="middle">✕</text>
+
+  <!-- ── 1. SELECT SPORT ── -->
+  <text x="22" y="65" font-size="6.5" fill="rgba(42,40,64,0.48)" font-family="sans-serif" font-weight="600">SELECT SPORT</text>
+  <circle cx="34"  cy="80" r="13" fill="rgba(100,160,225,0.45)" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>
+  <text x="34"  y="85" font-size="13" text-anchor="middle">⚽</text>
+  <circle cx="62"  cy="80" r="13" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>
+  <text x="62"  y="85" font-size="13" text-anchor="middle">🏃</text>
+  <circle cx="90"  cy="80" r="13" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>
+  <text x="90"  y="85" font-size="13" text-anchor="middle">🏸</text>
+  <circle cx="118" cy="80" r="13" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>
+  <text x="118" y="85" font-size="13" text-anchor="middle">🎾</text>
+  <circle cx="146" cy="80" r="13" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>
+  <text x="146" y="85" font-size="13" text-anchor="middle">🏊</text>
+  <circle cx="174" cy="80" r="13" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>
+  <text x="174" y="85" font-size="13" text-anchor="middle">🏀</text>
+  <circle cx="202" cy="80" r="13" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>
+  <text x="202" y="85" font-size="10" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">···</text>
+
+  <!-- ── 2. EVENT NAME ── -->
+  <rect x="16" y="98" width="188" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="30" y="113" font-size="7.5" fill="rgba(42,40,64,0.28)" font-family="sans-serif" font-style="italic">Match name…</text>
+
+  <!-- ── 3. START / END ── -->
+  <rect x="16" y="125" width="188" height="38" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <circle cx="27" cy="137" r="3" fill="rgba(42,40,64,0.35)"/>
+  <text x="36" y="141" font-size="7.5" fill="rgba(42,40,64,0.5)" font-family="sans-serif">Start</text>
+  <text x="196" y="141" font-size="7.5" fill="#2A2840" font-family="sans-serif" font-weight="600" text-anchor="end">Mon, 19 May · 6:00 PM ›</text>
+  <line x1="36" y1="145" x2="200" y2="145" stroke="rgba(42,40,64,0.08)" stroke-width="0.5"/>
+  <circle cx="27" cy="155" r="3" fill="none" stroke="rgba(42,40,64,0.35)" stroke-width="0.8"/>
+  <text x="36" y="159" font-size="7.5" fill="rgba(42,40,64,0.5)" font-family="sans-serif">End</text>
+  <text x="196" y="159" font-size="7.5" fill="#2A2840" font-family="sans-serif" font-weight="600" text-anchor="end">7:00 PM ›</text>
+
+  <!-- ── 4. CHOOSE LOCATION ── -->
+  <rect x="16" y="168" width="188" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="28" y="183" font-size="9" fill="rgba(42,40,64,0.4)" font-family="sans-serif">📍</text>
+  <text x="42" y="183" font-size="7.5" fill="rgba(42,40,64,0.35)" font-family="sans-serif">Choose Location</text>
+  <text x="196" y="183" font-size="7" fill="rgba(42,40,64,0.3)" font-family="sans-serif" text-anchor="end">›</text>
+
+  <!-- ── 5. PLAYERS NEEDED ── -->
+  <rect x="16" y="195" width="188" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <circle cx="27" cy="206" r="2.2" fill="rgba(42,40,64,0.4)"/>
+  <path d="M24,209 Q27,213 30,209" fill="none" stroke="rgba(42,40,64,0.4)" stroke-width="0.9"/>
+  <text x="36" y="210" font-size="7.5" fill="rgba(42,40,64,0.5)" font-family="sans-serif">Players Needed</text>
+  <text x="164" y="210" font-size="11" fill="rgba(42,40,64,0.4)" font-family="sans-serif" text-anchor="middle">−</text>
+  <text x="181" y="210" font-size="7.5" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">10</text>
+  <text x="197" y="210" font-size="11" fill="rgba(42,40,64,0.4)" font-family="sans-serif" text-anchor="middle">+</text>
+
+  <!-- ── 6. JOIN TYPE ── -->
+  <text x="22" y="228" font-size="6.5" fill="rgba(42,40,64,0.48)" font-family="sans-serif" font-weight="600">JOIN TYPE</text>
+  <rect x="16" y="232" width="90" height="22" rx="11" fill="rgba(245,215,120,0.32)" stroke="rgba(245,215,120,0.55)" stroke-width="0.8"/>
+  <text x="61" y="247" font-size="7.5" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">🔓 Open</text>
+  <rect x="114" y="232" width="90" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="159" y="247" font-size="7" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">🔒 Request to Join</text>
+
+  <!-- ── 7. PRICE / PER PERSON ── -->
+  <rect x="16" y="259" width="188" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="28" y="274" font-size="9" fill="rgba(42,40,64,0.4)" font-family="sans-serif">$</text>
+  <text x="40" y="274" font-size="7.5" fill="rgba(42,40,64,0.5)" font-family="sans-serif">Price / per person</text>
+  <text x="196" y="274" font-size="7.5" fill="#2A2840" font-family="sans-serif" font-weight="600" text-anchor="end">Free ›</text>
+
+  <!-- ── 8. SKILL LEVEL ── -->
+  <text x="22" y="292" font-size="6.5" fill="rgba(42,40,64,0.48)" font-family="sans-serif" font-weight="600">SKILL LEVEL</text>
+  <rect x="16"  y="296" width="56" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="44"  y="311" font-size="7" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">Beginner</text>
+  <rect x="78"  y="296" width="68" height="22" rx="11" fill="rgba(255,255,255,0.38)" stroke="rgba(255,255,255,0.6)" stroke-width="0.8"/>
+  <text x="112" y="311" font-size="7" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">Intermediate</text>
+  <rect x="152" y="296" width="52" height="22" rx="11" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="178" y="311" font-size="7" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">Advanced</text>
+
+  <!-- ── 9. DESCRIPTION ── -->
+  <rect x="16" y="323" width="188" height="34" rx="10" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="28" y="335" font-size="7.5" fill="rgba(42,40,64,0.4)" font-family="sans-serif">📝</text>
+  <text x="40" y="335" font-size="7.5" fill="rgba(42,40,64,0.28)" font-family="sans-serif" font-style="italic">Add Description</text>
+
+  <!-- ── POST MATCH BUTTON ── -->
+  <rect x="16" y="365" width="188" height="26" rx="13" fill="rgba(220,140,170,0.38)" stroke="rgba(220,140,170,0.6)" stroke-width="0.8"/>
+  <text x="110" y="381" font-size="9" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">Post Match →</text>
+
+  <!-- Home indicator -->
+  <rect x="85" y="428" width="50" height="4" rx="2" fill="rgba(42,40,64,0.18)"/>
+</svg>

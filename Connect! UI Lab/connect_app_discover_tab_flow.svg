@@ -1,0 +1,138 @@
+<svg viewBox="0 0 1400 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Connect! Discover Tab Flow</title>
+  <desc id="desc">Discover tab user flow — create a match path and browse match details path (join / request to join), each with toast feedback and return destination.</desc>
+
+  <defs>
+    <marker id="arrTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0e8a8a"/>
+    </marker>
+    <marker id="arrGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2e8a4f"/>
+    </marker>
+    <marker id="arrAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d98a1f"/>
+    </marker>
+    <marker id="arrBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1e6fd9"/>
+    </marker>
+    <marker id="arrSoft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#888"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text x="40" y="44" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111">DISCOVER TAB · USER FLOW</text>
+  <text x="40" y="64" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#555">Two paths from Discover: host a match (creator path) or open a match detail (joiner path). Each branch ends with a toast and a return destination.</text>
+
+  <!-- ROOT: Discover tab -->
+  <rect x="600" y="100" width="220" height="60" rx="14" fill="#0e8a8a" stroke="#0a6e6e" stroke-width="1.5"/>
+  <text x="710" y="128" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffffff">🔍  Discover</text>
+  <text x="710" y="146" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#cdeaea">browse open matches in Doha</text>
+
+  <!-- Two main branches from Discover -->
+  <path d="M650,160 C620,200 380,210 320,250" marker-end="url(#arrTeal)" fill="none" stroke="#0e8a8a" stroke-width="1.6"/>
+  <path d="M770,160 C800,200 1020,210 1080,250" marker-end="url(#arrTeal)" fill="none" stroke="#0e8a8a" stroke-width="1.6"/>
+
+  <text x="430" y="205" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#0e8a8a">tap "+" / Host CTA</text>
+  <text x="900" y="205" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#0e8a8a">tap a match card</text>
+
+  <!-- ========================================== -->
+  <!-- LEFT BRANCH · CREATE A MATCH                -->
+  <!-- ========================================== -->
+  <rect x="200" y="250" width="240" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+  <text x="320" y="278" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#111">create a match</text>
+  <text x="320" y="295" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#555">"Let's set up your match"</text>
+
+  <path d="M320,310 L320,370" marker-end="url(#arrGreen)" fill="none" stroke="#2e8a4f" stroke-width="1.5"/>
+
+  <rect x="200" y="370" width="240" height="60" rx="10" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+  <text x="320" y="398" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#111">match created</text>
+  <text x="320" y="415" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#555">"Your match is set to go" · share / add to calendar</text>
+
+  <path d="M320,430 L320,500" marker-end="url(#arrBlue)" fill="none" stroke="#1e6fd9" stroke-width="1.5"/>
+
+  <!-- Return destination · Home (hosting) -->
+  <rect x="180" y="500" width="280" height="68" rx="12" fill="#1e6fd9" stroke="#155bb0" stroke-width="1.5"/>
+  <text x="320" y="528" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffffff">🏠  Home tab</text>
+  <text x="320" y="546" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#cfe2ff">showing "You're hosting" section</text>
+  <text x="320" y="562" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10.5" fill="#cfe2ff">new match appears at the top</text>
+
+  <!-- ========================================== -->
+  <!-- RIGHT BRANCH · MATCH DETAILS                -->
+  <!-- ========================================== -->
+  <rect x="960" y="250" width="240" height="60" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+  <text x="1080" y="278" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#111">match details</text>
+  <text x="1080" y="295" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#555">date · time · location · price · tags</text>
+
+  <!-- Two sub-branches: join / request to join -->
+  <path d="M1020,310 C1000,340 920,350 900,380" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+  <path d="M1140,310 C1160,340 1240,350 1260,380" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+
+  <text x="855" y="350" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10.5" fill="#d98a1f">open match</text>
+  <text x="1265" y="350" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10.5" fill="#d98a1f">closed / paid match</text>
+
+  <!-- JOIN path -->
+  <rect x="780" y="380" width="220" height="60" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+  <text x="890" y="408" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#111">Join</text>
+  <text x="890" y="425" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#555">tap "Join" CTA</text>
+
+  <path d="M890,440 L890,490" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+
+  <!-- Toast: joined successfully -->
+  <rect x="780" y="490" width="220" height="60" rx="30" fill="#fef3c7" stroke="#d98a1f" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="890" y="516" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600" fill="#111">✓ Joined successfully</text>
+  <text x="890" y="533" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#666">toast · auto-dismiss</text>
+
+  <path d="M890,550 L890,610" marker-end="url(#arrBlue)" fill="none" stroke="#1e6fd9" stroke-width="1.5"/>
+
+  <!-- Return: Home tab (Next up) -->
+  <rect x="750" y="610" width="280" height="68" rx="12" fill="#1e6fd9" stroke="#155bb0" stroke-width="1.5"/>
+  <text x="890" y="638" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffffff">🏠  Home tab</text>
+  <text x="890" y="656" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#cfe2ff">showing "Next up" section</text>
+  <text x="890" y="672" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10.5" fill="#cfe2ff">joined match appears as next up</text>
+
+  <!-- REQUEST TO JOIN path -->
+  <rect x="1140" y="380" width="240" height="60" rx="10" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+  <text x="1260" y="408" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#111">Request to join</text>
+  <text x="1260" y="425" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#555">tap "Request · QAR 25" CTA</text>
+
+  <path d="M1260,440 L1260,490" marker-end="url(#arrAmber)" fill="none" stroke="#d98a1f" stroke-width="1.5"/>
+
+  <!-- Toast: request sent -->
+  <rect x="1140" y="490" width="240" height="60" rx="30" fill="#fef3c7" stroke="#d98a1f" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="1260" y="516" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600" fill="#111">✓ Request sent</text>
+  <text x="1260" y="533" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#666">toast · auto-dismiss</text>
+
+  <path d="M1260,550 L1260,610" marker-end="url(#arrTeal)" fill="none" stroke="#0e8a8a" stroke-width="1.5"/>
+
+  <!-- Return: stay on Discover -->
+  <rect x="1120" y="610" width="280" height="68" rx="12" fill="#0e8a8a" stroke="#0a6e6e" stroke-width="1.5"/>
+  <text x="1260" y="638" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffffff">🔍  Discover tab</text>
+  <text x="1260" y="656" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#cdeaea">continue browsing other matches</text>
+  <text x="1260" y="672" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="10.5" fill="#cdeaea">requested card shows "Pending" state</text>
+
+  <!-- ========================================== -->
+  <!-- LEGEND                                      -->
+  <!-- ========================================== -->
+  <g transform="translate(40,760)">
+    <rect x="0" y="0" width="1320" height="110" rx="10" fill="#fafafa" stroke="#e3e3e3" stroke-width="1"/>
+    <text x="20" y="26" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#333">LEGEND</text>
+
+    <rect x="20" y="44" width="20" height="20" rx="4" fill="#0e8a8a"/>
+    <text x="50" y="59" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#333">Tab root / browse</text>
+
+    <rect x="200" y="44" width="20" height="20" rx="4" fill="#e9f6ee" stroke="#2e8a4f" stroke-width="1.5"/>
+    <text x="230" y="59" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#333">Create flow screen</text>
+
+    <rect x="380" y="44" width="20" height="20" rx="4" fill="#fff1dc" stroke="#d98a1f" stroke-width="1.5"/>
+    <text x="410" y="59" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#333">Join / details screen</text>
+
+    <rect x="560" y="44" width="20" height="20" rx="10" fill="#fef3c7" stroke="#d98a1f" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="590" y="59" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#333">Toast feedback</text>
+
+    <rect x="720" y="44" width="20" height="20" rx="4" fill="#1e6fd9"/>
+    <text x="750" y="59" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11.5" fill="#333">Return → Home tab</text>
+
+    <text x="20" y="92" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#666">Decision rule: matches the user can join freely → "Join" (instant). Matches that are paid, closed, or require host vetting → "Request to join" (pending).</text>
+  </g>
+</svg>

@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 440" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block;">
+  <defs>
+    <linearGradient id="sunrise" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#C8E8F5"/>
+      <stop offset="15%"  stop-color="#D8EFF8"/>
+      <stop offset="32%"  stop-color="#EEE8C0"/>
+      <stop offset="52%"  stop-color="#F5D888"/>
+      <stop offset="70%"  stop-color="#F0B890"/>
+      <stop offset="85%"  stop-color="#E8A8B8"/>
+      <stop offset="100%" stop-color="#C8A0C8"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0.2" y1="0" x2="0.8" y2="0.7">
+      <stop offset="0%" stop-color="#EAFAFF" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#F0C8D8" stop-opacity="0.06"/>
+    </linearGradient>
+    <filter id="finegrain" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="8" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
+      <feComponentTransfer in="gray" result="softer">
+        <feFuncA type="linear" slope="0.7"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" in2="softer" mode="soft-light" result="blend"/>
+      <feComposite in="blend" in2="SourceGraphic" operator="in"/>
+    </filter>
+    <clipPath id="screen">
+      <rect x="10" y="10" width="200" height="420" rx="30"/>
+    </clipPath>
+  </defs>
+
+  <!-- Phone body -->
+  <rect x="0" y="0" width="220" height="440" rx="38" fill="#1a1820"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#glow)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" filter="url(#finegrain)" opacity="0.55" clip-path="url(#screen)"/>
+
+  <!-- Status bar -->
+  <rect x="78" y="17" width="64" height="9" rx="4.5" fill="#1a1820"/>
+  <text x="24" y="31" font-size="7.5" fill="rgba(42,40,64,0.55)" font-family="sans-serif" font-weight="600">9:41</text>
+  <text x="196" y="31" font-size="7" fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="end">▲ ▮</text>
+
+  <!-- Header -->
+  <text x="22" y="54" font-size="13" fill="#2A2840" font-family="Georgia, serif" font-weight="400" letter-spacing="0.5">Connect!</text>
+  <rect x="152" y="43" width="26" height="16" rx="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="165" y="54" font-size="12" fill="rgba(42,40,64,0.6)" font-family="sans-serif" font-weight="300" text-anchor="middle">+</text>
+  <rect x="181" y="43" width="28" height="16" rx="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="195" y="54" font-size="6.5" fill="rgba(42,40,64,0.6)" font-family="sans-serif" font-weight="700" text-anchor="middle">JM</text>
+
+  <!-- Month/year selector -->
+  <text x="22" y="76" font-size="8" fill="rgba(42,40,64,0.45)" font-family="sans-serif">‹</text>
+  <text x="110" y="76" font-size="7.5" fill="rgba(42,40,64,0.65)" font-family="sans-serif" font-weight="600" text-anchor="middle">May 2026</text>
+  <text x="198" y="76" font-size="8" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="end">›</text>
+
+  <!-- 7-day strip -->
+  <!-- SUN 17 -->
+  <text x="29"  y="91" font-size="5.5" fill="rgba(42,40,64,0.38)" font-family="sans-serif" text-anchor="middle">SUN</text>
+  <text x="29"  y="102" font-size="8"  fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="middle">17</text>
+  <!-- MON 18 -->
+  <text x="56"  y="91" font-size="5.5" fill="rgba(42,40,64,0.38)" font-family="sans-serif" text-anchor="middle">MON</text>
+  <text x="56"  y="102" font-size="8"  fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="middle">18</text>
+  <!-- TUE 19 — has session, outline circle -->
+  <circle cx="83" cy="97" r="15" fill="rgba(80,145,215,0.12)" stroke="rgba(80,145,215,0.5)" stroke-width="0.8"/>
+  <text x="83"  y="91" font-size="5.5" fill="rgba(80,145,215,0.85)" font-family="sans-serif" text-anchor="middle">TUE</text>
+  <text x="83"  y="102" font-size="8"  fill="rgba(42,40,64,0.7)" font-family="sans-serif" text-anchor="middle">19</text>
+  <circle cx="83" cy="116" r="1.8" fill="rgba(80,145,215,0.7)"/>
+  <!-- WED 20 -->
+  <text x="110" y="91" font-size="5.5" fill="rgba(42,40,64,0.38)" font-family="sans-serif" text-anchor="middle">WED</text>
+  <text x="110" y="102" font-size="8"  fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="middle">20</text>
+  <!-- THU 21 — has session dot -->
+  <text x="137" y="91" font-size="5.5" fill="rgba(42,40,64,0.38)" font-family="sans-serif" text-anchor="middle">THU</text>
+  <text x="137" y="102" font-size="8"  fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="middle">21</text>
+  <circle cx="137" cy="109" r="1.8" fill="rgba(80,145,215,0.7)"/>
+  <!-- FRI 22 -->
+  <text x="164" y="91" font-size="5.5" fill="rgba(42,40,64,0.38)" font-family="sans-serif" text-anchor="middle">FRI</text>
+  <text x="164" y="102" font-size="8"  fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="middle">22</text>
+  <!-- SAT 23 -->
+  <text x="191" y="91" font-size="5.5" fill="rgba(42,40,64,0.38)" font-family="sans-serif" text-anchor="middle">SAT</text>
+  <text x="191" y="102" font-size="8"  fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="middle">23</text>
+
+  <!-- Section heading -->
+  <text x="22" y="128" font-size="10.5" fill="#2A2840" font-family="sans-serif" font-weight="700">Your Upcoming Sessions</text>
+
+  <!-- ── CARD 1: Football ── -->
+  <rect x="16" y="136" width="188" height="68" rx="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <rect x="16" y="136" width="55" height="68" rx="12" fill="rgba(92,140,80,0.5)"/>
+  <text x="43" y="176" font-size="22" text-anchor="middle">⚽</text>
+  <text x="80" y="149" font-size="6.5" fill="rgba(42,40,64,0.45)" font-family="sans-serif">Al Waab FC · Today</text>
+  <text x="80" y="161" font-size="9" fill="#2A2840" font-family="sans-serif" font-weight="700">Al Waab Evening</text>
+  <text x="80" y="172" font-size="6.5" fill="rgba(42,40,64,0.52)" font-family="sans-serif">⏱ 6:00 PM · 📍 Al Waab</text>
+  <circle cx="81" cy="181" r="2.2" fill="rgba(42,40,64,0.45)"/>
+  <path d="M78,184 Q81,188 84,184" fill="none" stroke="rgba(42,40,64,0.45)" stroke-width="1"/>
+  <text x="88" y="185" font-size="6.5" fill="rgba(42,40,64,0.45)" font-family="sans-serif">1 / 3 players</text>
+  <rect x="158" y="174" width="40" height="14" rx="7" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.28)" stroke-width="0.8"/>
+  <text x="178" y="184" font-size="6.5" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">Join →</text>
+
+  <!-- ── CARD 2: Running ── -->
+  <rect x="16" y="212" width="188" height="68" rx="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <rect x="16" y="212" width="55" height="68" rx="12" fill="rgba(200,160,100,0.45)"/>
+  <text x="43" y="252" font-size="22" text-anchor="middle">🏃</text>
+  <text x="80" y="225" font-size="6.5" fill="rgba(42,40,64,0.45)" font-family="sans-serif">Doha Runners · Tue 19</text>
+  <text x="80" y="237" font-size="9" fill="#2A2840" font-family="sans-serif" font-weight="700">Corniche Morning Run</text>
+  <text x="80" y="248" font-size="6.5" fill="rgba(42,40,64,0.52)" font-family="sans-serif">⏱ 6:30 AM · 📍 Corniche</text>
+  <circle cx="81" cy="257" r="2.2" fill="rgba(42,40,64,0.45)"/>
+  <path d="M78,260 Q81,264 84,260" fill="none" stroke="rgba(42,40,64,0.45)" stroke-width="1"/>
+  <text x="88" y="261" font-size="6.5" fill="rgba(42,40,64,0.45)" font-family="sans-serif">2 / 5 players</text>
+  <rect x="148" y="251" width="54" height="20" rx="10" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.28)" stroke-width="0.8"/>
+  <text x="175" y="260" font-size="6" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">Request</text>
+  <text x="175" y="268" font-size="6" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">to Join →</text>
+
+  <!-- ── CARD 3: Badminton ── -->
+  <rect x="16" y="288" width="188" height="68" rx="12" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <rect x="16" y="288" width="55" height="68" rx="12" fill="rgba(180,130,200,0.4)"/>
+  <text x="43" y="328" font-size="22" text-anchor="middle">🏸</text>
+  <text x="80" y="301" font-size="6.5" fill="rgba(42,40,64,0.45)" font-family="sans-serif">Al Sadd Club · Thu 21</text>
+  <text x="80" y="313" font-size="9" fill="#2A2840" font-family="sans-serif" font-weight="700">Al Sadd Badminton</text>
+  <text x="80" y="324" font-size="6.5" fill="rgba(42,40,64,0.52)" font-family="sans-serif">⏱ 7:00 PM · 📍 Al Sadd</text>
+  <circle cx="81" cy="333" r="2.2" fill="rgba(42,40,64,0.45)"/>
+  <path d="M78,336 Q81,340 84,336" fill="none" stroke="rgba(42,40,64,0.45)" stroke-width="1"/>
+  <text x="88" y="337" font-size="6.5" fill="rgba(42,40,64,0.45)" font-family="sans-serif">3 / 4 players</text>
+  <rect x="158" y="326" width="40" height="14" rx="7" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.28)" stroke-width="0.8"/>
+  <text x="178" y="336" font-size="6.5" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">Join →</text>
+
+  <!-- Floating pill nav -->
+  <rect x="44" y="378" width="132" height="34" rx="17" fill="rgba(160,90,130,0.32)" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+  <rect x="82" y="380" width="56" height="30" rx="15" fill="rgba(120,60,100,0.38)" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+  <text x="110" y="396" font-size="20" fill="#2A2840" font-family="sans-serif" text-anchor="middle">⌂</text>
+  <text x="110" y="403" font-size="5" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">Home</text>
+  <text x="62"  y="396" font-size="20" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">⌕</text>
+  <text x="62"  y="403" font-size="5" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">Explore</text>
+  <text x="158" y="396" font-size="19" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">✉</text>
+  <text x="158" y="403" font-size="5" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">Chat</text>
+
+  <!-- Home indicator -->
+  <rect x="85" y="428" width="50" height="4" rx="2" fill="rgba(42,40,64,0.18)"/>
+</svg>

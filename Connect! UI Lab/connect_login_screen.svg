@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 440" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block;">
+  <defs>
+    <linearGradient id="sunrise" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#C8E8F5"/>
+      <stop offset="15%"  stop-color="#D8EFF8"/>
+      <stop offset="32%"  stop-color="#EEE8C0"/>
+      <stop offset="52%"  stop-color="#F5D888"/>
+      <stop offset="70%"  stop-color="#F0B890"/>
+      <stop offset="85%"  stop-color="#E8A8B8"/>
+      <stop offset="100%" stop-color="#C8A0C8"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0.2" y1="0" x2="0.8" y2="0.7">
+      <stop offset="0%" stop-color="#EAFAFF" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#F0C8D8" stop-opacity="0.06"/>
+    </linearGradient>
+    <filter id="finegrain" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="8" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
+      <feComponentTransfer in="gray" result="softer">
+        <feFuncA type="linear" slope="0.7"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" in2="softer" mode="soft-light" result="blend"/>
+      <feComposite in="blend" in2="SourceGraphic" operator="in"/>
+    </filter>
+    <clipPath id="screen">
+      <rect x="10" y="10" width="200" height="420" rx="30"/>
+    </clipPath>
+  </defs>
+
+  <!-- Phone body -->
+  <rect x="0" y="0" width="220" height="440" rx="38" fill="#1a1820"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#glow)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" filter="url(#finegrain)" opacity="0.55" clip-path="url(#screen)"/>
+
+  <!-- Status bar -->
+  <rect x="78" y="17" width="64" height="9" rx="4.5" fill="#1a1820"/>
+  <text x="24" y="31" font-size="7.5" fill="rgba(42,40,64,0.55)" font-family="sans-serif" font-weight="600">9:41</text>
+  <text x="196" y="31" font-size="7" fill="rgba(42,40,64,0.55)" font-family="sans-serif" text-anchor="end">▲ ▮</text>
+
+  <!-- Language toggle -->
+  <rect x="148" y="40" width="54" height="16" rx="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <rect x="149" y="41" width="26" height="14" rx="7" fill="rgba(255,255,255,0.12)"/>
+  <text x="162" y="51.5" font-size="6.5" fill="#2A2840" font-family="sans-serif" font-weight="700" text-anchor="middle">EN</text>
+  <text x="188" y="51.5" font-size="6.5" fill="rgba(42,40,64,0.38)" font-family="sans-serif" text-anchor="middle">عربي</text>
+
+  <!-- App title -->
+  <text x="110" y="97" font-size="20" fill="#2A2840" font-family="Georgia, serif" font-weight="400" text-anchor="middle" letter-spacing="1">Connect!</text>
+
+  <!-- Google -->
+  <rect x="18" y="115" width="184" height="28" rx="14" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <circle cx="36" cy="129" r="9" fill="rgba(255,255,255,0.55)" stroke="rgba(42,40,64,0.06)" stroke-width="0.5"/>
+  <text x="36" y="133" font-size="8.5" font-weight="700" fill="#4285F4" font-family="Arial, sans-serif" text-anchor="middle">G</text>
+  <text x="114" y="133" font-size="8" fill="#2A2840" font-family="sans-serif" text-anchor="middle">Continue With Google</text>
+
+  <!-- Apple -->
+  <rect x="18" y="148" width="184" height="28" rx="14" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <circle cx="36" cy="162" r="9" fill="rgba(0,0,0,0.72)"/>
+  <text x="36" y="167" font-size="11" fill="white" font-family="sans-serif" text-anchor="middle"></text>
+  <text x="114" y="166" font-size="8" fill="#2A2840" font-family="sans-serif" text-anchor="middle">Continue with Apple</text>
+
+  <!-- Facebook -->
+  <rect x="18" y="181" width="184" height="28" rx="14" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <circle cx="36" cy="195" r="9" fill="#1877F2"/>
+  <text x="36.5" y="200" font-size="13" fill="white" font-family="Arial, sans-serif" font-weight="900" text-anchor="middle">f</text>
+  <text x="114" y="199" font-size="8" fill="#2A2840" font-family="sans-serif" text-anchor="middle">Continue with Facebook</text>
+
+  <!-- Email field -->
+  <text x="18" y="225" font-size="7.5" fill="rgba(42,40,64,0.6)" font-family="sans-serif" font-weight="500">Email or user name</text>
+  <rect x="18" y="229" width="184" height="27" rx="13.5" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <rect x="29" y="237" width="10" height="7" rx="1" fill="none" stroke="rgba(42,40,64,0.3)" stroke-width="0.9"/>
+  <polyline points="29,237 34,242 39,237" fill="none" stroke="rgba(42,40,64,0.3)" stroke-width="0.9"/>
+  <text x="48" y="246" font-size="7.5" fill="rgba(42,40,64,0.25)" font-family="sans-serif">Email address</text>
+
+  <!-- Password field -->
+  <text x="18" y="270" font-size="7.5" fill="rgba(42,40,64,0.6)" font-family="sans-serif" font-weight="500">Password</text>
+  <rect x="18" y="274" width="184" height="27" rx="13.5" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <rect x="30" y="281" width="8" height="6" rx="1" fill="none" stroke="rgba(42,40,64,0.3)" stroke-width="0.9"/>
+  <path d="M32,281 v-2 a2,2 0 0 1 4,0 v2" fill="none" stroke="rgba(42,40,64,0.3)" stroke-width="0.9"/>
+  <text x="48" y="291" font-size="7.5" fill="rgba(42,40,64,0.25)" font-family="sans-serif">Password</text>
+  <ellipse cx="192" cy="288" rx="5" ry="3.5" fill="none" stroke="rgba(42,40,64,0.28)" stroke-width="0.9"/>
+  <circle cx="192" cy="288" r="1.5" fill="rgba(42,40,64,0.28)"/>
+
+  <!-- Remember me + Forgot password -->
+  <circle cx="22" cy="315" r="5" fill="none" stroke="rgba(42,40,64,0.22)" stroke-width="0.9"/>
+  <text x="31" y="319" font-size="7" fill="rgba(42,40,64,0.48)" font-family="sans-serif">Remember me</text>
+  <text x="198" y="319" font-size="7" fill="#C8785A" font-family="sans-serif" text-anchor="end">Forgot Password</text>
+
+  <!-- Log in button -->
+  <rect x="18" y="328" width="184" height="30" rx="15" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" stroke-width="0.8"/>
+  <text x="110" y="347" font-size="9.5" fill="#2A2840" font-family="sans-serif" font-weight="600" text-anchor="middle">Log in</text>
+
+  <!-- Don't have account -->
+  <text x="110" y="377" font-size="7" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="middle">Don't have an account? <tspan fill="#C8785A" font-weight="600">Sign Up</tspan></text>
+
+  <!-- Home indicator -->
+  <rect x="85" y="428" width="50" height="4" rx="2" fill="rgba(42,40,64,0.18)"/>
+</svg>

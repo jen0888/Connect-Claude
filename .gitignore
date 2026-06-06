@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Secrets & credentials — never commit these
+**/Vercel recovery codes*
+**/*recovery*codes*
+**/*.env
+**/.env.*
+**/credentials*
+**/secrets*
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Dependencies (if added later)
+node_modules/

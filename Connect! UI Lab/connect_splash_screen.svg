@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 440" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block;">
+  <defs>
+    <linearGradient id="sunrise" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#C8E8F5"/>
+      <stop offset="15%"  stop-color="#D8EFF8"/>
+      <stop offset="32%"  stop-color="#EEE8C0"/>
+      <stop offset="52%"  stop-color="#F5D888"/>
+      <stop offset="70%"  stop-color="#F0B890"/>
+      <stop offset="85%"  stop-color="#E8A8B8"/>
+      <stop offset="100%" stop-color="#C8A0C8"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0.2" y1="0" x2="0.8" y2="0.7">
+      <stop offset="0%" stop-color="#EAFAFF" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#F0C8D8" stop-opacity="0.06"/>
+    </linearGradient>
+    <filter id="finegrain" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="8" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
+      <feComponentTransfer in="gray" result="softer">
+        <feFuncA type="linear" slope="0.7"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" in2="softer" mode="soft-light" result="blend"/>
+      <feComposite in="blend" in2="SourceGraphic" operator="in"/>
+    </filter>
+    <filter id="islandshadow" x="-30%" y="-60%" width="160%" height="280%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="rgba(42,40,64,0.18)"/>
+    </filter>
+    <clipPath id="screen">
+      <rect x="10" y="10" width="200" height="420" rx="30"/>
+    </clipPath>
+    <style>
+      @keyframes float {
+        0%   { transform: translateY(0px) rotate(-0.4deg); }
+        25%  { transform: translateY(-5px) rotate(0.3deg); }
+        50%  { transform: translateY(-8px) rotate(0.6deg); }
+        75%  { transform: translateY(-4px) rotate(-0.2deg); }
+        100% { transform: translateY(0px) rotate(-0.4deg); }
+      }
+      @keyframes shadowpulse {
+        0%,100% { opacity: 0.7; transform: scaleX(1); }
+        50%     { opacity: 0.35; transform: scaleX(0.82); }
+      }
+      #floatbtn {
+        animation: float 3s ease-in-out infinite;
+        transform-origin: 110px 351px;
+      }
+      #btnshadow {
+        animation: shadowpulse 3s ease-in-out infinite;
+        transform-origin: 110px 376px;
+      }
+    </style>
+  </defs>
+
+  <!-- Phone body -->
+  <rect x="0" y="0" width="220" height="440" rx="38" fill="#1a1820"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#glow)" clip-path="url(#screen)"/>
+  <rect x="10" y="10" width="200" height="420" rx="30" fill="url(#sunrise)" filter="url(#finegrain)" opacity="0.55" clip-path="url(#screen)"/>
+
+  <!-- Status bar -->
+  <rect x="78" y="17" width="64" height="9" rx="4.5" fill="#1a1820"/>
+  <text x="24" y="31" font-size="7.5" fill="rgba(42,40,64,0.45)" font-family="sans-serif" font-weight="600">9:41</text>
+  <text x="196" y="31" font-size="7" fill="rgba(42,40,64,0.45)" font-family="sans-serif" text-anchor="end">▲ ▮</text>
+
+  <!-- App title -->
+  <text x="110" y="192" font-size="32" fill="#2A2840" font-family="Georgia, serif" font-weight="400" text-anchor="middle" letter-spacing="1.5">Connect!</text>
+  <text x="110" y="216" font-size="8" fill="rgba(42,40,64,0.52)" font-family="sans-serif" text-anchor="middle" letter-spacing="0.4">Your sport. Your people. Your community.</text>
+
+  <!-- Ground shadow (stays still, pulses) -->
+  <ellipse id="btnshadow" cx="110" cy="374" rx="52" ry="4" fill="rgba(42,40,64,0.1)"/>
+
+  <!-- Floating island button -->
+  <g id="floatbtn" filter="url(#islandshadow)">
+    <rect x="50" y="334" width="120" height="34" rx="17"
+          fill="rgba(255,255,255,0.08)"
+          stroke="rgba(255,255,255,0.22)"
+          stroke-width="0.8"/>
+    <text x="110" y="355" font-size="9.5" fill="#2A2840" font-family="sans-serif" font-weight="600" text-anchor="middle">Get Started</text>
+  </g>
+
+  <!-- Home indicator -->
+  <rect x="85" y="428" width="50" height="4" rx="2" fill="rgba(42,40,64,0.18)"/>
+</svg>
