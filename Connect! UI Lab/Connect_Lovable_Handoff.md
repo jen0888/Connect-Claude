@@ -19,7 +19,7 @@ Tell Lovable up front: **this is a bilingual (English + Arabic) RTL app.** Bake 
 
 ## 1. Product context
 
-Connect! is a mobile-first PWA that helps people in Doha find pickup sports matches (padel, tennis, football, etc.). Stage 1 is **free player-matching only** — no payments, no coach/court booking (those are later stages). Audience: young, active players in Doha. Matching is **pull-based**: hosts post open matches, players self-select in. No host approval/gatekeeping. 18+ only.
+Connect! is a mobile-first PWA that helps people in Doha find pickup sports matches (padel, tennis, badminton, running). Stage 1 is **free player-matching only** — no payments, no coach/court booking (those are later stages). Audience: young, active players in Doha. Matching is **pull-based**: hosts post open matches, players self-select in. No host approval/gatekeeping. 18+ only.
 
 Stack: Lovable (frontend + basic logic) → Supabase (auth + DB) → GitHub. Heavy logic/refactor handled later in Claude Code.
 

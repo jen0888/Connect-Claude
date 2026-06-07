@@ -8,7 +8,7 @@
 
 ## Prompt 0 — Project setup & ground rules
 
-> I'm building **Connect!**, a mobile-first PWA that helps people in Doha find pickup sports matches (padel, tennis, badminton, football). This is **Stage 1: free player-matching only** — no payments, no coach or court booking.
+> I'm building **Connect!**, a mobile-first PWA that helps people in Doha find pickup sports matches (padel, tennis, badminton, running). This is **Stage 1: free player-matching only** — no payments, no coach or court booking.
 >
 > Critical constraints for the whole project — apply these to everything you generate from here on:
 >

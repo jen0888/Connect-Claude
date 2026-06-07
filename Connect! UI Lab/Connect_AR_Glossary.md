@@ -103,6 +103,7 @@
 | Squash | اسكواش |
 | Football | كرة القدم |
 | Badminton | كرة الريشة |
+| Running | جري |
 
 ## Notes
 

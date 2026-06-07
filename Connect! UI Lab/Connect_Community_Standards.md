@@ -2,7 +2,7 @@
 
 *Last updated: 2026-05-30 · Stage 1 draft*
 
-Connect! exists to get people in Doha off their phones and onto the court. Whether you play padel, tennis, football, or anything in between, this is a place to find a game, meet good people, and play more often. These standards keep it that way — they're simple, and they come down to one idea: **treat every player the way you'd want to be treated.**
+Connect! exists to get people in Doha off their phones and onto the court. Whether you play padel, tennis, badminton, go for a run, or anything in between, this is a place to find a game, meet good people, and play more often. These standards keep it that way — they're simple, and they come down to one idea: **treat every player the way you'd want to be treated.**
 
 **Connect! is for adults only — you must be 18 or older to use it.** Because the whole point is meeting people in person to play, the app is not for anyone under 18.
 
