@@ -1,0 +1,143 @@
+/**
+ * Domain types mirroring the Supabase schema (CLAUDE.md §6) so the
+ * mock layer can be swapped for real queries without touching screens.
+ */
+
+export type Sport = 'padel' | 'tennis' | 'badminton' | 'running'
+
+export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'any'
+
+export type JoinMode = 'open' | 'approval' | 'invite'
+
+/** Stored status — time-based states are computed at read time, never stored. */
+export type StoredMatchStatus = 'active' | 'cancelled'
+
+/** Read-time status (CLAUDE.md §5): open → full → live → completed → closed (+ cancelled). */
+export type MatchStatus = 'open' | 'full' | 'live' | 'completed' | 'closed' | 'cancelled'
+
+export interface User {
+  id: string
+  name: string
+  email: string
+  phone: string | null
+  avatar_url: string | null
+  sport: Sport
+  skill_level: SkillLevel
+  language: 'en' | 'ar'
+  dob: string // ISO date; 18+ enforced at sign-up
+  attendance_rate: number // 0–100
+  created_at: string
+  // public trust signals (computed server-side later)
+  matches_played: number
+  no_show_count: number
+  languages: string[]
+  bio?: string
+  area?: string
+}
+
+export interface Match {
+  id: string
+  host_id: string
+  sport: Sport
+  venue_id: string | null // FK for curated venues
+  venue_name: string // display name; used alone for custom venues
+  venue_location: string | null
+  court_number: string | null // separate optional free-text field
+  /** Running matches use route fields instead of venue/court */
+  route_start: string | null
+  route_end: string | null
+  round_trip: boolean
+  start_time: string // ISO
+  end_time: string // ISO
+  skill_level: SkillLevel
+  total_spots: number
+  spots_available: number
+  fee_total: number | null // informational only — never a transaction
+  fee_per_player: number | null // display only
+  join_mode: JoinMode
+  status: StoredMatchStatus
+  notes: string | null
+  created_at: string
+}
+
+export interface MatchPlayer {
+  id: string
+  match_id: string
+  player_id: string
+  joined_at: string
+  attended: boolean | null
+}
+
+export type RequestKind = 'request' | 'invite'
+export type RequestStatus = 'requested' | 'invited' | 'approved' | 'accepted' | 'declined' | 'expired'
+
+export interface MatchRequest {
+  id: string
+  match_id: string
+  player_id: string
+  kind: RequestKind // request = player→host · invite = host→player
+  status: RequestStatus
+  created_at: string
+}
+
+export interface NoShowReport {
+  id: string
+  match_id: string
+  reported_player: string
+  reporter_id: string
+  created_at: string
+}
+
+export type MatchResultValue = 'win' | 'loss' | 'draw'
+
+export interface MatchResult {
+  id: string
+  match_id: string
+  player_id: string
+  result: MatchResultValue
+}
+
+export type VenueSetting = 'Indoor' | 'Outdoor' | 'Rooftop' | 'Indoor + Outdoor'
+
+export interface Venue {
+  id: string
+  name: string
+  area: string
+  sports: Sport[]
+  setting: VenueSetting
+}
+
+export interface Notification {
+  id: string
+  user_id: string
+  type: string
+  title_en: string
+  title_ar: string
+  body_en: string
+  body_ar: string
+  is_read: boolean
+  created_at: string
+}
+
+export type SystemTone = 'info' | 'wait' | 'pos' | 'warm' | 'alert'
+export type SystemIcon = 'flag' | 'userPlus' | 'userMinus' | 'lock' | 'check' | 'bell' | 'xCircle' | 'trophy' | 'flagFinish'
+
+export interface ChatMessage {
+  id: string
+  thread_id: string
+  sender_id: string
+  body: string
+  created_at: string
+  /** system lines (match created, player joined, result posted…) */
+  system?: boolean
+  tone?: SystemTone
+  icon?: SystemIcon
+}
+
+export interface ChatThread {
+  id: string
+  /** match group thread when set; 1:1 DM otherwise */
+  match_id: string | null
+  participant_ids: string[]
+  created_at: string
+}
