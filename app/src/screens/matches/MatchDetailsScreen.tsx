@@ -1,11 +1,11 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { Bookmark, Check, ChevronLeft, ChevronRight, MapPin, MessageCircle, Pencil, Plus, Send, Share, Star } from 'lucide-react'
+import { Bookmark, Check, ChevronLeft, ChevronRight, Hourglass, ListPlus, MapPin, MessageCircle, Pencil, Plus, Send, Share, Star } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { MiniMap, PlayerDots } from '@/components/controls'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, isJoined, matchPlayers, pendingRequest, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { dayLabel, hm, initials, sportLabel, whenLabel } from '@/lib/format'
 import type { Match, SkillLevel } from '@/lib/types'
@@ -131,21 +131,40 @@ function MatchDetailsBody({
   const isRunning = m.sport === 'running'
   const durationMin = Math.round((new Date(m.end_time).getTime() - new Date(m.start_time).getTime()) / 60000)
 
-  const joinedState = joined ? 'joined' : pending ? 'requested' : 'idle'
-  const canAct = joinedState === 'idle' && status === 'open'
+  const wl = waitlistEntry(db, m.id)
+  const wlPos = wl ? waitlistPosition(db, m.id) : null
+  const joinedState = joined ? 'joined' : wl ? 'waitlisted' : pending ? 'requested' : 'idle'
+  // invite = personal offer, not a public listing slot (§5) — no public join CTA
+  const inviteOnly = m.join_mode === 'invite' && joinedState === 'idle'
+  const canJoin = joinedState === 'idle' && status === 'open' && !inviteOnly
+  // waitlist applies to ANY full match, orthogonal to join_mode (§5)
+  const canWaitlist = joinedState === 'idle' && status === 'full' && !hostView
+  const canAct = canJoin || canWaitlist
   const ctaLabel =
     joinedState === 'joined'
       ? "You're in"
       : joinedState === 'requested'
         ? 'Request sent'
-        : isFull || status !== 'open'
-          ? 'Match full'
-          : m.join_mode === 'approval'
-            ? 'Request to join'
-            : 'Join match'
+        : joinedState === 'waitlisted'
+          ? 'On waitlist'
+          : canWaitlist
+            ? 'Join waitlist'
+            : inviteOnly
+              ? 'Invite only'
+              : status !== 'open'
+                ? 'Match full'
+                : m.join_mode === 'approval'
+                  ? 'Request to join'
+                  : 'Join match'
 
   const onJoin = () => {
-    if (!canAct) return
+    if (canWaitlist) {
+      // holds no slot — FIFO entry, auto-promoted when a slot frees (§5)
+      actions.joinWaitlist(m.id)
+      showToast("On the waitlist — you'll be auto-joined if a spot frees")
+      return
+    }
+    if (!canJoin) return
     if (m.join_mode === 'approval') {
       actions.requestToJoin(m.id)
       showToast('Request sent')
@@ -565,13 +584,24 @@ function MatchDetailsBody({
               style={{
                 cursor: canAct ? 'pointer' : 'default',
                 background:
-                  joinedState === 'joined' ? '#2d4a3e' : joinedState === 'requested' ? 'rgba(26,26,26,0.85)' : canAct ? 'var(--color-brand)' : 'rgba(26,26,26,0.35)',
-                boxShadow: canAct ? '0 14px 28px -12px var(--color-brand)' : 'none',
+                  joinedState === 'joined'
+                    ? '#2d4a3e'
+                    : joinedState === 'requested' || joinedState === 'waitlisted'
+                      ? 'rgba(26,26,26,0.85)'
+                      : canWaitlist
+                        ? 'var(--color-info)' // full · locked-in lifecycle token
+                        : canJoin
+                          ? 'var(--color-brand)'
+                          : 'rgba(26,26,26,0.35)',
+                boxShadow: canWaitlist ? '0 14px 28px -12px var(--color-info)' : canJoin ? '0 14px 28px -12px var(--color-brand)' : 'none',
               }}
             >
               {joinedState === 'joined' && <Check size={14} strokeWidth={2.6} />}
-              {canAct && (m.join_mode === 'approval' ? <Send size={16} strokeWidth={1.9} /> : <Plus size={17} strokeWidth={2.2} />)}
+              {joinedState === 'waitlisted' && <Hourglass size={15} strokeWidth={2} />}
+              {canWaitlist && <ListPlus size={16} strokeWidth={2.1} />}
+              {canJoin && (m.join_mode === 'approval' ? <Send size={16} strokeWidth={1.9} /> : <Plus size={17} strokeWidth={2.2} />)}
               {ctaLabel}
+              {joinedState === 'waitlisted' && wlPos != null && <span className="nums-tabular ltr-nums">· #{wlPos}</span>}
               {m.fee_per_player != null && canAct && (
                 <>
                   <span className="opacity-50">·</span>
@@ -579,6 +609,19 @@ function MatchDetailsBody({
                 </>
               )}
             </button>
+            {joinedState === 'waitlisted' && (
+              <button
+                type="button"
+                onClick={() => {
+                  actions.leaveWaitlist(m.id)
+                  showToast('Left the waitlist')
+                }}
+                className="cursor-pointer border-none bg-transparent p-0 text-[12.5px] font-semibold tracking-[0.01em]"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                Leave waitlist
+              </button>
+            )}
           </div>
         )}
       </div>

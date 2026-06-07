@@ -6,7 +6,8 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB } from '@/lib/store'
+import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { computeStatus } from '@/lib/status'
 import { artType, courtLabel, dayLabel, matchKind, skillLabel, sportLabel, initials as userInitials } from '@/lib/format'
 import type { User } from '@/lib/types'
 
@@ -242,6 +243,7 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
               {theirOpen.map((m) => {
                 const joined = isJoined(db, m.id)
                 const pending = pendingRequest(db, m.id)
+                const waitlisted = waitlistEntry(db, m.id)
                 return (
                   <MatchCard
                     key={m.id}
@@ -249,9 +251,13 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
                     host={user}
                     players={matchPlayers(db, m.id)}
                     action="join"
-                    joinStatus={joined ? 'joined' : pending ? 'requested' : null}
+                    joinStatus={joined ? 'joined' : waitlisted ? 'waitlisted' : pending ? 'requested' : null}
+                    waitlistPosition={waitlisted ? waitlistPosition(db, m.id) : null}
                     onAct={() => {
-                      if (m.join_mode === 'approval') {
+                      if (computeStatus(m) === 'full') {
+                        actions.joinWaitlist(m.id)
+                        showToast("On the waitlist — you'll be auto-joined if a spot frees")
+                      } else if (m.join_mode === 'approval') {
                         actions.requestToJoin(m.id)
                         showToast('Request sent')
                       } else {

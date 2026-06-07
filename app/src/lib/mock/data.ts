@@ -85,7 +85,7 @@ export const MATCHES: Match[] = [
     venue_id: null, venue_name: 'Aspire Park', venue_location: 'Aspire Zone · Al Waab',
     court_number: null, route_start: 'Aspire Park main gate', route_end: 'Bayside loop', round_trip: true,
     start_time: iso(17), end_time: iso(17.75), skill_level: 'any',
-    total_spots: 8, spots_available: 3, fee_total: null, fee_per_player: null,
+    total_spots: 8, spots_available: 3, fee_total: 0, fee_per_player: null,
     join_mode: 'open', status: 'active', notes: 'Easy pace, ~6 km. All levels.', created_at: iso(-72),
   },
   // This week — Saturday open match (joined)
@@ -103,7 +103,7 @@ export const MATCHES: Match[] = [
     venue_id: 'westbay-tennis', venue_name: 'West Bay Tennis Club', venue_location: 'West Bay',
     court_number: 'Court A', route_start: null, route_end: null, round_trip: false,
     start_time: iso(143), end_time: iso(144), skill_level: 'advanced',
-    total_spots: 2, spots_available: 1, fee_total: 90, fee_per_player: 45,
+    total_spots: 2, spots_available: 1, fee_total: 80, fee_per_player: 40,
     join_mode: 'approval', status: 'active', notes: 'Hit + drills, one set after.', created_at: iso(-20),
   },
   // Discover — badminton tonight (open)
@@ -124,14 +124,69 @@ export const MATCHES: Match[] = [
     total_spots: 4, spots_available: 0, fee_total: 100, fee_per_player: 25,
     join_mode: 'open', status: 'active', notes: null, created_at: iso(-96),
   },
-  // LIVE now — for lifecycle visibility in Discover
+  // LIVE now — lifecycle visibility on Home/My Matches. Deliberately NOT in
+  // Discover: joining is locked and chat is members-only (see discoverMatches).
   {
     id: 'm-live', host_id: 'u-nv', sport: 'tennis',
     venue_id: 'khalifa', venue_name: 'Khalifa Int’l Tennis Complex', venue_location: 'West Bay · Al Dafna',
     court_number: 'Court 6', route_start: null, route_end: null, round_trip: false,
     start_time: iso(-0.5), end_time: iso(0.75), skill_level: 'intermediate',
-    total_spots: 4, spots_available: 0, fee_total: null, fee_per_player: null,
+    total_spots: 4, spots_available: 0, fee_total: 0, fee_per_player: null,
     join_mode: 'open', status: 'active', notes: null, created_at: iso(-50),
+  },
+  // FULL — open mode; the canonical "Join waitlist" card (waitlist demo, §5)
+  {
+    id: 'm-full-padel', host_id: 'u-hd', sport: 'padel',
+    venue_id: 'the-dome', venue_name: 'The Dome — Education City Golf', venue_location: 'Education City · Al Rayyan',
+    court_number: 'Court 1', route_start: null, route_end: null, round_trip: false,
+    start_time: iso(28), end_time: iso(29.5), skill_level: 'intermediate',
+    total_spots: 4, spots_available: 0, fee_total: 100, fee_per_player: 25,
+    join_mode: 'open', status: 'active', notes: 'Locked in — waitlist open if someone drops.', created_at: iso(-60),
+  },
+  // FULL — approval mode singles; waitlist is orthogonal to join_mode (§5)
+  {
+    id: 'm-full-tennis', host_id: 'u-jk', sport: 'tennis',
+    venue_id: 'khalifa', venue_name: 'Khalifa Int’l Tennis Complex', venue_location: 'West Bay · Al Dafna',
+    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false,
+    start_time: iso(37), end_time: iso(38), skill_level: 'advanced',
+    total_spots: 2, spots_available: 0, fee_total: 70, fee_per_player: 35,
+    join_mode: 'approval', status: 'active', notes: null, created_at: iso(-55),
+  },
+  // free open badminton tonight — beginner, instant Join
+  {
+    id: 'm-bad-beg', host_id: 'u-rp', sport: 'badminton',
+    venue_id: 'accelerate', venue_name: 'Accelerate Sports', venue_location: 'Doha',
+    court_number: 'Court 5', route_start: null, route_end: null, round_trip: false,
+    start_time: iso(9), end_time: iso(10), skill_level: 'beginner',
+    total_spots: 4, spots_available: 2, fee_total: 0, fee_per_player: null,
+    join_mode: 'open', status: 'active', notes: 'Casual rallies, rackets to borrow.', created_at: iso(-15),
+  },
+  // invite-only tennis — card CTA reads "Invite only", never Join
+  {
+    id: 'm-invite-tennis', host_id: 'u-nv', sport: 'tennis',
+    venue_id: 'al-dana', venue_name: 'Al Dana Club — Indoor Tennis', venue_location: 'Doha',
+    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false,
+    start_time: iso(52), end_time: iso(53), skill_level: 'intermediate',
+    total_spots: 4, spots_available: 2, fee_total: 120, fee_per_player: 30,
+    join_mode: 'invite', status: 'active', notes: 'Regulars group — ask Noor for an invite.', created_at: iso(-22),
+  },
+  // custom venue (venue_id null, free-text venue_name) — approval, free
+  {
+    id: 'm-custom-padel', host_id: 'u-st', sport: 'padel',
+    venue_id: null, venue_name: 'Barwa Madinatna community court', venue_location: 'Al Wakrah Road',
+    court_number: null, route_start: null, route_end: null, round_trip: false,
+    start_time: iso(76), end_time: iso(77), skill_level: 'beginner',
+    total_spots: 4, spots_available: 3, fee_total: 0, fee_per_player: null,
+    join_mode: 'approval', status: 'active', notes: 'Compound court, friendly beginners game.', created_at: iso(-18),
+  },
+  // second run — custom route, beginner, free
+  {
+    id: 'm-run-corniche', host_id: 'u-lb', sport: 'running',
+    venue_id: null, venue_name: 'Doha Corniche', venue_location: 'Corniche · Al Dafna',
+    court_number: null, route_start: 'Sheraton Park gate', route_end: 'MIA Park', round_trip: false,
+    start_time: iso(25), end_time: iso(25.75), skill_level: 'beginner',
+    total_spots: 10, spots_available: 6, fee_total: 0, fee_per_player: null,
+    join_mode: 'open', status: 'active', notes: 'Sunrise 5K along the water. Walk breaks fine.', created_at: iso(-36),
   },
   // CLOSED — played last week (Past tab, won)
   {
@@ -178,6 +233,27 @@ export const MATCH_PLAYERS: MatchPlayer[] = [
   { id: 'mp-22', match_id: 'm-past-won', player_id: 'u-nv', joined_at: iso(-220), attended: true },
   { id: 'mp-23', match_id: 'm-live', player_id: 'u-nv', joined_at: iso(-50), attended: null },
   { id: 'mp-24', match_id: 'm-live', player_id: 'u-hd', joined_at: iso(-48), attended: null },
+  // m-full-padel — full roster 4/4 (spots_available 0)
+  { id: 'mp-25', match_id: 'm-full-padel', player_id: 'u-hd', joined_at: iso(-60), attended: null },
+  { id: 'mp-26', match_id: 'm-full-padel', player_id: 'u-marco', joined_at: iso(-54), attended: null },
+  { id: 'mp-27', match_id: 'm-full-padel', player_id: 'u-nv', joined_at: iso(-46), attended: null },
+  { id: 'mp-28', match_id: 'm-full-padel', player_id: 'u-jk', joined_at: iso(-33), attended: null },
+  // m-full-tennis — full singles 2/2
+  { id: 'mp-29', match_id: 'm-full-tennis', player_id: 'u-jk', joined_at: iso(-55), attended: null },
+  { id: 'mp-30', match_id: 'm-full-tennis', player_id: 'u-nv', joined_at: iso(-41), attended: null },
+  // m-bad-beg — 2/4
+  { id: 'mp-31', match_id: 'm-bad-beg', player_id: 'u-rp', joined_at: iso(-15), attended: null },
+  { id: 'mp-32', match_id: 'm-bad-beg', player_id: 'u-st', joined_at: iso(-11), attended: null },
+  // m-invite-tennis — 2/4
+  { id: 'mp-33', match_id: 'm-invite-tennis', player_id: 'u-nv', joined_at: iso(-22), attended: null },
+  { id: 'mp-34', match_id: 'm-invite-tennis', player_id: 'u-jk', joined_at: iso(-16), attended: null },
+  // m-custom-padel — 1/4
+  { id: 'mp-35', match_id: 'm-custom-padel', player_id: 'u-st', joined_at: iso(-18), attended: null },
+  // m-run-corniche — 4/10
+  { id: 'mp-36', match_id: 'm-run-corniche', player_id: 'u-lb', joined_at: iso(-36), attended: null },
+  { id: 'mp-37', match_id: 'm-run-corniche', player_id: 'u-st', joined_at: iso(-29), attended: null },
+  { id: 'mp-38', match_id: 'm-run-corniche', player_id: 'u-marco', joined_at: iso(-20), attended: null },
+  { id: 'mp-39', match_id: 'm-run-corniche', player_id: 'u-rp', joined_at: iso(-9), attended: null },
 ]
 
 export const MATCH_REQUESTS: MatchRequest[] = [
@@ -187,6 +263,8 @@ export const MATCH_REQUESTS: MatchRequest[] = [
   { id: 'mr-2', match_id: 'm-tennis', player_id: 'u-you', kind: 'request', status: 'requested', created_at: iso(-5) },
   // invite to you from Hassan's circle (expired example)
   { id: 'mr-3', match_id: 'm-cancelled', player_id: 'u-you', kind: 'invite', status: 'expired', created_at: iso(-40) },
+  // FIFO waitlist head on the full padel match — waitlisting after this lands at #2
+  { id: 'mr-4', match_id: 'm-full-padel', player_id: 'u-lb', kind: 'waitlist', status: 'waitlisted', created_at: iso(-6) },
 ]
 
 export const MATCH_RESULTS: MatchResult[] = [

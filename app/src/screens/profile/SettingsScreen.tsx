@@ -20,7 +20,7 @@ import { Shell } from '@/components/Shell'
 import { Toggle } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
-import { currentUserId, getUser, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, useDB } from '@/lib/store'
 
 /** Settings (Settings.html) — hybrid: ~80% inline toggles that save in place
  *  (no Save button, no nav), drill-downs only for lists/forms. Language is an
@@ -249,7 +249,11 @@ export function SettingsScreen() {
         {/* sign out */}
         <button
           type="button"
-          onClick={() => showToast('Signed out')}
+          onClick={() => {
+            // mock sign-out doubles as the demo reset — seeded returning-user data comes back
+            actions.restoreDemoAccount()
+            showToast('Signed out')
+          }}
           className="mx-auto flex cursor-pointer items-center gap-2 border-none bg-transparent px-4 py-2 text-[13.5px] font-semibold"
           style={{ color: 'var(--color-danger)' }}
         >

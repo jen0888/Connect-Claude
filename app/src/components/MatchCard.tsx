@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bookmark, CalendarCheck, Check, Clock, Eye, MapPin, Pencil, Plus, Send, X } from 'lucide-react'
+import { Bookmark, CalendarCheck, Check, Clock, Eye, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, X } from 'lucide-react'
 import type { Match, MatchStatus, User } from '@/lib/types'
 import { artType, courtLabel, hm, matchKind, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
@@ -25,8 +25,10 @@ export interface MatchCardProps {
   action?: 'view' | 'join' | 'cancel' | 'edit' | 'attend'
   /** attend-toggle state (action='attend') */
   attended?: boolean
-  /** join-state override after acting: null | 'joined' | 'requested' */
-  joinStatus?: 'joined' | 'requested' | null
+  /** join-state override after acting: null | 'joined' | 'requested' | 'waitlisted' */
+  joinStatus?: 'joined' | 'requested' | 'waitlisted' | null
+  /** 1-based FIFO queue position (joinStatus='waitlisted') */
+  waitlistPosition?: number | null
   onAct?: () => void
   badge?: { text: string; pulse?: boolean; bg?: string }
   /** dim + desaturate the art (e.g. cancelled rows in Past) */
@@ -48,6 +50,7 @@ export function MatchCard({
   action = 'view',
   attended = false,
   joinStatus = null,
+  waitlistPosition = null,
   onAct,
   badge,
   dimImage = false,
@@ -78,6 +81,47 @@ export function MatchCard({
   let actionEl: ReactNode
   if (lifecycleHasAction(st)) {
     actionEl = <LifecycleAction status={st} matchId={match.id} />
+  } else if (action === 'join' && joinStatus !== 'joined' && st === 'full') {
+    // full match → the join CTA becomes the waitlist (any join_mode, §5)
+    actionEl =
+      joinStatus === 'waitlisted' ? (
+        <span
+          className="inline-flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border-none px-[15px] text-[12.5px] font-semibold tracking-[0.01em]"
+          style={{ background: 'rgba(26,26,26,0.10)', color: 'rgba(26,26,26,0.6)' }}
+        >
+          <Hourglass size={12} strokeWidth={2.1} />
+          On waitlist{waitlistPosition != null && (
+            <span className="nums-tabular ltr-nums">· #{waitlistPosition}</span>
+          )}
+        </span>
+      ) : (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onAct?.()
+          }}
+          className="inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-pill border-none px-[17px] text-[12.5px] font-semibold tracking-[0.01em] transition-colors"
+          style={{
+            background: 'var(--color-info)', // full · locked-in lifecycle token
+            color: 'var(--color-text-onbrand)',
+            boxShadow: '0 8px 18px -8px var(--color-info)',
+          }}
+        >
+          <ListPlus size={13} strokeWidth={2.2} />
+          Join waitlist
+        </button>
+      )
+  } else if (action === 'join' && joinStatus !== 'joined' && joinStatus !== 'requested' && match.join_mode === 'invite') {
+    // invite is a personal offer, not a public listing slot (§5) — no public join CTA
+    actionEl = (
+      <span
+        className="inline-flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border bg-transparent px-[15px] text-[12.5px] font-semibold tracking-[0.01em]"
+        style={{ borderColor: 'rgba(26,26,26,0.14)', color: 'var(--color-text-faint)' }}
+      >
+        <Lock size={12} strokeWidth={2.1} />
+        Invite only
+      </span>
+    )
   } else if (action === 'join') {
     actionEl = (
       <button

@@ -78,14 +78,26 @@ export interface MatchPlayer {
   attended: boolean | null
 }
 
-export type RequestKind = 'request' | 'invite'
-export type RequestStatus = 'requested' | 'invited' | 'approved' | 'accepted' | 'declined' | 'expired'
+export type RequestKind = 'request' | 'invite' | 'waitlist'
+export type RequestStatus =
+  | 'requested' // initial — kind 'request'
+  | 'invited' // initial — kind 'invite'
+  | 'waitlisted' // initial — kind 'waitlist' (FIFO queue on a full match)
+  | 'approved'
+  | 'accepted'
+  | 'promoted' // waitlist slot won — auto, no host approval (§5)
+  | 'joined'
+  | 'declined'
+  | 'left' // player removed themselves from the waitlist
+  | 'expired'
 
+/** unique(match_id, player_id, kind) — re-waitlisting after 'left' is an
+ *  update of the same row with a fresh created_at (position forfeited). */
 export interface MatchRequest {
   id: string
   match_id: string
   player_id: string
-  kind: RequestKind // request = player→host · invite = host→player
+  kind: RequestKind // request = player→host · invite = host→player · waitlist = FIFO queue
   status: RequestStatus
   created_at: string
 }

@@ -11,6 +11,7 @@ Project memory for Claude Code. Read this before making changes. It captures pro
 **Connect!** — a mobile-first PWA that helps people in **Doha** find pickup sports matches (padel, tennis, badminton, running). **Stage 1 = free player matching only.** Target: ~500 active players.
 
 - **Matching supports three join paths** (see §5): (1) **open** — player self-selects in, instant; (2) **approval** — player requests to join, host approves/declines; (3) **invite** — host invites a specific player, who accepts/declines. Open is pull-based with no gatekeeping; approval and invite are additive and do not replace it.
+- **Waitlist** (see §5): on a **full** match the CTA becomes **Join waitlist**. Orthogonal to `join_mode` — it applies to any full match. Waitlisting holds no slot; when a slot frees the earliest waitlister is auto-promoted. In Stage 1 scope (not a deferred feature).
 - **18+ only.** Collect date of birth at sign-up (not a checkbox) and hard-gate under-18.
 - **Money:** free + cash-on-arrival. No in-app payments. Any "QAR 25" figure is informational (host's stated cost), never a transaction.
 - **Doha-only**, **web app first**. Native **iOS + Android apps are planned for a later stage** (the Supabase backend carries over). No geolocation/"nearby" logic.
@@ -104,6 +105,15 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 - Invite states: `invited → accepted → joined` | `invited → declined` | `invited → expired` (match filled / cancelled / time passed).
 - Player profiles are for **peer transparency / accountability**, never host gatekeeping. Trust signals (matches played, attendance %, no-show count, languages) are public, never a gate.
 
+**Waitlist (full matches only — orthogonal to `join_mode`)**
+- When a match is `full`, the join CTA becomes **"Join waitlist."** Waitlisting **does NOT hold or reserve a slot** (consistent with the no-slot-hold rule above) — it records interest and a **FIFO position by `created_at`**. Any number of players can waitlist. One entry per player; you can't waitlist a match you've already joined or that you host.
+- **Promotion is FIFO and auto.** The moment a slot frees (a joined player cancels before `start_time`), the earliest active waitlister is **auto-promoted** to `joined`, inserted into `match_players`, and sent a notification. **No host approval on promotion**, even for `approval` matches — winning the freed slot via the queue *is* the gate.
+- Promotion only happens **before `start_time`**. Once the match goes `live`, locks permanently, or is `cancelled`, all remaining waitlist entries `expire`.
+- A promoted player is a **full participant**: bound by the same **≥2h cancellation** rule, and if they can't make it they cancel like anyone (which frees the slot again → promotes the next waitlister).
+- **Stage 1 simplicity (deliberate):** auto-promote with **no timed "claim-or-pass" window** — no timers to build. The only risk is a promoted player forgetting and no-showing; mitigated by the notification + the standard cancel path. **Do not add a claim/hold window in Stage 1.**
+- Waitlist states: `waitlisted → promoted → joined` | `waitlisted → expired` (match started / filled permanently / cancelled) | `waitlisted → left` (player removes themselves from the queue).
+- Position and promotion eligibility derived from `created_at` ordering; promotion **executes as part of the cancellation action** — **no cron jobs, no triggers.**
+
 **Match status lifecycle:** `open → full → live → completed → closed` (+ `cancelled`). **Time-based transitions are computed from `start_time`/`end_time` at read time — no cron jobs.** `completed` = ended, within 24h post-match window; `closed` = 24h passed, recording shuts.
 
 **Cancellation:** anyone (host or player) must cancel **≥2h before start**. Cancelling within 2h = a no-show (objective timestamp, lands immediately).
@@ -134,7 +144,7 @@ Apply **Row Level Security on all tables.**
 - `users` — id, name, email, phone, avatar_url, sport, skill_level, language (ar/en), dob, attendance_rate, created_at
 - `matches` — id, host_id, sport, venue_id (FK nullable), venue_name, venue_location, court_number, start_time, end_time, skill_level, total_spots, spots_available, fee_total, fee_per_player (display only), join_mode (`open`/`approval`/`invite`), status, notes, created_at
 - `match_players` — id, match_id, player_id, joined_at, attended
-- `match_requests` — id, match_id, player_id, kind (`request`/`invite`), status (`requested`/`invited`/`approved`/`accepted`/`declined`/`expired`), created_at. RLS so only the host and the player involved can see/act. (`request` = player→host; `invite` = host→player.)
+- `match_requests` — id, match_id, player_id, kind (`request`/`invite`/`waitlist`), status (`requested`/`invited`/`waitlisted`/`approved`/`accepted`/`promoted`/`joined`/`declined`/`left`/`expired`), created_at. RLS so only the host and the player involved can see/act. (`request` = player→host; `invite` = host→player; `waitlist` = player joins the FIFO queue on a full match.) Add **unique(match_id, player_id, kind)** so a player can't double-waitlist. Waitlist position = `created_at` order; FIFO promotion runs in the cancellation action, not a trigger.
 - `no_show_reports` — id, match_id, reported_player, reporter_id, created_at, **unique(match_id, reported_player, reporter_id)**. Confirmed no-shows computed at read time via a view.
 - `match_results` — id, match_id, player_id, result (win/loss/draw) — optional, feeds win rate
 - `venues` — curated Doha venues (reused for Stage 3 court booking)

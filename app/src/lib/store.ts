@@ -1,7 +1,20 @@
 import { useSyncExternalStore } from 'react'
 import type { ChatMessage, ChatThread, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, User } from './types'
 import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, MATCH_REQUESTS, MATCH_RESULTS, USERS } from './mock/data'
+import { onboarding } from './onboarding'
 import { computeStatus } from './status'
+
+/** signed-in profile pushed by AuthProvider (dev mockUser now, Supabase
+ *  session later). Overlaid onto the seeded current user — the id is kept
+ *  because the relational mock graph (joins, threads, messages) points at
+ *  CURRENT_USER_ID, and swapping it would orphan all of that. */
+let signedInProfile: User | null = null
+
+function withSignedIn(users: User[]): User[] {
+  return signedInProfile
+    ? users.map((u) => (u.id === CURRENT_USER_ID ? { ...signedInProfile!, id: CURRENT_USER_ID } : u))
+    : users
+}
 
 /**
  * In-memory reactive store, repository-shaped so screens never touch
@@ -23,7 +36,8 @@ interface DB {
   savedMatchIds: string[]
 }
 
-let db: DB = {
+/** seeded "returning user" dataset — the demo default */
+const SEEDED: DB = {
   users: USERS,
   matches: MATCHES,
   matchPlayers: MATCH_PLAYERS,
@@ -36,6 +50,45 @@ let db: DB = {
   blockedUserIds: [],
   savedMatchIds: [],
 }
+
+/** post-onboarding "fresh account" flag — persists so a reload after the
+ *  questionnaire still lands on the first-timer Home. UI-only; becomes
+ *  real per-account data when Supabase auth lands. */
+const FRESH_KEY = 'connect.freshAccount'
+
+function isFreshAccount(): boolean {
+  try {
+    return localStorage.getItem(FRESH_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** strip the demo user's seeded history → true brand-new account. Profile
+ *  picks up the questionnaire answers; the Discover feed (other hosts)
+ *  stays seeded, never empty (CLAUDE.md §5). */
+function freshDB(): DB {
+  const mine = new Set(SEEDED.matchPlayers.filter((mp) => mp.player_id === CURRENT_USER_ID).map((mp) => mp.match_id))
+  return {
+    ...SEEDED,
+    users: withSignedIn(SEEDED.users).map((u) =>
+      u.id === CURRENT_USER_ID
+        ? { ...u, sport: onboarding.sport ?? u.sport, skill_level: onboarding.skill ?? u.skill_level }
+        : u,
+    ),
+    matches: SEEDED.matches
+      .filter((m) => m.host_id !== CURRENT_USER_ID)
+      .map((m) => (mine.has(m.id) ? { ...m, spots_available: Math.min(m.total_spots, m.spots_available + 1) } : m)),
+    matchPlayers: SEEDED.matchPlayers.filter((mp) => mp.player_id !== CURRENT_USER_ID),
+    matchRequests: SEEDED.matchRequests.filter((r) => r.player_id !== CURRENT_USER_ID),
+    matchResults: SEEDED.matchResults.filter((r) => r.player_id !== CURRENT_USER_ID),
+    chatThreads: [],
+    chatMessages: [],
+    threadReadAt: {},
+  }
+}
+
+let db: DB = isFreshAccount() ? freshDB() : SEEDED
 
 const listeners = new Set<() => void>()
 
@@ -86,6 +139,22 @@ export function pendingRequest(d: DB, matchId: string, userId = CURRENT_USER_ID)
   )
 }
 
+/** active waitlist entry for a player on a match (kind 'waitlist', §5) */
+export function waitlistEntry(d: DB, matchId: string, userId = CURRENT_USER_ID): MatchRequest | undefined {
+  return d.matchRequests.find(
+    (r) => r.match_id === matchId && r.player_id === userId && r.kind === 'waitlist' && r.status === 'waitlisted',
+  )
+}
+
+/** 1-based FIFO position — derived from created_at ordering, never stored (§5) */
+export function waitlistPosition(d: DB, matchId: string, userId = CURRENT_USER_ID): number | null {
+  const queue = d.matchRequests
+    .filter((r) => r.match_id === matchId && r.kind === 'waitlist' && r.status === 'waitlisted')
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+  const i = queue.findIndex((r) => r.player_id === userId)
+  return i === -1 ? null : i + 1
+}
+
 /** matches visible in Discover — seeded feed, never empty (CLAUDE.md §5);
  *  blocked users' matches are hidden both ways. Live matches are excluded:
  *  joining is locked and chat is members-only (no chat before joining). */
@@ -97,6 +166,29 @@ export function discoverMatches(d: DB): Match[] {
       return s === 'open' || s === 'full'
     })
     .sort((a, b) => a.start_time.localeCompare(b.start_time))
+}
+
+/** Home "Open to join" rail (empty personal state) — seeded Discover pool,
+ *  curated so every join path's CTA is visible: a free open match (instant
+ *  Join), an approval match (Request to join), and a full match (Join
+ *  waitlist); remaining slots fill by soonest start_time.
+ *  Future SQL: select * from matches where read_status in ('open','full')
+ *  and host_id != :me and id not in (my match_players) order by start_time. */
+export function openToJoinMatches(d: DB, limit = 4): Match[] {
+  const pool = discoverMatches(d).filter((m) => m.host_id !== CURRENT_USER_ID && !isJoined(d, m.id))
+  const picks = new Set<string>()
+  const take = (pred: (m: Match) => boolean) => {
+    const hit = pool.find((m) => !picks.has(m.id) && pred(m))
+    if (hit) picks.add(hit.id)
+  }
+  take((m) => computeStatus(m) === 'open' && m.join_mode === 'open' && m.fee_per_player == null) // free instant Join
+  take((m) => computeStatus(m) === 'open' && m.join_mode === 'approval') // Request to join
+  take((m) => computeStatus(m) === 'full') // Join waitlist
+  for (const m of pool) {
+    if (picks.size >= limit) break
+    picks.add(m.id)
+  }
+  return pool.filter((m) => picks.has(m.id)) // pool is already start_time-ordered
 }
 
 export function joinedMatches(d: DB, userId = CURRENT_USER_ID): Match[] {
@@ -143,9 +235,88 @@ export function inboxThreads(d: DB): ChatThread[] {
     .map(({ t }) => t)
 }
 
+/** FIFO auto-promotion (CLAUDE.md §5) — executes as part of the cancel
+ *  action, never a cron/trigger, and only before start_time. The earliest
+ *  'waitlisted' entry takes the freed slot with NO host approval (even on
+ *  approval matches — winning the queue *is* the gate), becomes a full
+ *  participant, and is notified (the system line in the match thread is the
+ *  Stage-1 mock of that notification). No timed claim window. */
+function promoteFromWaitlist(d: DB, matchId: string): DB {
+  const m = d.matches.find((x) => x.id === matchId)
+  if (!m || m.status === 'cancelled' || m.spots_available <= 0) return d
+  if (new Date(m.start_time).getTime() <= Date.now()) return d // live/locked → no promotion
+  const next = d.matchRequests
+    .filter((r) => r.match_id === matchId && r.kind === 'waitlist' && r.status === 'waitlisted')
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))[0]
+  if (!next) return d
+  const promoted = getUser(d, next.player_id)
+  const thread = threadForMatch(d, matchId)
+  return {
+    ...d,
+    matches: d.matches.map((x) => (x.id === matchId ? { ...x, spots_available: x.spots_available - 1 } : x)),
+    matchPlayers: [
+      ...d.matchPlayers,
+      { id: newId('mp'), match_id: matchId, player_id: next.player_id, joined_at: new Date().toISOString(), attended: null },
+    ],
+    matchRequests: d.matchRequests.map((r) => (r.id === next.id ? { ...r, status: 'promoted' as const } : r)),
+    chatThreads: thread
+      ? d.chatThreads.map((t) =>
+          t.id === thread.id && !t.participant_ids.includes(next.player_id)
+            ? { ...t, participant_ids: [...t.participant_ids, next.player_id] }
+            : t,
+        )
+      : d.chatThreads,
+    chatMessages:
+      thread && promoted
+        ? [
+            ...d.chatMessages,
+            {
+              id: newId('msg'),
+              thread_id: thread.id,
+              sender_id: next.player_id,
+              body: `${promoted.name.split(' ')[0]} joined from the waitlist`,
+              created_at: new Date().toISOString(),
+              system: true,
+              tone: 'pos' as const,
+              icon: 'userPlus' as const,
+            },
+          ]
+        : d.chatMessages,
+  }
+}
+
 /* ── mutations (future Supabase inserts / RPCs) ─────────────────────── */
 
 export const actions = {
+  /** AuthProvider → data layer: overlay the signed-in profile onto the
+   *  seeded current user (id preserved, see withSignedIn) */
+  setSignedInUser(profile: User) {
+    signedInProfile = profile
+    mutate((d) => ({ ...d, users: withSignedIn(d.users) }))
+  },
+
+  /** onboarding "Create account" (the future Supabase signUp): wipe the demo
+   *  user's history so Home renders the first-timer variant until they join */
+  startFreshAccount() {
+    try {
+      localStorage.setItem(FRESH_KEY, '1')
+    } catch {
+      /* storage unavailable (private mode) — fresh state stays in-memory */
+    }
+    mutate(() => freshDB())
+  },
+
+  /** Sign out (mock): drop the fresh-account flag and restore the seeded
+   *  returning-user demo dataset */
+  restoreDemoAccount() {
+    try {
+      localStorage.removeItem(FRESH_KEY)
+    } catch {
+      /* storage unavailable — nothing persisted to clear */
+    }
+    mutate(() => ({ ...SEEDED, users: withSignedIn(SEEDED.users) }))
+  },
+
   /** open join_mode: instant membership — no gatekeeping */
   joinMatch(matchId: string) {
     mutate((d) => {
@@ -165,12 +336,53 @@ export const actions = {
   leaveMatch(matchId: string) {
     mutate((d) => {
       if (!isJoined(d, matchId)) return d
-      return {
+      const freed: DB = {
         ...d,
         matches: d.matches.map((x) => (x.id === matchId ? { ...x, spots_available: x.spots_available + 1 } : x)),
         matchPlayers: d.matchPlayers.filter((mp) => !(mp.match_id === matchId && mp.player_id === CURRENT_USER_ID)),
       }
+      // the freed slot auto-promotes the earliest waitlister — promotion
+      // lives in the cancel action, not a cron/trigger (§5)
+      return promoteFromWaitlist(freed, matchId)
     })
+  },
+
+  /** waitlist a FULL match (any join_mode, §5) — holds NO slot, just a FIFO
+   *  entry. Upsert per unique(match_id, player_id, kind): re-joining after
+   *  'left'/'expired' reuses the row with a fresh created_at (old position
+   *  forfeited). Can't waitlist your own or an already-joined match. */
+  joinWaitlist(matchId: string) {
+    mutate((d) => {
+      const m = d.matches.find((x) => x.id === matchId)
+      if (!m || m.host_id === CURRENT_USER_ID || isJoined(d, matchId)) return d
+      if (computeStatus(m) !== 'full') return d
+      const existing = d.matchRequests.find(
+        (r) => r.match_id === matchId && r.player_id === CURRENT_USER_ID && r.kind === 'waitlist',
+      )
+      if (existing && existing.status === 'waitlisted') return d
+      const now = new Date().toISOString()
+      return {
+        ...d,
+        matchRequests: existing
+          ? d.matchRequests.map((r) => (r.id === existing.id ? { ...r, status: 'waitlisted' as const, created_at: now } : r))
+          : [
+              ...d.matchRequests,
+              { id: newId('mr'), match_id: matchId, player_id: CURRENT_USER_ID, kind: 'waitlist' as const, status: 'waitlisted' as const, created_at: now },
+            ],
+      }
+    })
+  },
+
+  /** waitlisted → left (player removes themselves from the queue) */
+  leaveWaitlist(matchId: string) {
+    mutate((d) => ({
+      ...d,
+      matchRequests: d.matchRequests.map((r) =>
+        r.match_id === matchId && r.player_id === CURRENT_USER_ID && r.kind === 'waitlist' && r.status === 'waitlisted'
+          ? { ...r, status: 'left' as const }
+          : r,
+      ),
+    }))
   },
 
   /** approval join_mode: player → host. Pending request holds NO slot. */
@@ -289,6 +501,10 @@ export const actions = {
     mutate((d) => ({
       ...d,
       matches: d.matches.map((x) => (x.id === matchId ? { ...x, status: 'cancelled' as const } : x)),
+      // cancelled match → all remaining waitlist entries expire (§5)
+      matchRequests: d.matchRequests.map((r) =>
+        r.match_id === matchId && r.kind === 'waitlist' && r.status === 'waitlisted' ? { ...r, status: 'expired' as const } : r,
+      ),
     }))
   },
 

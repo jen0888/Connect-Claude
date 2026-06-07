@@ -7,6 +7,9 @@ import { CTA } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
 import { onboarding, type OnboardingSkill } from '@/lib/onboarding'
+import { mockUser } from '@/lib/mockUser'
+import { useAuth } from '@/context/AuthContext'
+import { actions } from '@/lib/store'
 import { USERS } from '@/lib/mock/data'
 import type { Sport } from '@/lib/types'
 
@@ -435,6 +438,7 @@ export function SignUpScreen() {
 export function LoginScreen() {
   const navigate = useNavigate()
   const { t } = useI18n()
+  const { signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [touched, setTouched] = useState(false)
@@ -449,7 +453,21 @@ export function LoginScreen() {
     setBusy(true)
     setTimeout(() => {
       setBusy(false)
-      // returning login → straight to Home, never the questionnaire
+      // dev-only mock login: the password must match VITE_DEV_PASSWORD
+      // (.env.development, gitignored) and success signs in as mockUser.
+      // import.meta.env.MODE is replaced at build time, so this whole branch
+      // is dead-code-eliminated from production bundles.
+      if (import.meta.env.MODE === 'development') {
+        if (import.meta.env.VITE_DEV_PASSWORD && pw === import.meta.env.VITE_DEV_PASSWORD) {
+          signIn(mockUser)
+          // returning login → straight to Home, never the questionnaire
+          navigate('/home')
+        } else {
+          setWrongCreds(true)
+        }
+        return
+      }
+      // becomes supabase.auth.signInWithPassword; mock convention until then
       if (isRegistered(email)) navigate('/home')
       else setWrongCreds(true)
     }, FAKE_LATENCY)
@@ -1027,8 +1045,12 @@ export function CreatingAccountScreen() {
   const { t } = useI18n()
 
   useEffect(() => {
-    // becomes the Supabase signUp call; replace so Back never returns here
-    const id = window.setTimeout(() => navigate('/onboarding/done', { replace: true }), 1800)
+    // becomes the Supabase signUp call; replace so Back never returns here.
+    // New account = clean slate — Home renders the first-timer variant.
+    const id = window.setTimeout(() => {
+      actions.startFreshAccount()
+      navigate('/onboarding/done', { replace: true })
+    }, 1800)
     return () => window.clearTimeout(id)
   }, [navigate])
 

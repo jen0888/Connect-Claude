@@ -4,7 +4,8 @@ import { ChevronDown, ChevronRight, ListFilter, Plus, Search, X } from 'lucide-r
 import { Shell } from '@/components/Shell'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB } from '@/lib/store'
+import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { computeStatus } from '@/lib/status'
 import type { Match, SkillLevel, Sport } from '@/lib/types'
 
 /** Discover — browse open matches (discover.jsx DiscoverScreen).
@@ -116,7 +117,11 @@ export function DiscoverScreen() {
   }, [rest])
 
   const act = (m: Match) => {
-    if (m.join_mode === 'approval') {
+    if (computeStatus(m) === 'full') {
+      // full match → the join CTA is the waitlist (any join_mode, §5)
+      actions.joinWaitlist(m.id)
+      showToast("On the waitlist — you'll be auto-joined if a spot frees")
+    } else if (m.join_mode === 'approval') {
       actions.requestToJoin(m.id)
       showToast('Request sent')
     } else {
@@ -128,6 +133,7 @@ export function DiscoverScreen() {
   const cardFor = (m: Match, featured = false) => {
     const joined = isJoined(db, m.id)
     const pending = pendingRequest(db, m.id)
+    const waitlisted = waitlistEntry(db, m.id)
     return (
       <MatchCard
         key={m.id}
@@ -136,7 +142,8 @@ export function DiscoverScreen() {
         players={matchPlayers(db, m.id)}
         action="join"
         featured={featured}
-        joinStatus={joined ? 'joined' : pending ? 'requested' : null}
+        joinStatus={joined ? 'joined' : waitlisted ? 'waitlisted' : pending ? 'requested' : null}
+        waitlistPosition={waitlisted ? waitlistPosition(db, m.id) : null}
         onAct={() => act(m)}
         saved={db.savedMatchIds.includes(m.id)}
         onToggleSave={() => actions.toggleSaveMatch(m.id)}

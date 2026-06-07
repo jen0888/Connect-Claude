@@ -6,7 +6,7 @@ import { Avatar } from '@/components/Avatar'
 import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { dayLabel, greetingDate, hoursUntil, timeAgoLabel } from '@/lib/format'
 import { LIFECYCLE } from '@/components/lifecycle'
@@ -43,8 +43,9 @@ export function HomeScreen() {
     return { joined, hosted, justPlayed, nextUp, week, requested, saved }
   }, [db])
 
-  // brand-new player: nothing joined, hosted or pending → first-timer Home
-  if (data.joined.length === 0 && data.hosted.length === 0 && data.requested.length === 0) {
+  // empty personal state = no joined (match_players) + no hosted (host_id = me).
+  // Purely data-derived — never a "new user" flag or first-session check (§4).
+  if (data.joined.length === 0 && data.hosted.length === 0) {
     return <FirstTimerHome />
   }
 
@@ -182,26 +183,34 @@ export function HomeScreen() {
               </Link>
             </div>
             <div className="mt-2.5 flex flex-col gap-3.5">
-              {data.saved.map((m) => (
-                <MatchCard
-                  key={m.id}
-                  match={m}
-                  host={getUser(db, m.host_id)}
-                  players={matchPlayers(db, m.id)}
-                  action="join"
-                  onAct={() => {
-                    if (m.join_mode === 'approval') {
-                      actions.requestToJoin(m.id)
-                      showToast('Request sent')
-                    } else {
-                      actions.joinMatch(m.id)
-                      showToast('Joined')
-                    }
-                  }}
-                  saved={db.savedMatchIds.includes(m.id)}
-                  onToggleSave={() => actions.toggleSaveMatch(m.id)}
-                />
-              ))}
+              {data.saved.map((m) => {
+                const waitlisted = waitlistEntry(db, m.id)
+                return (
+                  <MatchCard
+                    key={m.id}
+                    match={m}
+                    host={getUser(db, m.host_id)}
+                    players={matchPlayers(db, m.id)}
+                    action="join"
+                    joinStatus={waitlisted ? 'waitlisted' : null}
+                    waitlistPosition={waitlisted ? waitlistPosition(db, m.id) : null}
+                    onAct={() => {
+                      if (computeStatus(m) === 'full') {
+                        actions.joinWaitlist(m.id)
+                        showToast("On the waitlist — you'll be auto-joined if a spot frees")
+                      } else if (m.join_mode === 'approval') {
+                        actions.requestToJoin(m.id)
+                        showToast('Request sent')
+                      } else {
+                        actions.joinMatch(m.id)
+                        showToast('Joined')
+                      }
+                    }}
+                    saved={db.savedMatchIds.includes(m.id)}
+                    onToggleSave={() => actions.toggleSaveMatch(m.id)}
+                  />
+                )
+              })}
             </div>
           </>
         )}
