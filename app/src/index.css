@@ -174,6 +174,28 @@
   box-shadow: 0 16px 36px -14px rgba(26, 26, 26, 0.28), 0 0 0 1px rgba(26, 26, 26, 0.06);
 }
 
+/* Visible 6px pill scrollbar on warm paper (long scroll areas, e.g. the
+   Community Standards body). Custom WebKit styling also forces the bar to
+   stay visible instead of macOS overlay auto-hide; Firefox uses the
+   scrollbar-width/color fallback. */
+@utility conn-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(26, 26, 26, 0.18) transparent;
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(26, 26, 26, 0.18);
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(26, 26, 26, 0.32);
+  }
+}
+
 /* Pending-dot pulse (ported from home-screens.jsx) */
 @keyframes conn-pulse {
   0%,
@@ -197,5 +219,57 @@
   }
   100% {
     transform: translate(12px, 18px) scale(1.06);
+  }
+}
+
+/* ============================================================
+   All-Set celebration (AuthScreens.tsx) — fired once on entry,
+   skipped entirely when the user prefers reduced motion (the JS
+   hook mirrors RN's AccessibilityInfo.isReduceMotionEnabled).
+   ============================================================ */
+
+/* dot orbiting the success badge — the container rotates, the dot is
+   pinned to its top edge so it travels the badge's perimeter */
+@keyframes conn-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* confetti fall — per-piece dx/dy/rot land via CSS vars; opacity ramps
+   in fast (≈8%) and fades out at the end of the travel */
+@keyframes conn-conf-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--conf-dx), var(--conf-dy)) rotate(var(--conf-rot));
+    opacity: 0;
+  }
+}
+
+/* self-flip shimmer on the inner ribbon — loops independent of the fall */
+@keyframes conn-conf-tumble {
+  to {
+    transform: rotateY(360deg) rotateZ(120deg);
+  }
+}
+
+/* burst ring behind the badge — expands + fades once */
+@keyframes conn-burst-ring {
+  from {
+    transform: scale(0.5);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
   }
 }

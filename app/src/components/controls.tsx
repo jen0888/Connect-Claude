@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Loader2 } from 'lucide-react'
 
 /** Shared form controls — ported from create-match-shared.jsx. */
 
@@ -6,13 +7,16 @@ export function Segmented<T extends string | boolean>({
   value,
   options,
   onChange,
+  columns,
 }: {
   value: T | null
   options: { value: T; label: string; icon?: ReactNode }[]
   onChange: (v: T) => void
+  /** wrap long option sets onto multiple rows (defaults to one row) */
+  columns?: number
 }) {
   return (
-    <div className="grid gap-0.5 rounded-md p-[3px]" style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)`, background: 'rgba(26,26,26,0.06)' }}>
+    <div className="grid gap-0.5 rounded-md p-[3px]" style={{ gridTemplateColumns: `repeat(${columns ?? options.length}, 1fr)`, background: 'rgba(26,26,26,0.06)' }}>
       {options.map((opt) => {
         const on = opt.value === value
         return (
@@ -188,24 +192,40 @@ export function PlayerDots({ filled = 1, total = 4, size = 26 }: { filled?: numb
   )
 }
 
-/** primary CTA pill */
-export function CTA({ children, onClick, disabled = false, big = true }: { children: ReactNode; onClick?: () => void; disabled?: boolean; big?: boolean }) {
+/** primary CTA pill — disabled / pressed (brandstrong) / loading per tokens */
+export function CTA({
+  children,
+  onClick,
+  disabled = false,
+  loading = false,
+  big = true,
+}: {
+  children: ReactNode
+  onClick?: () => void
+  disabled?: boolean
+  loading?: boolean
+  big?: boolean
+}) {
+  const inactive = disabled && !loading // loading keeps the brand look, just not clickable
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
-      className="inline-flex w-full items-center justify-center gap-2 rounded-pill border-none px-[22px] font-semibold tracking-[0.01em] transition-transform"
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      className={`inline-flex w-full items-center justify-center gap-2 rounded-pill border-none px-[22px] font-semibold tracking-[0.01em] transition-all ${
+        inactive ? '' : 'bg-brand enabled:active:translate-y-px enabled:active:bg-brandstrong'
+      }`}
       style={{
         height: big ? 54 : 44,
         fontSize: big ? 15.5 : 13.5,
-        background: disabled ? 'rgba(26,26,26,0.15)' : 'var(--color-brand)',
-        color: disabled ? 'rgba(26,26,26,0.4)' : 'var(--color-text-onbrand)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        boxShadow: disabled ? 'none' : '0 12px 28px -10px var(--color-brand)',
+        background: inactive ? 'rgba(26,26,26,0.15)' : undefined,
+        color: inactive ? 'rgba(26,26,26,0.4)' : 'var(--color-text-onbrand)',
+        cursor: inactive ? 'not-allowed' : loading ? 'progress' : 'pointer',
+        boxShadow: inactive ? 'none' : '0 12px 28px -10px var(--color-brand)',
       }}
     >
-      {children}
+      {loading ? <Loader2 size={big ? 20 : 16} strokeWidth={2.2} className="animate-spin" /> : children}
     </button>
   )
 }

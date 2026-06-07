@@ -7,7 +7,7 @@ import { MatchCard } from '@/components/MatchCard'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB } from '@/lib/store'
-import { artType, courtLabel, dayLabel, matchKind, sportLabel, initials as userInitials } from '@/lib/format'
+import { artType, courtLabel, dayLabel, matchKind, skillLabel, sportLabel, initials as userInitials } from '@/lib/format'
 import type { User } from '@/lib/types'
 
 /** Player Profile (Player Profile.html / Other Player Profile.html).
@@ -135,7 +135,7 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
             {first} <span className="italic text-accent">{restName.join(' ')}</span>
           </h1>
           <div className="mt-2 flex items-center gap-2 text-[11.5px] font-medium uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
-            <span className="capitalize">{user.skill_level} player</span>
+            <span>{skillLabel(user.skill_level)} player</span>
             <span className="h-[3px] w-[3px] rounded-full" style={{ background: 'var(--color-text-faint)' }} />
             <span>Member · '{joinedYear}</span>
           </div>
@@ -227,9 +227,9 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
                 Plays most weeks
               </div>
             </div>
-            <span className="inline-flex items-center gap-1.5 rounded-pill bg-page px-3 py-1.5 text-[11.5px] font-semibold capitalize">
+            <span className="inline-flex items-center gap-1.5 rounded-pill bg-page px-3 py-1.5 text-[11.5px] font-semibold">
               <span className="h-[5px] w-[5px] rounded-full bg-accent" />
-              {user.skill_level}
+              {skillLabel(user.skill_level)}
             </span>
           </div>
         </div>

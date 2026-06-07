@@ -1,7 +1,7 @@
 import { Check, ChevronRight, Hourglass, MessageCircle, Shield, X, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { MatchRequest, User } from '@/lib/types'
-import { initials } from '@/lib/format'
+import { initials, skillLabel } from '@/lib/format'
 
 /** Approval-flow atoms (approval-shared.jsx): profile peek + decision buttons
  *  + resolved note. Trust signals follow CLAUDE.md §5 — level, matches played,
@@ -20,7 +20,7 @@ function AfAvatar({ user, size = 48 }: { user: User; size?: number }) {
 
 function StatChips({ user }: { user: User }) {
   const items = [
-    { icon: <Shield size={12} strokeWidth={1.9} />, label: <span className="capitalize">{user.skill_level}</span>, key: 'level' },
+    { icon: <Shield size={12} strokeWidth={1.9} />, label: <span>{skillLabel(user.skill_level)}</span>, key: 'level' },
     {
       icon: <Zap size={13} strokeWidth={1.9} />,
       label: (

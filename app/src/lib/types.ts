@@ -5,7 +5,17 @@
 
 export type Sport = 'padel' | 'tennis' | 'badminton' | 'running'
 
-export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'any'
+/** 7-step player ladder. Matches keep using the coarse levels
+ *  (beginner/intermediate/advanced via the 1–5 slider) plus 'any'. */
+export type SkillLevel =
+  | 'baby_beginner'
+  | 'beginner'
+  | 'low_intermediate'
+  | 'intermediate'
+  | 'high_intermediate'
+  | 'advanced'
+  | 'pro'
+  | 'any'
 
 export type JoinMode = 'open' | 'approval' | 'invite'
 

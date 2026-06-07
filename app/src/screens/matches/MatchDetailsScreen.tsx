@@ -19,15 +19,25 @@ import { DecisionButtons, ProfilePeek, ResolvedNote } from './ApprovalCard'
 
 const LEVEL_NAMES = ['Baby', 'Beginner', 'Low int.', 'High int.', 'Advanced']
 
-/** schema single skill_level → display range on the 1–5 bar */
+/** schema single skill_level → display range on the 1–5 bar.
+ *  Matches store the coarse levels; the fine player-ladder steps are
+ *  mapped anyway so the function stays total over SkillLevel. */
 function levelToRange(level: SkillLevel): [number, number] {
   switch (level) {
+    case 'baby_beginner':
+      return [1, 1]
     case 'beginner':
       return [1, 2]
+    case 'low_intermediate':
+      return [2, 3]
     case 'intermediate':
       return [2, 4]
+    case 'high_intermediate':
+      return [3, 4]
     case 'advanced':
       return [4, 5]
+    case 'pro':
+      return [5, 5]
     case 'any':
       return [1, 5]
   }

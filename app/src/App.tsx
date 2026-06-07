@@ -17,13 +17,16 @@ import { BlockedListScreen, GuidelinesScreen, ReportPlayerScreen, ReportProblemS
 import {
   AgeCheckScreen,
   AllSetScreen,
+  CreatingAccountScreen,
   ForgotPasswordScreen,
   LoginScreen,
-  OnboardingGuidelinesScreen,
-  QuestionnaireScreen,
+  OnboardingSkillScreen,
+  OnboardingSportScreen,
+  ResetPasswordScreen,
   SignUpScreen,
   SplashScreen,
 } from '@/screens/auth/AuthScreens'
+import { CommunityStandardsScreen } from '@/screens/auth/CommunityStandardsScreen'
 
 /** Route map — 3 tabs (Discover · Home · Chat), Home is the default
  *  landing tab (CLAUDE.md §4). Screens land here as they're built. */
@@ -55,12 +58,14 @@ function App() {
       <Route path="/login" element={<LoginScreen />} />
       <Route path="/signup" element={<SignUpScreen />} />
       <Route path="/forgot-password" element={<ForgotPasswordScreen />} />
+      <Route path="/reset-password" element={<ResetPasswordScreen />} />
+      {/* sign-up questionnaire — Q1 age (hard gate) → Q2 sport → Q3 skill */}
       <Route path="/onboarding/age" element={<AgeCheckScreen />} />
-      <Route path="/onboarding/guidelines" element={<OnboardingGuidelinesScreen />} />
+      <Route path="/onboarding/sport" element={<OnboardingSportScreen />} />
+      <Route path="/onboarding/skill" element={<OnboardingSkillScreen />} />
+      <Route path="/onboarding/guidelines" element={<CommunityStandardsScreen />} />
+      <Route path="/onboarding/creating" element={<CreatingAccountScreen />} />
       <Route path="/onboarding/done" element={<AllSetScreen />} />
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Route key={n} path={`/onboarding/${n}`} element={<QuestionnaireScreen step={n} />} />
-      ))}
       <Route path="/lab" element={<Lab />} />
       <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>

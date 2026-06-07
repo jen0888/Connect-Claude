@@ -6,7 +6,7 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB } from '@/lib/store'
-import { sportLabel } from '@/lib/format'
+import { skillLabel, sportLabel } from '@/lib/format'
 
 /** First-time Home (empty-home-screens.jsx EmptyEditorial) — brand-new user
  *  has nothing joined yet; empty state becomes opportunity. Feed is always
@@ -37,7 +37,7 @@ export function FirstTimerHome() {
         <div className="mb-5 flex items-start justify-between">
           <div className="me-3 min-w-0 flex-1">
             <div className="mb-2 text-[10.5px] font-medium uppercase tracking-[0.2em]" style={{ color: 'rgba(26,26,26,0.5)' }}>
-              Welcome to Connect
+              Welcome to Connect!
             </div>
             <h1 className="m-0 font-display text-[32px] font-normal leading-[1.05]" style={{ letterSpacing: '-0.02em' }}>
               Hello, <span className="italic text-accent">{me.name.split(' ')[0]}</span>.
@@ -52,7 +52,7 @@ export function FirstTimerHome() {
               <span className="opacity-50">·</span>
               <span>{sportLabel(me.sport)}</span>
               <span className="opacity-50">·</span>
-              <span className="capitalize">{me.skill_level}</span>
+              <span>{skillLabel(me.skill_level)}</span>
             </div>
           </div>
           <Link to="/profile" aria-label="Profile & settings" className="no-underline">

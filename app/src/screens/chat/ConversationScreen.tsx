@@ -4,7 +4,7 @@ import { ArrowUp, ChevronLeft, EllipsisVertical, Flag, ShieldAlert, UserRound } 
 import { Shell } from '@/components/Shell'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, dmThreadWith, getUser, threadMessages, useDB } from '@/lib/store'
-import { hm, initials } from '@/lib/format'
+import { hm, initials, skillLabel } from '@/lib/format'
 
 /** 1:1 DM (conversation.jsx) — open DMs (anyone → anyone) with guardrails:
  *  first-contact banner from strangers and in-thread report/block via the
@@ -75,7 +75,7 @@ export function ConversationScreen() {
                 {other.name}
               </div>
               <div className="mt-px truncate text-[11.5px] capitalize" style={{ color: 'var(--color-text-muted)' }}>
-                {other.sport} · {other.skill_level}
+                {other.sport} · {skillLabel(other.skill_level)}
               </div>
             </div>
           </button>

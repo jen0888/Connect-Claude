@@ -78,6 +78,21 @@ export function sportLabel(sport: Match['sport']): string {
   return sport.charAt(0).toUpperCase() + sport.slice(1)
 }
 
+/** display label for the 7-step skill ladder (snake_case values) */
+export function skillLabel(level: User['skill_level']): string {
+  const labels: Record<User['skill_level'], string> = {
+    baby_beginner: 'Baby Beginner',
+    beginner: 'Beginner',
+    low_intermediate: 'Low Intermediate',
+    intermediate: 'Intermediate',
+    high_intermediate: 'High Intermediate',
+    advanced: 'Advanced',
+    pro: 'Pro',
+    any: 'Any level',
+  }
+  return labels[level]
+}
+
 export function initials(user: Pick<User, 'name'>): string {
   const parts = user.name.split(/\s+/).filter(Boolean)
   return parts

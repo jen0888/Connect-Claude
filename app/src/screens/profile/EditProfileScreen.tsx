@@ -102,13 +102,19 @@ export function EditProfileScreen() {
             </div>
             <div>
               <div className="mb-2 text-[13.5px] font-medium text-ink">Level</div>
+              {/* 7-step ladder wraps onto rows — one row can't fit the labels */}
               <Segmented
                 value={level}
                 onChange={setLevel}
+                columns={2}
                 options={[
+                  { value: 'baby_beginner', label: 'Baby Beginner' },
                   { value: 'beginner', label: 'Beginner' },
-                  { value: 'intermediate', label: 'Interm.' },
+                  { value: 'low_intermediate', label: 'Low Interm.' },
+                  { value: 'intermediate', label: 'Intermediate' },
+                  { value: 'high_intermediate', label: 'High Interm.' },
                   { value: 'advanced', label: 'Advanced' },
+                  { value: 'pro', label: 'Pro' },
                 ]}
               />
             </div>

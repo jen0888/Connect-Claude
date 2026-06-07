@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { currentUserId, useDB } from '@/lib/store'
-import { initials } from '@/lib/format'
+import { initials, skillLabel } from '@/lib/format'
 
 /** New Message — pick a player, open the one canonical DM (new-chat.jsx).
  *  Open DMs with guardrails: new conversations are rate-limited (~10–15/day)
@@ -71,7 +71,7 @@ export function NewMessageScreen() {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[14.5px] font-semibold text-ink">{p.name}</div>
                 <div className="mt-0.5 text-[11.5px] capitalize nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
-                  {p.sport} · {p.skill_level} · {p.matches_played} matches
+                  {p.sport} · {skillLabel(p.skill_level)} · {p.matches_played} matches
                 </div>
               </div>
               <ChevronRight size={15} strokeWidth={2} className="shrink-0 rtl:rotate-180" style={{ color: 'rgba(26,26,26,0.3)' }} />

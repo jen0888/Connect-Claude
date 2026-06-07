@@ -1,18 +1,64 @@
-import { useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Check, ChevronDown, ChevronLeft, Eye, EyeOff } from 'lucide-react'
+import { AlertCircle, ArrowRight, Check, ChevronDown, ChevronLeft, Eye, EyeOff, MailCheck } from 'lucide-react'
 import { Shell } from '@/components/Shell'
+import { Logo } from '@/components/Logo'
 import { CTA } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
+import { onboarding, type OnboardingSkill } from '@/lib/onboarding'
+import { USERS } from '@/lib/mock/data'
+import type { Sport } from '@/lib/types'
 
-/** Auth + onboarding (Splash / Sign Up / Login / Age Check / Questions /
- *  All Set). 18+ is a hard gate via date of birth — never a checkbox
- *  (CLAUDE.md §1). Returning login → straight to Home, no questionnaire;
- *  the questionnaire runs on Sign Up only (CLAUDE.md §4). */
+/** Auth + onboarding — Splash → Sign Up → Q1 Age (DOB hard gate) → Q2 Sport →
+ *  Q3 Skill → Community Guidelines (explicit agree) → Creating account →
+ *  All Set (confetti celebration) → Home. Single-choice questions (Q2/Q3)
+ *  auto-advance ~700ms after a tap — no Next button.
+ *  Returning login → straight to Home, never the questionnaire (CLAUDE.md §4).
+ *  UI only — no Supabase yet. Mock conventions until auth lands:
+ *  an email from mock USERS (e.g. you@example.com) is "registered", so it
+ *  triggers email-in-use on Sign Up and is the only login that succeeds
+ *  (anything else shows the wrong-credentials state). */
 
-const fieldCls = 'w-full rounded-md border bg-card px-3.5 py-3 text-[14.5px] text-ink outline-none placeholder:text-ink-faint'
-const fieldStyle = { borderColor: 'rgba(26,26,26,0.16)' }
+/* ── validation (client-side mirrors of future Supabase errors) ──────── */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const isValidEmail = (v: string) => EMAIL_RE.test(v.trim())
+const isStrongPassword = (v: string) => v.length >= 8
+const isValidPhone = (v: string) => /^[+0-9][0-9\s()-]*$/.test(v.trim()) && (v.match(/\d/g)?.length ?? 0) >= 8
+const isRegistered = (email: string) => USERS.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())
+/** simulated network latency for loading states */
+const FAKE_LATENCY = 900
+
+/** prefers-reduced-motion — web mirror of AccessibilityInfo.isReduceMotionEnabled;
+ *  when on, the All-Set confetti / orbit / burst ring render statically */
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReduced(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return reduced
+}
+
+/** single-choice questions auto-advance ~700ms after a tap (no Next button);
+ *  re-tapping another option restarts the window with the new answer */
+const AUTO_ADVANCE_MS = 700
+
+function useAutoAdvance() {
+  const navigate = useNavigate()
+  const timer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  return (to: string) => {
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => navigate(to), AUTO_ADVANCE_MS)
+  }
+}
+
+/* ── small shared pieces (auth-local; consume tokens only) ───────────── */
+const fieldCls = 'w-full rounded-md border bg-card px-3.5 py-3 text-[14.5px] text-ink outline-none placeholder:text-ink-faint focus-visible:ring-2'
+const fieldBorder = (error?: boolean) => ({ borderColor: error ? 'var(--color-danger)' : 'rgba(26,26,26,0.16)' })
 
 function Wordmark({ size = 44 }: { size?: number }) {
   return (
@@ -22,51 +68,14 @@ function Wordmark({ size = 44 }: { size?: number }) {
   )
 }
 
-function SocialButtons() {
-  const { showToast } = useToast()
-  return (
-    <div className="flex flex-col gap-2.5">
-      {['Continue with Google', 'Continue with Apple', 'Continue with Facebook'].map((label) => (
-        <button
-          key={label}
-          onClick={() => showToast('Social sign-in comes with Supabase')}
-          className="inline-flex h-[46px] w-full cursor-pointer items-center justify-center gap-2.5 rounded-pill border bg-card text-[13.5px] font-semibold text-ink"
-          style={{ borderColor: 'rgba(26,26,26,0.12)' }}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function PasswordField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
-  const [show, setShow] = useState(false)
-  return (
-    <div>
-      <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
-        {label}
-      </label>
-      <div className="relative">
-        <input type={show ? 'text' : 'password'} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={`${fieldCls} pe-11`} style={fieldStyle} />
-        <button
-          type="button"
-          onClick={() => setShow((s) => !s)}
-          aria-label="Toggle password"
-          className="absolute end-3 top-1/2 -translate-y-1/2 cursor-pointer border-none bg-transparent p-0"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
-          {show ? <Eye size={16} strokeWidth={1.9} /> : <EyeOff size={16} strokeWidth={1.9} />}
-        </button>
-      </div>
-    </div>
-  )
-}
-
+/** EN / عربي switch — sits at the inline end (top-right LTR, top-left RTL via
+ *  logical flex `justify-end`); the control itself never flips. Labels are
+ *  deliberately fixed-language (EN stays Latin, عربي stays Arabic), so they
+ *  bypass t(). Choice persists via LocaleProvider (localStorage + dir/lang). */
 function LangBar() {
   const { locale, setLocale } = useI18n()
   return (
-    <div className="flex justify-end pt-2">
+    <div className="flex justify-end">
       <div className="inline-flex rounded-pill p-[3px]" style={{ background: 'rgba(26,26,26,0.06)' }}>
         {(
           [
@@ -77,7 +86,8 @@ function LangBar() {
           <button
             key={o.id}
             onClick={() => setLocale(o.id)}
-            className="cursor-pointer rounded-pill border-none px-3 py-1.5 text-[12px] font-semibold transition-colors"
+            aria-pressed={locale === o.id}
+            className="min-h-[34px] cursor-pointer rounded-pill border-none px-3.5 py-1.5 text-[12px] font-semibold transition-colors"
             style={{
               background: locale === o.id ? 'var(--surface-card)' : 'transparent',
               color: locale === o.id ? 'var(--color-text)' : 'var(--color-text-muted)',
@@ -92,28 +102,235 @@ function LangBar() {
   )
 }
 
-/* ── Splash ─────────────────────────────────────────────────────────── */
+/** third-party brand marks — official assets, fixed brand colors (not tokens),
+ *  never flipped in RTL (CLAUDE.md §7: logos don't mirror) */
+function GoogleMark({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  )
+}
+
+function AppleMark({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 384 512" aria-hidden="true" fill="currentColor" style={{ marginTop: -2 }}>
+      <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z" />
+    </svg>
+  )
+}
+
+/** Google + Apple — UI only until Supabase OAuth lands */
+function SocialButtons() {
+  const { showToast } = useToast()
+  const { t } = useI18n()
+  const providers = [
+    { id: 'google', label: t('auth.continueGoogle'), icon: <GoogleMark /> },
+    { id: 'apple', label: t('auth.continueApple'), icon: <AppleMark /> },
+  ]
+  return (
+    <div className="flex flex-col gap-2.5">
+      {providers.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => showToast(t('auth.socialSoon'))}
+          className="inline-flex h-[46px] w-full cursor-pointer items-center justify-center gap-2.5 rounded-pill border bg-card text-[13.5px] font-semibold text-ink"
+          style={{ borderColor: 'rgba(26,26,26,0.12)' }}
+        >
+          {p.icon}
+          {p.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function OrDivider() {
+  const { t } = useI18n()
+  return (
+    <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-faint)' }}>
+      <span className="h-px flex-1" style={{ background: 'rgba(26,26,26,0.10)' }} />
+      {t('auth.or')}
+      <span className="h-px flex-1" style={{ background: 'rgba(26,26,26,0.10)' }} />
+    </div>
+  )
+}
+
+function BackButton() {
+  const navigate = useNavigate()
+  const { t } = useI18n()
+  return (
+    <button
+      onClick={() => navigate(-1)}
+      aria-label={t('auth.back')}
+      className="inline-flex h-[44px] w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-full border-none text-ink"
+      style={{ background: 'rgba(26,26,26,0.05)' }}
+    >
+      {/* directional icon — flips in RTL */}
+      <ChevronLeft size={18} strokeWidth={2} className="rtl:rotate-180" />
+    </button>
+  )
+}
+
+/** labelled input + inline error (no shared Input primitive exists yet —
+ *  this is the established auth-field pattern from the Stage-1 bundle) */
+function TextField({
+  label,
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  error,
+  type = 'text',
+  inputMode,
+  autoComplete,
+  ltr = false,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  onBlur?: () => void
+  placeholder: string
+  error?: string | null
+  type?: string
+  inputMode?: 'email' | 'tel' | 'text'
+  autoComplete?: string
+  ltr?: boolean
+}) {
+  const id = useId()
+  return (
+    <div>
+      <label htmlFor={id} className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        autoComplete={autoComplete}
+        aria-invalid={!!error}
+        // emails / phone numbers stay LTR + Western digits even in Arabic
+        dir={ltr ? 'ltr' : undefined}
+        className={`${fieldCls} ${ltr ? 'nums-tabular text-start' : ''}`}
+        style={fieldBorder(!!error)}
+      />
+      {error && <FieldError>{error}</FieldError>}
+    </div>
+  )
+}
+
+function PasswordField({
+  label,
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  error,
+  autoComplete,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  onBlur?: () => void
+  placeholder: string
+  error?: string | null
+  autoComplete?: string
+}) {
+  const [show, setShow] = useState(false)
+  const id = useId()
+  const { t } = useI18n()
+  return (
+    <div>
+      <label htmlFor={id} className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={id}
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          aria-invalid={!!error}
+          className={`${fieldCls} pe-11`}
+          style={fieldBorder(!!error)}
+        />
+        <button
+          type="button"
+          onClick={() => setShow((s) => !s)}
+          aria-label={show ? t('auth.hidePassword') : t('auth.showPassword')}
+          className="absolute end-1 top-1/2 inline-flex h-[44px] w-[44px] -translate-y-1/2 cursor-pointer items-center justify-center border-none bg-transparent p-0"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          {show ? <Eye size={16} strokeWidth={1.9} /> : <EyeOff size={16} strokeWidth={1.9} />}
+        </button>
+      </div>
+      {error && <FieldError>{error}</FieldError>}
+    </div>
+  )
+}
+
+function FieldError({ children }: { children: ReactNode }) {
+  return (
+    <p role="alert" className="m-0 mt-1.5 flex items-start gap-1.5 text-[11.5px] font-medium leading-[1.4]" style={{ color: 'var(--color-danger)' }}>
+      <AlertCircle size={13} strokeWidth={2} className="mt-px shrink-0" />
+      {children}
+    </p>
+  )
+}
+
+/** form-level error (wrong credentials / email in use) */
+function FormError({ children }: { children: ReactNode }) {
+  return (
+    <div
+      role="alert"
+      className="flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-[12.5px] font-medium leading-[1.5]"
+      style={{
+        color: 'var(--color-danger)',
+        borderColor: 'color-mix(in srgb, var(--color-danger) 30%, transparent)',
+        background: 'color-mix(in srgb, var(--color-danger) 7%, var(--surface-card))',
+      }}
+    >
+      <AlertCircle size={15} strokeWidth={2} className="mt-px shrink-0" />
+      <span>{children}</span>
+    </div>
+  )
+}
+
+/* ── Splash / Welcome — big central logo, footer-level actions ──────── */
 export function SplashScreen() {
+  const { t } = useI18n()
   return (
     <Shell nav={false}>
-      <div className="relative z-1 flex h-full flex-col items-center justify-center px-8 text-center">
-        <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.22em]" style={{ color: 'var(--color-text-muted)' }}>
-          Doha · pickup sports
+      <div className="relative z-1 flex h-full flex-col px-7 pt-8 pb-9">
+        <LangBar />
+        {/* logo (transparent PNG, bakes in wordmark + tagline) is the sole focus */}
+        <div className="flex flex-1 items-center justify-center">
+          <Logo className="w-[82vw] max-w-[360px]" />
         </div>
-        <Wordmark size={64} />
-        <p className="mt-4 mb-10 max-w-[260px] text-[14px] leading-[1.5]" style={{ color: 'rgba(26,26,26,0.6)', textWrap: 'pretty' }}>
-          Find a match, meet good people, and play more often.
-        </p>
+        {/* footer action area */}
         <div className="flex w-full flex-col gap-2.5">
-          <Link to="/signup" className="inline-flex h-[52px] w-full items-center justify-center rounded-pill bg-brand text-[15px] font-semibold text-onbrand no-underline shadow-cta">
-            Create an account
+          <Link
+            to="/signup"
+            className="inline-flex h-[54px] w-full items-center justify-center rounded-pill bg-brand text-[15.5px] font-semibold text-onbrand no-underline shadow-cta transition-all active:translate-y-px active:bg-brandstrong"
+          >
+            {t('splash.getStarted')}
           </Link>
           <Link
             to="/login"
-            className="inline-flex h-[52px] w-full items-center justify-center rounded-pill bg-transparent text-[14.5px] font-medium text-ink no-underline"
+            className="inline-flex h-[54px] w-full items-center justify-center rounded-pill bg-transparent text-[14.5px] font-medium text-ink no-underline"
             style={{ border: '1.5px solid rgba(26,26,26,0.18)' }}
           >
-            I already have one
+            {t('splash.logIn')}
           </Link>
         </div>
       </div>
@@ -121,15 +338,34 @@ export function SplashScreen() {
   )
 }
 
-/* ── Sign Up ────────────────────────────────────────────────────────── */
+/* ── Sign Up — name · email · phone · password ──────────────────────── */
 export function SignUpScreen() {
   const navigate = useNavigate()
-  const [agree, setAgree] = useState(false)
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [pw, setPw] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const canGo = name.trim() && email.trim() && pw && pw === confirm && agree
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [emailInUse, setEmailInUse] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const touch = (k: string) => setTouched((s) => ({ ...s, [k]: true }))
+  const emailError = emailInUse ? t('auth.err.emailInUse') : touched.email && email && !isValidEmail(email) ? t('auth.err.invalidEmail') : null
+  const phoneError = touched.phone && phone && !isValidPhone(phone) ? t('auth.err.phone') : null
+  const pwError = touched.pw && pw && !isStrongPassword(pw) ? t('auth.err.weakPassword') : null
+  const canGo = !!name.trim() && isValidEmail(email) && isValidPhone(phone) && isStrongPassword(pw)
+
+  const submit = () => {
+    if (!canGo || busy) return
+    setBusy(true)
+    // mock latency; becomes supabase.auth.signUp — in-use check is server-side
+    setTimeout(() => {
+      setBusy(false)
+      if (isRegistered(email)) setEmailInUse(true)
+      else navigate('/onboarding/age')
+    }, FAKE_LATENCY)
+  }
 
   return (
     <Shell nav={false}>
@@ -139,48 +375,55 @@ export function SignUpScreen() {
           <Wordmark />
         </div>
         <SocialButtons />
-        <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-faint)' }}>
-          <span className="h-px flex-1" style={{ background: 'rgba(26,26,26,0.10)' }} />
-          or
-          <span className="h-px flex-1" style={{ background: 'rgba(26,26,26,0.10)' }} />
-        </div>
+        <OrDivider />
         <div className="flex flex-col gap-3.5">
-          <div>
-            <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
-              Name
-            </label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className={fieldCls} style={fieldStyle} />
-          </div>
-          <div>
-            <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
-              Email
-            </label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={fieldCls} style={fieldStyle} />
-          </div>
-          <PasswordField label="Password" value={pw} onChange={setPw} placeholder="8+ characters" />
-          <PasswordField label="Confirm password" value={confirm} onChange={setConfirm} placeholder="Repeat it" />
+          <TextField label={t('auth.field.name')} value={name} onChange={setName} placeholder={t('auth.ph.name')} autoComplete="name" />
+          <TextField
+            label={t('auth.field.email')}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            ltr
+            value={email}
+            onChange={(v) => {
+              setEmail(v)
+              setEmailInUse(false)
+            }}
+            onBlur={() => touch('email')}
+            placeholder={t('auth.ph.email')}
+            error={emailError}
+          />
+          <TextField
+            label={t('auth.field.phone')}
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            ltr
+            value={phone}
+            onChange={setPhone}
+            onBlur={() => touch('phone')}
+            placeholder={t('auth.ph.phone')}
+            error={phoneError}
+          />
+          <PasswordField
+            label={t('auth.field.password')}
+            value={pw}
+            onChange={setPw}
+            onBlur={() => touch('pw')}
+            placeholder={t('auth.ph.password')}
+            error={pwError}
+            autoComplete="new-password"
+          />
         </div>
-        <label className="mt-4 flex cursor-pointer items-center gap-2.5">
-          <span
-            className="inline-flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[6px] text-onbrand transition-colors"
-            style={{ background: agree ? 'var(--color-brand)' : 'transparent', border: agree ? 'none' : '1.5px solid rgba(26,26,26,0.25)' }}
-            onClick={() => setAgree((a) => !a)}
-          >
-            {agree && <Check size={12} strokeWidth={3} />}
-          </span>
-          <span className="text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-            I agree to the <Link to="/safety/guidelines" className="font-semibold text-brand no-underline">Terms &amp; Community Guidelines</Link>
-          </span>
-        </label>
-        <div className="mt-5">
-          <CTA disabled={!canGo} onClick={() => navigate('/onboarding/age')}>
-            Create account
+        <div className="mt-6">
+          <CTA disabled={!canGo} loading={busy} onClick={submit}>
+            {t('signup.cta')}
           </CTA>
         </div>
         <div className="mt-4 text-center text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-          Already have an account?{' '}
+          {t('signup.haveAccount')}{' '}
           <Link to="/login" className="font-semibold text-brand no-underline">
-            Log in
+            {t('signup.logInLink')}
           </Link>
         </div>
       </div>
@@ -191,8 +434,26 @@ export function SignUpScreen() {
 /* ── Login — returning players go straight to Home ──────────────────── */
 export function LoginScreen() {
   const navigate = useNavigate()
+  const { t } = useI18n()
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
+  const [touched, setTouched] = useState(false)
+  const [wrongCreds, setWrongCreds] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const emailError = touched && email && !isValidEmail(email) ? t('auth.err.invalidEmail') : null
+  const canGo = isValidEmail(email) && !!pw
+
+  const submit = () => {
+    if (!canGo || busy) return
+    setBusy(true)
+    setTimeout(() => {
+      setBusy(false)
+      // returning login → straight to Home, never the questionnaire
+      if (isRegistered(email)) navigate('/home')
+      else setWrongCreds(true)
+    }, FAKE_LATENCY)
+  }
 
   return (
     <Shell nav={false}>
@@ -202,35 +463,51 @@ export function LoginScreen() {
           <Wordmark />
         </div>
         <SocialButtons />
-        <div className="my-5 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-faint)' }}>
-          <span className="h-px flex-1" style={{ background: 'rgba(26,26,26,0.10)' }} />
-          or
-          <span className="h-px flex-1" style={{ background: 'rgba(26,26,26,0.10)' }} />
-        </div>
+        <OrDivider />
         <div className="flex flex-col gap-3.5">
-          <div>
-            <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
-              Email
-            </label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={fieldCls} style={fieldStyle} />
-          </div>
-          <PasswordField label="Password" value={pw} onChange={setPw} placeholder="Your password" />
+          <TextField
+            label={t('auth.field.email')}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            ltr
+            value={email}
+            onChange={(v) => {
+              setEmail(v)
+              setWrongCreds(false)
+            }}
+            onBlur={() => setTouched(true)}
+            placeholder={t('auth.ph.email')}
+            error={emailError}
+          />
+          <PasswordField
+            label={t('auth.field.password')}
+            value={pw}
+            onChange={(v) => {
+              setPw(v)
+              setWrongCreds(false)
+            }}
+            placeholder={t('auth.ph.password')}
+            autoComplete="current-password"
+          />
         </div>
         <div className="mt-3 flex justify-end">
-          <Link to="/forgot-password" className="text-[12.5px] font-semibold text-brand no-underline">
-            Forgot password?
+          <Link to="/forgot-password" className="px-1 py-2 text-[12.5px] font-semibold text-brand no-underline">
+            {t('login.forgot')}
           </Link>
         </div>
-        <div className="mt-5">
-          {/* returning login → straight to Home, no questionnaire */}
-          <CTA disabled={!email.trim() || !pw} onClick={() => navigate('/home')}>
-            Log in
-          </CTA>
-        </div>
+        {wrongCreds && (
+          <div className="mb-4">
+            <FormError>{t('auth.err.wrongCredentials')}</FormError>
+          </div>
+        )}
+        <CTA disabled={!canGo} loading={busy} onClick={submit}>
+          {t('login.cta')}
+        </CTA>
         <div className="mt-4 text-center text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-          New here?{' '}
+          {t('login.new')}{' '}
           <Link to="/signup" className="font-semibold text-brand no-underline">
-            Create an account
+            {t('login.createLink')}
           </Link>
         </div>
       </div>
@@ -238,38 +515,155 @@ export function LoginScreen() {
   )
 }
 
-/* ── Forgot / Reset password ────────────────────────────────────────── */
+/* ── Forgot password — request link, then sent state ────────────────── */
 export function ForgotPasswordScreen() {
   const navigate = useNavigate()
+  const { t } = useI18n()
   const { showToast } = useToast()
   const [email, setEmail] = useState('')
+  const [touched, setTouched] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  const emailError = touched && email && !isValidEmail(email) ? t('auth.err.invalidEmail') : null
+
+  const send = (after?: () => void) => {
+    setBusy(true)
+    setTimeout(() => {
+      setBusy(false)
+      setSent(true)
+      after?.()
+    }, FAKE_LATENCY)
+  }
+
+  return (
+    <Shell nav={false}>
+      <div className="relative z-1 flex h-full flex-col px-7 pt-12 pb-10">
+        <div className="mb-4">
+          <BackButton />
+        </div>
+        {sent ? (
+          /* sent / success state */
+          <div className="flex flex-1 flex-col items-center justify-center pb-16 text-center">
+            <div
+              className="mb-6 inline-flex h-[72px] w-[72px] items-center justify-center rounded-full text-onbrand"
+              style={{ background: 'var(--color-success)', boxShadow: '0 18px 40px -16px var(--color-success)' }}
+            >
+              <MailCheck size={32} strokeWidth={2} />
+            </div>
+            <h1 className="m-0 mb-2 font-display text-[34px] font-normal leading-[1.05]" style={{ letterSpacing: '-0.022em' }}>
+              {t('forgot.sentTitle')}
+            </h1>
+            <p className="m-0 mb-8 max-w-[280px] text-[13px] leading-[1.55]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
+              {t('forgot.sentBody', { email: email.trim() })}
+            </p>
+            <div className="flex w-full flex-col gap-2.5">
+              <CTA loading={busy} onClick={() => send(() => showToast(t('forgot.toastSent')))}>
+                {t('forgot.resend')}
+              </CTA>
+              <button
+                onClick={() => navigate('/login')}
+                className="cursor-pointer border-none bg-transparent px-3 py-2.5 text-[13px] font-semibold text-brand"
+              >
+                {t('forgot.backToLogin')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h1 className="m-0 mb-2 font-display text-[34px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
+              {t('forgot.titleA')}
+              <span className="italic text-brand">{t('forgot.titleB')}</span>
+              {t('forgot.titleC')}
+            </h1>
+            <p className="mb-6 text-[13px] leading-[1.5]" style={{ color: 'var(--color-text-muted)' }}>
+              {t('forgot.sub')}
+            </p>
+            <TextField
+              label={t('auth.field.email')}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              ltr
+              value={email}
+              onChange={setEmail}
+              onBlur={() => setTouched(true)}
+              placeholder={t('auth.ph.email')}
+              error={emailError}
+            />
+            <div className="mt-5">
+              <CTA disabled={!isValidEmail(email)} loading={busy} onClick={() => send()}>
+                {t('forgot.cta')}
+              </CTA>
+            </div>
+          </>
+        )}
+      </div>
+    </Shell>
+  )
+}
+
+/* ── Reset password — new password (reached from the email link) ────── */
+export function ResetPasswordScreen() {
+  const navigate = useNavigate()
+  const { t } = useI18n()
+  const { showToast } = useToast()
+  const [pw, setPw] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [busy, setBusy] = useState(false)
+
+  const pwError = touched.pw && pw && !isStrongPassword(pw) ? t('auth.err.weakPassword') : null
+  const matchError = touched.confirm && confirm && pw !== confirm ? t('auth.err.mismatch') : null
+  const canGo = isStrongPassword(pw) && pw === confirm
+
+  const submit = () => {
+    if (!canGo || busy) return
+    setBusy(true)
+    setTimeout(() => {
+      setBusy(false)
+      showToast(t('reset.toastDone'))
+      navigate('/login')
+    }, FAKE_LATENCY)
+  }
+
   return (
     <Shell nav={false}>
       <div className="relative z-1 h-full px-7 pt-12">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="mb-4 inline-flex h-[38px] w-[38px] cursor-pointer items-center justify-center rounded-full border-none text-ink"
-          style={{ background: 'rgba(26,26,26,0.05)' }}
-        >
-          <ChevronLeft size={18} strokeWidth={2} className="rtl:rotate-180" />
-        </button>
+        <div className="mb-4">
+          <BackButton />
+        </div>
         <h1 className="m-0 mb-2 font-display text-[34px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
-          Forgot your <span className="italic text-brand">password</span>?
+          {t('reset.titleA')}
+          <span className="italic text-brand">{t('reset.titleB')}</span>
+          {t('reset.titleC')}
         </h1>
         <p className="mb-6 text-[13px] leading-[1.5]" style={{ color: 'var(--color-text-muted)' }}>
-          Enter your email and we'll send a reset link.
+          {t('reset.sub')}
         </p>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={fieldCls} style={fieldStyle} />
+        <div className="flex flex-col gap-3.5">
+          <PasswordField
+            label={t('auth.field.newPassword')}
+            value={pw}
+            onChange={setPw}
+            onBlur={() => setTouched((s) => ({ ...s, pw: true }))}
+            placeholder={t('auth.ph.password')}
+            error={pwError}
+            autoComplete="new-password"
+          />
+          <PasswordField
+            label={t('auth.field.confirmPassword')}
+            value={confirm}
+            onChange={setConfirm}
+            onBlur={() => setTouched((s) => ({ ...s, confirm: true }))}
+            placeholder={t('auth.ph.confirmPassword')}
+            error={matchError}
+            autoComplete="new-password"
+          />
+        </div>
         <div className="mt-5">
-          <CTA
-            disabled={!email.trim()}
-            onClick={() => {
-              showToast('Reset link sent')
-              navigate('/login')
-            }}
-          >
-            Send reset link
+          <CTA disabled={!canGo} loading={busy} onClick={submit}>
+            {t('reset.cta')}
           </CTA>
         </div>
       </div>
@@ -277,11 +671,95 @@ export function ForgotPasswordScreen() {
   )
 }
 
-/* ── Age Check — DOB hard gate, 18+ only ────────────────────────────── */
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const THIS_YEAR = new Date().getFullYear()
-const YEARS = Array.from({ length: 80 }, (_, i) => THIS_YEAR - 10 - i)
+/* ── Onboarding chrome — back + Step X of 3 progress ────────────────── */
+const TOTAL_STEPS = 3
 
+function StepHeader({ step }: { step: 1 | 2 | 3 }) {
+  const { t } = useI18n()
+  return (
+    <div className="mb-6 flex items-center gap-3.5">
+      <BackButton />
+      <div className="h-1 flex-1 overflow-hidden rounded-pill" style={{ background: 'rgba(26,26,26,0.08)' }}>
+        <div className="h-full rounded-pill bg-brand transition-all" style={{ width: `${(step / TOTAL_STEPS) * 100}%` }} />
+      </div>
+      <div className="shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] nums-tabular ltr-nums" style={{ color: 'var(--color-text-muted)' }}>
+        {t('onb.step', { step, total: TOTAL_STEPS })}
+      </div>
+    </div>
+  )
+}
+
+function StepTitle({ a, b, c, sub }: { a: string; b: string; c: string; sub: string }) {
+  return (
+    <>
+      <h1 className="m-0 mb-2 font-display text-[34px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
+        {a}
+        <span className="italic text-brand">{b}</span>
+        {c}
+      </h1>
+      <p className="mb-7 text-[13px] leading-[1.5]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
+        {sub}
+      </p>
+    </>
+  )
+}
+
+/** single-select option row (sign-up Q2/Q3) — radio semantics */
+function OptionCard({ name, desc, on, onSelect }: { name: string; desc?: string; on: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      onClick={onSelect}
+      className="flex w-full cursor-pointer items-center gap-3.5 rounded-[18px] bg-card px-4 py-4 text-start transition-all"
+      style={{
+        border: on ? '1.5px solid var(--color-brand)' : '1px solid rgba(26,26,26,0.10)',
+        background: on ? 'color-mix(in srgb, var(--color-brand) 5%, var(--surface-card))' : 'var(--surface-card)',
+        boxShadow: on ? '0 10px 24px -16px var(--color-brand)' : 'none',
+      }}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold text-ink">{name}</span>
+        {desc && (
+          <span className="mt-0.5 block text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+            {desc}
+          </span>
+        )}
+      </span>
+      <span
+        className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-onbrand"
+        style={{ background: on ? 'var(--color-brand)' : 'transparent', border: on ? 'none' : '1.5px solid rgba(26,26,26,0.18)' }}
+      >
+        {on && <Check size={12} strokeWidth={3} />}
+      </span>
+    </button>
+  )
+}
+
+/** question footer — helper hint flips to a saved confirmation once a
+ *  choice is made (replaces the removed Next button) */
+function SavedFooter({ saved }: { saved: string | null }) {
+  const { t } = useI18n()
+  return (
+    <div
+      aria-live="polite"
+      className="mt-auto flex items-center justify-center gap-1.5 pt-6 pb-9 text-[12.5px] font-medium"
+      style={{ color: saved ? 'var(--color-success)' : 'var(--color-text-muted)' }}
+    >
+      {saved ? (
+        <>
+          <Check size={13} strokeWidth={2.6} />
+          {t('onb.saved', { value: saved })}
+        </>
+      ) : (
+        t('onb.tapHint')
+      )}
+    </div>
+  )
+}
+
+/* ── Q1 — Age check (DOB picker, 18+ hard gate) ─────────────────────── */
 function daysInMonth(month: number, year: number | null) {
   return new Date(year ?? 2000, month + 1, 0).getDate()
 }
@@ -291,8 +769,10 @@ function ageFrom(y: number, m: number, d: number) {
   if (today.getMonth() < m || (today.getMonth() === m && today.getDate() < d)) age--
   return age
 }
+const THIS_YEAR = new Date().getFullYear()
+const YEARS = Array.from({ length: 80 }, (_, i) => THIS_YEAR - 10 - i)
 
-function DobDropdown<T extends number>({
+function DobDropdown({
   label,
   display,
   placeholder,
@@ -304,10 +784,10 @@ function DobDropdown<T extends number>({
   label: string
   display: string | null
   placeholder: string
-  options: { value: T; label: string }[]
+  options: { value: number; label: string }[]
   open: boolean
   onToggle: () => void
-  onSelect: (v: T) => void
+  onSelect: (v: number) => void
 }) {
   return (
     <div className="relative min-w-0 flex-1">
@@ -317,7 +797,8 @@ function DobDropdown<T extends number>({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full cursor-pointer items-center justify-between gap-1 rounded-md border bg-card px-3 py-3 text-[14px]"
+        aria-expanded={open}
+        className="flex min-h-[46px] w-full cursor-pointer items-center justify-between gap-1 rounded-md border bg-card px-3 py-3 text-[14px]"
         style={{ borderColor: open ? 'var(--color-brand)' : 'rgba(26,26,26,0.16)', color: display ? 'var(--color-text)' : 'var(--color-text-faint)' }}
       >
         <span className="truncate nums-tabular">{display ?? placeholder}</span>
@@ -348,120 +829,119 @@ function DobDropdown<T extends number>({
 
 export function AgeCheckScreen() {
   const navigate = useNavigate()
-  const [month, setMonth] = useState<number | null>(null)
-  const [day, setDay] = useState<number | null>(null)
-  const [year, setYear] = useState<number | null>(null)
+  const { t, locale } = useI18n()
+  const [month, setMonth] = useState<number | null>(onboarding.dob?.month ?? null)
+  const [day, setDay] = useState<number | null>(onboarding.dob?.day ?? null)
+  const [year, setYear] = useState<number | null>(onboarding.dob?.year ?? null)
   const [openField, setOpenField] = useState<string | null>(null)
-  const [popup, setPopup] = useState(false)
+  const [blocked, setBlocked] = useState(false)
+
+  // month names localize; digits stay Western + LTR (CLAUDE.md §7)
+  const monthNames = useMemo(() => {
+    const fmt = new Intl.DateTimeFormat(locale === 'ar' ? 'ar' : 'en', { month: 'long' })
+    return Array.from({ length: 12 }, (_, i) => fmt.format(new Date(2000, i, 1)))
+  }, [locale])
 
   const complete = month != null && day != null && year != null
-  const age = complete ? ageFrom(year!, month!, day!) : null
-  const dim = daysInMonth(month ?? 0, year)
-  if (day != null && day > dim) setTimeout(() => setDay(null), 0)
+  const age = complete ? ageFrom(year, month, day) : null
+  const underage = age != null && age < 18
+
+  const pickMonth = (m: number) => {
+    setMonth(m)
+    if (day != null && day > daysInMonth(m, year)) setDay(null)
+  }
+  const pickYear = (y: number) => {
+    setYear(y)
+    if (day != null && month != null && day > daysInMonth(month, y)) setDay(null)
+  }
 
   const submit = () => {
     if (!complete) return
-    if (age! >= 18) navigate('/onboarding/1')
-    else setPopup(true)
+    if (underage) {
+      setBlocked(true) // hard gate — no way past
+      return
+    }
+    onboarding.dob = { year: year!, month: month!, day: day! }
+    navigate('/onboarding/sport')
   }
 
   return (
     <Shell nav={false}>
       <div className="relative z-1 flex h-full flex-col px-7 pt-12">
-        {/* top: back + progress */}
-        <div className="mb-6 flex items-center gap-3.5">
-          <button
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="inline-flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full border-none text-ink"
-            style={{ background: 'rgba(26,26,26,0.05)' }}
-          >
-            <ChevronLeft size={18} strokeWidth={2} className="rtl:rotate-180" />
-          </button>
-          <div className="h-1 flex-1 overflow-hidden rounded-pill" style={{ background: 'rgba(26,26,26,0.08)' }}>
-            <div className="h-full rounded-pill bg-brand" style={{ width: '12%' }} />
-          </div>
-          <div className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>
-            Sign&nbsp;up
-          </div>
-        </div>
+        <StepHeader step={1} />
+        <StepTitle a={t('onb.age.titleA')} b={t('onb.age.titleB')} c={t('onb.age.titleC')} sub={t('onb.age.sub')} />
 
-        <h1 className="m-0 mb-2 font-display text-[34px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
-          When's your <span className="italic text-brand">birthday</span>?
-        </h1>
-        <p className="mb-7 text-[13px] leading-[1.5]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
-          You need to be 18 or older to use Connect. We only use this to confirm your age.
-        </p>
-
-        <div className="flex gap-2.5">
+        {/* DOB stays LTR (M · D · Y order is stable) even under dir="rtl" */}
+        <div className="flex gap-2.5" dir="ltr">
           <DobDropdown
-            label="Month"
-            display={month != null ? MONTHS[month] : null}
-            placeholder="Month"
-            options={MONTHS.map((m, i) => ({ value: i, label: m }))}
+            label={t('onb.age.month')}
+            display={month != null ? monthNames[month] : null}
+            placeholder={t('onb.age.month')}
+            options={monthNames.map((m, i) => ({ value: i, label: m }))}
             open={openField === 'month'}
             onToggle={() => setOpenField(openField === 'month' ? null : 'month')}
-            onSelect={setMonth}
+            onSelect={pickMonth}
           />
           <DobDropdown
-            label="Day"
+            label={t('onb.age.day')}
             display={day != null ? String(day) : null}
             placeholder="—"
-            options={Array.from({ length: month != null ? dim : 31 }, (_, i) => ({ value: i + 1, label: String(i + 1) }))}
+            options={Array.from({ length: month != null ? daysInMonth(month, year) : 31 }, (_, i) => ({ value: i + 1, label: String(i + 1) }))}
             open={openField === 'day'}
             onToggle={() => setOpenField(openField === 'day' ? null : 'day')}
             onSelect={setDay}
           />
           <DobDropdown
-            label="Year"
+            label={t('onb.age.year')}
             display={year != null ? String(year) : null}
-            placeholder="Year"
+            placeholder={t('onb.age.year')}
             options={YEARS.map((y) => ({ value: y, label: String(y) }))}
             open={openField === 'year'}
             onToggle={() => setOpenField(openField === 'year' ? null : 'year')}
-            onSelect={setYear}
+            onSelect={pickYear}
           />
         </div>
 
-        <div className="mt-4 text-[12.5px] nums-tabular" style={{ color: complete && age! >= 18 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+        <div
+          className="mt-4 text-[12.5px] nums-tabular"
+          role={underage ? 'alert' : undefined}
+          style={{ color: underage ? 'var(--color-danger)' : complete ? 'var(--color-success)' : 'var(--color-text-muted)' }}
+        >
           {complete ? (
-            age! >= 18 ? (
+            underage ? (
               <span className="inline-flex items-center gap-1.5 font-semibold">
-                <Check size={13} strokeWidth={2.6} /> Great — you're {age}.
+                <AlertCircle size={13} strokeWidth={2.2} /> {t('onb.age.under')}
               </span>
             ) : (
-              "You'll need to be 18+ to continue."
+              <span className="inline-flex items-center gap-1.5 font-semibold">
+                <Check size={13} strokeWidth={2.6} /> {t('onb.age.ok', { age: age! })}
+              </span>
             )
           ) : (
-            'Select your date of birth.'
+            t('onb.age.prompt')
           )}
         </div>
 
         <div className="mt-auto pb-9">
-          <CTA disabled={!complete} onClick={submit}>
-            Continue
+          <CTA disabled={!complete || underage} onClick={submit}>
+            {t('onb.next')}
           </CTA>
-          <p className="mt-3 mb-0 text-center text-[11px] leading-[1.5]" style={{ color: 'var(--color-text-faint)' }}>
-            By continuing you confirm this is accurate and agree to our{' '}
-            <Link to="/safety/guidelines" className="font-semibold text-brand no-underline">
-              Community Guidelines
-            </Link>
-            .
-          </p>
         </div>
 
-        {/* under-18 hard gate */}
-        {popup && (
+        {/* under-18 hard block */}
+        {blocked && (
           <div className="absolute inset-0 z-40 flex items-end justify-center p-4 backdrop-blur-[2px]" style={{ background: 'rgba(26,26,26,0.45)' }}>
-            <div className="w-full rounded-[26px] bg-card px-[22px] pt-6 pb-[18px]" style={{ boxShadow: '0 30px 60px -20px rgba(26,26,26,0.6)' }}>
+            <div role="alertdialog" aria-modal="true" className="w-full rounded-[26px] bg-card px-[22px] pt-6 pb-[18px]" style={{ boxShadow: '0 30px 60px -20px rgba(26,26,26,0.6)' }}>
               <h3 className="m-0 mb-2 font-display text-[26px] font-normal leading-[1.1]" style={{ letterSpacing: '-0.01em' }}>
-                See you at <span className="italic text-brand">18</span>.
+                {t('onb.age.blockTitleA')}
+                <span className="italic text-brand nums-tabular">{t('onb.age.blockTitleB')}</span>
+                {t('onb.age.blockTitleC')}
               </h3>
               <p className="m-0 mb-5 text-[13.5px] leading-[1.5]" style={{ color: 'var(--color-text-muted)' }}>
-                Connect is for adults only right now. We'd love to have you when you're older.
+                {t('onb.age.blockBody')}
               </p>
-              <button onClick={() => navigate('/welcome')} className="w-full cursor-pointer rounded-pill border-none bg-ink py-3.5 text-[14px] font-semibold text-onbrand">
-                Got it
+              <button onClick={() => navigate('/welcome')} className="min-h-[48px] w-full cursor-pointer rounded-pill border-none bg-ink py-3.5 text-[14px] font-semibold text-onbrand">
+                {t('onb.age.blockCta')}
               </button>
             </div>
           </div>
@@ -471,230 +951,242 @@ export function AgeCheckScreen() {
   )
 }
 
-/* ── Questionnaire — sign-up only, 5 quick steps ────────────────────── */
-interface Step {
-  key: string
-  title: [string, string, string?]
-  sub: string
-  options: { id: string; name: string; desc?: string }[]
-}
+/* ── Q2 — Sport ─────────────────────────────────────────────────────── */
+const SPORTS: Sport[] = ['padel', 'tennis', 'badminton', 'running']
 
-const STEPS: Step[] = [
-  {
-    key: 'role',
-    title: ['Choose your ', 'role'],
-    sub: 'This shapes what you see on Connect. You can change it later.',
-    options: [
-      { id: 'player', name: 'Player', desc: 'Find and join matches near you' },
-      { id: 'host', name: 'Host', desc: 'Set up matches and fill the spots' },
-      { id: 'both', name: 'Both', desc: 'Mix it up — play and host' },
-    ],
-  },
-  {
-    key: 'sport',
-    title: ['Pick your ', 'sport'],
-    sub: 'Your main one — you can play them all.',
-    options: [
-      { id: 'padel', name: 'Padel' },
-      { id: 'tennis', name: 'Tennis' },
-      { id: 'badminton', name: 'Badminton' },
-      { id: 'running', name: 'Running' },
-    ],
-  },
-  {
-    key: 'level',
-    title: ["What's your ", 'level', '?'],
-    sub: 'Be honest — it makes for better matches.',
-    options: [
-      { id: 'beginner', name: 'Beginner', desc: 'Learning the ropes' },
-      { id: 'intermediate', name: 'Intermediate', desc: 'Solid rallies, fair serves' },
-      { id: 'advanced', name: 'Advanced', desc: 'Competitive, consistent' },
-    ],
-  },
-  {
-    key: 'days',
-    title: ['When do you ', 'play', '?'],
-    sub: 'Roughly — so we can surface the right matches.',
-    options: [
-      { id: 'mornings', name: 'Mornings', desc: 'Before work, sunrise runs' },
-      { id: 'evenings', name: 'Evenings', desc: 'After-work prime time' },
-      { id: 'weekends', name: 'Weekends', desc: 'Friday & Saturday sessions' },
-    ],
-  },
-  {
-    key: 'area',
-    title: ['Where in ', 'Doha', '?'],
-    sub: 'Your home area — matches all over the city still show.',
-    options: [
-      { id: 'westbay', name: 'West Bay · Al Dafna' },
-      { id: 'aspire', name: 'Aspire Zone · Al Waab' },
-      { id: 'pearl', name: 'The Pearl · Lusail' },
-      { id: 'other', name: 'Somewhere else' },
-    ],
-  },
-]
-
-export function QuestionnaireScreen({ step }: { step: number }) {
-  const navigate = useNavigate()
-  const s = STEPS[step - 1]
-  const [selected, setSelected] = useState<string | null>(null)
-  const next = () => navigate(step < STEPS.length ? `/onboarding/${step + 1}` : '/onboarding/guidelines')
+export function OnboardingSportScreen() {
+  const { t } = useI18n()
+  const advance = useAutoAdvance()
+  const [selected, setSelected] = useState<Sport | null>(onboarding.sport)
 
   return (
     <Shell nav={false}>
       <div className="relative z-1 flex h-full flex-col px-7 pt-12">
-        <div className="mb-6 flex items-center gap-3.5">
-          <button
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="inline-flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full border-none text-ink"
-            style={{ background: 'rgba(26,26,26,0.05)' }}
-          >
-            <ChevronLeft size={18} strokeWidth={2} className="rtl:rotate-180" />
-          </button>
-          <div className="h-1 flex-1 overflow-hidden rounded-pill" style={{ background: 'rgba(26,26,26,0.08)' }}>
-            <div className="h-full rounded-pill bg-brand transition-all" style={{ width: `${12 + (step / STEPS.length) * 88}%` }} />
-          </div>
-          <div className="shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
-            <b className="text-ink">{step}</b> / {STEPS.length}
-          </div>
-        </div>
-
-        <h1 className="m-0 mb-2 font-display text-[34px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
-          {s.title[0]}
-          <span className="italic text-brand">{s.title[1]}</span>
-          {s.title[2] ?? ''}
-        </h1>
-        <p className="mb-7 text-[13px] leading-[1.5]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
-          {s.sub}
-        </p>
-
-        <div className="flex flex-col gap-2.5">
-          {s.options.map((o) => {
-            const on = selected === o.id
-            return (
-              <button
-                key={o.id}
-                type="button"
-                aria-pressed={on}
-                onClick={() => {
-                  setSelected(o.id)
-                  setTimeout(next, 220)
-                }}
-                className="flex w-full cursor-pointer items-center gap-3.5 rounded-[18px] bg-card px-4 py-4 text-start transition-all"
-                style={{
-                  border: on ? '1.5px solid var(--color-brand)' : '1px solid rgba(26,26,26,0.10)',
-                  background: on ? 'color-mix(in srgb, var(--color-brand) 5%, var(--surface-card))' : 'var(--surface-card)',
-                  boxShadow: on ? '0 10px 24px -16px var(--color-brand)' : 'none',
-                }}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold text-ink">{o.name}</span>
-                  {o.desc && (
-                    <span className="mt-0.5 block text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-                      {o.desc}
-                    </span>
-                  )}
-                </span>
-                <span
-                  className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-onbrand"
-                  style={{ background: on ? 'var(--color-brand)' : 'transparent', border: on ? 'none' : '1.5px solid rgba(26,26,26,0.18)' }}
-                >
-                  {on && <Check size={12} strokeWidth={3} />}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="mt-auto flex flex-col items-center gap-1 pb-9">
-          <div className="text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-            {selected ? (
-              <>
-                Saved — <b className="text-ink">{s.options.find((o) => o.id === selected)?.name}</b>
-              </>
-            ) : (
-              'Tap one to continue'
-            )}
-          </div>
-          <button onClick={next} className="cursor-pointer border-none bg-transparent px-3 py-2 text-[12.5px] font-semibold text-brand">
-            Skip for now
-          </button>
-        </div>
-      </div>
-    </Shell>
-  )
-}
-
-/* ── Onboarding guidelines — agree before entering ──────────────────── */
-const ONBOARD_RULES = [
-  { title: 'Show up', body: 'Cancel at least 2 hours before start so your spot can be filled. Cancelling within 2 hours counts as a no-show — same as not turning up.' },
-  { title: 'No-shows are visible', body: "They're recorded on your profile for other players to see. No blocks, no penalties — just transparency." },
-  { title: 'Play fair, talk kind', body: 'Call lines honestly and keep chat friendly. Competitive is great; hostile is not.' },
-  { title: 'Money is between you', body: 'Connect never handles payments — court costs are settled in cash or transfer, directly with the host.' },
-]
-
-export function OnboardingGuidelinesScreen() {
-  const navigate = useNavigate()
-  return (
-    <Shell nav={false}>
-      <div className="relative z-1 flex h-full flex-col overflow-y-auto px-7 pt-12 pb-9">
-        <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-muted)' }}>
-          One last thing
-        </div>
-        <h1 className="m-0 mb-2 font-display text-[34px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
-          House <span className="italic text-brand">rules</span>.
-        </h1>
-        <p className="mb-6 text-[13px] leading-[1.5]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
-          Four things every player agrees to. They come down to one idea — treat every player the way you'd want to be treated.
-        </p>
-        <div className="flex flex-col gap-3">
-          {ONBOARD_RULES.map((g, i) => (
-            <div key={g.title} className="rounded-[18px] border bg-card p-4 shadow-row" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
-              <div className="mb-1.5 flex items-baseline gap-2.5">
-                <span className="font-display text-[18px] italic leading-none text-accent nums-tabular">{String(i + 1).padStart(2, '0')}</span>
-                <span className="text-[14.5px] font-semibold text-ink">{g.title}</span>
-              </div>
-              <p className="m-0 text-[12.5px] leading-[1.55]" style={{ color: 'rgba(26,26,26,0.65)', textWrap: 'pretty' }}>
-                {g.body}
-              </p>
-            </div>
+        <StepHeader step={2} />
+        <StepTitle a={t('onb.sport.titleA')} b={t('onb.sport.titleB')} c={t('onb.sport.titleC')} sub={t('onb.sport.sub')} />
+        <div role="radiogroup" className="flex flex-col gap-2.5">
+          {SPORTS.map((s) => (
+            <OptionCard
+              key={s}
+              name={t(`sport.${s}`)}
+              on={selected === s}
+              onSelect={() => {
+                setSelected(s)
+                onboarding.sport = s
+                advance('/onboarding/skill')
+              }}
+            />
           ))}
         </div>
-        <div className="mt-7">
-          <CTA onClick={() => navigate('/onboarding/done')}>I'm in — let's play</CTA>
+        <SavedFooter saved={selected ? t(`sport.${selected}`) : null} />
+      </div>
+    </Shell>
+  )
+}
+
+/* ── Q3 — Skill level (Baby Beginner → Pro, 7 steps) ────────────────── */
+const SKILLS: OnboardingSkill[] = ['baby_beginner', 'beginner', 'low_intermediate', 'intermediate', 'high_intermediate', 'advanced', 'pro']
+
+export function OnboardingSkillScreen() {
+  const { t } = useI18n()
+  const advance = useAutoAdvance()
+  const [selected, setSelected] = useState<OnboardingSkill | null>(onboarding.skill)
+
+  return (
+    <Shell nav={false}>
+      {/* min-h-full: 7 options outgrow small viewports — page scrolls */}
+      <div className="relative z-1 flex min-h-full flex-col px-7 pt-12">
+        <StepHeader step={3} />
+        <StepTitle a={t('onb.skill.titleA')} b={t('onb.skill.titleB')} c={t('onb.skill.titleC')} sub={t('onb.skill.sub')} />
+        <div role="radiogroup" className="flex flex-col gap-2.5">
+          {SKILLS.map((s) => (
+            <OptionCard
+              key={s}
+              name={t(`skill.${s}`)}
+              desc={t(`skill.${s}.desc`)}
+              on={selected === s}
+              onSelect={() => {
+                setSelected(s)
+                onboarding.skill = s
+                advance('/onboarding/guidelines')
+              }}
+            />
+          ))}
+        </div>
+        <SavedFooter saved={selected ? t(`skill.${selected}`) : null} />
+      </div>
+    </Shell>
+  )
+}
+
+/* ── Community Guidelines review lives in CommunityStandardsScreen.tsx ── */
+
+/* ── Creating account — full-screen hold between agree and All Set ───── */
+export function CreatingAccountScreen() {
+  const navigate = useNavigate()
+  const { t } = useI18n()
+
+  useEffect(() => {
+    // becomes the Supabase signUp call; replace so Back never returns here
+    const id = window.setTimeout(() => navigate('/onboarding/done', { replace: true }), 1800)
+    return () => window.clearTimeout(id)
+  }, [navigate])
+
+  return (
+    <Shell nav={false}>
+      <div role="status" className="relative z-1 flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+        <span
+          className="h-10 w-10 animate-spin rounded-full"
+          style={{ border: '3px solid color-mix(in oklab, var(--color-brand) 25%, transparent)', borderTopColor: 'var(--color-brand)' }}
+        />
+        <div className="text-[13px] font-medium" style={{ color: 'rgba(26,26,26,0.66)' }}>
+          {t('onb.rules.creating')}
         </div>
       </div>
     </Shell>
   )
 }
 
-/* ── All Set ────────────────────────────────────────────────────────── */
+/* ── All Set — celebration (confetti + burst ring + orbiting dot) ────── */
+
+/** celebration palette from the All-Set spec — decorative confetti only,
+ *  never UI; the falling pieces cycle through it */
+const CONFETTI_COLORS = ['#c76a48', '#e89b6c', '#4F7A5C', '#88b29b', '#d9a45a', '#1a1a1a', '#F4F0E8']
+const CONFETTI_COUNT = 28
+
+interface ConfettiPiece {
+  id: number
+  color: string
+  x: number
+  w: number
+  h: number
+  dx: number
+  dy: number
+  rot: number
+  duration: number
+  delay: number
+  spin: number
+}
+
+function makeConfetti(width: number): ConfettiPiece[] {
+  return Array.from({ length: CONFETTI_COUNT }, (_, i) => {
+    const x = width / 2 + (Math.random() - 0.5) * width * (0.35 + Math.random() * 0.55)
+    const fromCenter = x >= width / 2 ? 1 : -1 // pieces drift outward
+    return {
+      id: i,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      x,
+      w: 7 + Math.random() * 3,
+      h: 12 + Math.random() * 6,
+      dx: fromCenter * (10 + Math.random() * 140) + (Math.random() - 0.5) * 60,
+      dy: 420 + Math.random() * 300,
+      rot: -540 + Math.random() * 1080,
+      duration: 1700 + Math.random() * 1100,
+      delay: Math.random() * 500,
+      spin: 500 + Math.random() * 600,
+    }
+  })
+}
+
+/** full-screen confetti — fires once on entry, always sits behind the
+ *  headline & badge; each ribbon falls once (conn-conf-fall, fill both)
+ *  while its inner face tumbles independently (conn-conf-tumble, loop) */
+function ConfettiLayer() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pieces, setPieces] = useState<ConfettiPiece[]>([])
+
+  // spread scales to the measured shell width (useWindowDimensions equivalent)
+  useEffect(() => {
+    setPieces(makeConfetti(ref.current?.offsetWidth ?? 390))
+  }, [])
+
+  return (
+    <div ref={ref} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      {pieces.map((p) => (
+        <div
+          key={p.id}
+          className="absolute"
+          style={
+            {
+              top: -24,
+              left: p.x,
+              width: p.w,
+              height: p.h,
+              '--conf-dx': `${p.dx}px`,
+              '--conf-dy': `${p.dy}px`,
+              '--conf-rot': `${p.rot}deg`,
+              animation: `conn-conf-fall ${p.duration}ms ease ${p.delay}ms both`,
+            } as CSSProperties
+          }
+        >
+          <div className="h-full w-full" style={{ background: p.color, borderRadius: 2, animation: `conn-conf-tumble ${p.spin}ms linear infinite` }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** terracotta check badge + one-shot burst ring + continuously orbiting dot;
+ *  `animate={false}` (reduced motion) renders the badge statically */
+function CelebrationBadge({ animate }: { animate: boolean }) {
+  return (
+    <div className="relative mb-7 inline-flex">
+      {/* burst ring — 96×96 centered on the 88px badge, expands once, behind it */}
+      {animate && (
+        <span
+          aria-hidden
+          className="absolute h-24 w-24 rounded-full"
+          style={{ top: -4, insetInlineStart: -4, border: '2px solid var(--color-brand)', animation: 'conn-burst-ring 900ms ease-out 150ms both' }}
+        />
+      )}
+      {/* orbit container = badge + padding; it rotates, the dot rides its top edge */}
+      {animate && (
+        <span aria-hidden className="absolute" style={{ inset: -10, animation: 'conn-orbit 3000ms linear infinite' }}>
+          <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full bg-brand" />
+        </span>
+      )}
+      <div
+        className="relative inline-flex h-[88px] w-[88px] items-center justify-center rounded-full text-onbrand"
+        style={{ background: 'var(--color-brand)', boxShadow: '0 18px 40px -16px var(--color-brand)' }}
+      >
+        <Check size={40} strokeWidth={2.6} />
+      </div>
+    </div>
+  )
+}
+
 export function AllSetScreen() {
   const navigate = useNavigate()
+  const { t } = useI18n()
+  const reducedMotion = usePrefersReducedMotion()
+
   return (
     <Shell nav={false}>
-      <div className="relative z-1 flex h-full flex-col items-center justify-center px-8 text-center">
-        <div
-          className="mb-7 inline-flex h-[88px] w-[88px] items-center justify-center rounded-full text-onbrand"
-          style={{ background: 'var(--color-success)', boxShadow: '0 18px 40px -16px var(--color-success)' }}
-        >
-          <Check size={40} strokeWidth={2.6} />
+      <div className="relative z-1 flex h-full flex-col px-8">
+        {/* celebration fires once on entry; skipped under reduced motion */}
+        {!reducedMotion && <ConfettiLayer />}
+        <div className="relative flex flex-1 flex-col items-center justify-center text-center">
+          <CelebrationBadge animate={!reducedMotion} />
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.22em]" style={{ color: 'var(--color-text-muted)' }}>
+            {t('onb.done.eyebrow')}
+          </div>
+          <h1 className="m-0 font-display text-[44px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
+            {t('onb.done.titleA')}
+            <span className="italic text-brand">{t('onb.done.titleB')}</span>
+            {t('onb.done.titleC')}
+          </h1>
+          <p className="mt-3.5 mb-0 max-w-[270px] text-[13.5px] leading-[1.55]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
+            {t('onb.done.body')}
+          </p>
         </div>
-        <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.22em]" style={{ color: 'var(--color-text-muted)' }}>
-          Profile complete
-        </div>
-        <h1 className="m-0 font-display text-[44px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em' }}>
-          You're <span className="italic text-brand">all set</span>.
-        </h1>
-        <p className="mt-3.5 mb-9 max-w-[270px] text-[13.5px] leading-[1.55]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
-          We'll line up matches, partners and courts around what you just picked. Welcome to Connect.
-        </p>
-        <div className="flex w-full flex-col gap-2.5">
-          <CTA onClick={() => navigate('/home')}>Take me home</CTA>
-          <button onClick={() => navigate('/onboarding/1')} className="cursor-pointer border-none bg-transparent px-3 py-2.5 text-[13px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-            Edit my answers
-          </button>
+        {/* CTA pinned to the bottom, clear of the home indicator — hands off
+            to Home (first-timer Home shows the seeded Discover feed) */}
+        <div className="relative w-full" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 28px)' }}>
+          <CTA onClick={() => navigate('/home')}>
+            {t('onb.done.cta')}
+            {/* directional icon — flips in RTL */}
+            <ArrowRight size={18} strokeWidth={2.2} className="rtl:rotate-180" />
+          </CTA>
         </div>
       </div>
     </Shell>

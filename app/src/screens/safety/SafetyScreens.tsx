@@ -5,13 +5,14 @@ import { Shell } from '@/components/Shell'
 import { CTA } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, getUser, useDB } from '@/lib/store'
-import { initials } from '@/lib/format'
+import { initials, skillLabel } from '@/lib/format'
+import { StandardsBody } from '@/components/StandardsBody'
 
 /** Safety screens (safety-screens.jsx, blocked-list.jsx, report-*.jsx).
  *  Block & report stay slightly hidden — entry via ⋯ menus; unblock lives
  *  only here (Settings → Safety → Blocked players). CLAUDE.md §5. */
 
-function SafetyShell({ title, accent, children }: { title: string; accent: string; children: React.ReactNode }) {
+function SafetyShell({ title, accent, eyebrow, children }: { title: string; accent: string; eyebrow?: string; children: React.ReactNode }) {
   const navigate = useNavigate()
   return (
     <Shell nav={false}>
@@ -26,6 +27,11 @@ function SafetyShell({ title, accent, children }: { title: string; accent: strin
           <ChevronLeft size={18} strokeWidth={2} className="rtl:rotate-180" />
         </button>
         <div className="pt-2 pb-5">
+          {eyebrow && (
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: accent }}>
+              {eyebrow}
+            </div>
+          )}
           <h1 className="m-0 font-display text-[34px] font-normal leading-[1.02]" style={{ letterSpacing: '-0.022em', textWrap: 'balance' }}>
             {title.split('*')[0]}
             <span className="italic" style={{ color: accent }}>
@@ -70,7 +76,7 @@ export function BlockedListScreen() {
               <div className="min-w-0 flex-1">
                 <div className="text-[14px] font-semibold text-ink">{u.name}</div>
                 <div className="mt-0.5 text-[11.5px] capitalize" style={{ color: 'var(--color-text-muted)' }}>
-                  {u.sport} · {u.skill_level}
+                  {u.sport} · {skillLabel(u.skill_level)}
                 </div>
               </div>
               <button
@@ -251,50 +257,13 @@ export function ReportProblemScreen() {
   )
 }
 
-/** Community guidelines — 2-hour cancellation rule per CLAUDE.md §5
- *  (user-confirmed canonical over the prototype's 3h copy). */
-const GUIDELINES = [
-  {
-    title: 'Show up',
-    body: "If your plans change, cancel at least 2 hours before the match starts so your spot can be filled in time. Cancelling within 2 hours of start counts as a no-show — and so does simply not turning up. A no-show is a no-show, whichever way it happens.",
-  },
-  {
-    title: 'No-shows are visible, not punished',
-    body: "A no-show is recorded on your profile for other players to see. There's no block beyond that — your reliability record speaks for itself.",
-  },
-  {
-    title: 'Play fair, talk kind',
-    body: 'Call lines honestly, keep score together, and keep chat friendly. Competitive is great; hostile is not.',
-  },
-  {
-    title: 'Money is between you',
-    body: 'Connect never handles payments. Court costs are split as the host states — settle in cash or transfer, before or at the match.',
-  },
-  {
-    title: 'Respect the block',
-    body: "If someone blocks you, that's the end of the conversation. Repeated boundary-pushing, harassment, or chronic unreliability are grounds for removal.",
-  },
-]
-
+/** Community Standards — the full, unabridged text via the shared
+ *  StandardsBody (same body the onboarding agree step renders). */
 export function GuidelinesScreen() {
   return (
-    <SafetyShell title="House *rules*." accent="var(--color-accent)">
-      <p className="-mt-2 mb-6 text-[13px] leading-[1.5]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
-        Connect exists to get people in Doha off their phones and onto the court. These standards keep it that way — they come down to one idea:{' '}
-        <span className="font-semibold text-ink">treat every player the way you'd want to be treated.</span>
-      </p>
-      <div className="flex flex-col gap-3">
-        {GUIDELINES.map((g, i) => (
-          <div key={g.title} className="rounded-[18px] border bg-card p-4 shadow-row" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
-            <div className="mb-1.5 flex items-baseline gap-2.5">
-              <span className="font-display text-[18px] italic leading-none text-accent nums-tabular">{String(i + 1).padStart(2, '0')}</span>
-              <span className="text-[14.5px] font-semibold text-ink">{g.title}</span>
-            </div>
-            <p className="m-0 text-[12.5px] leading-[1.55]" style={{ color: 'rgba(26,26,26,0.65)', textWrap: 'pretty' }}>
-              {g.body}
-            </p>
-          </div>
-        ))}
+    <SafetyShell eyebrow="Community standards" title="Treat every player the way you'd *want* to be treated." accent="var(--color-accent)">
+      <div className="-mt-2">
+        <StandardsBody />
       </div>
     </SafetyShell>
   )
