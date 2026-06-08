@@ -12,6 +12,14 @@ export function timeRange(m: Pick<Match, 'start_time' | 'end_time'>): string {
   return `${hm(m.start_time)}–${hm(m.end_time)}`
 }
 
+/** "9:5" / "19:00" -> "19:00" — normalise an "HH:mm" string to zero-padded
+ *  24-hour clock (no AM/PM anywhere in the UI). Times are stored 24h already;
+ *  this is the single helper every time display routes through. */
+export function to24h(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  return `${String(h || 0).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`
+}
+
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /** "Today" / "Tomorrow" / "Thu" — short bucket label used on cards */

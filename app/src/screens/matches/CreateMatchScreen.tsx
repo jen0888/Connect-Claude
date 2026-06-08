@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MapPin, Plus, Sparkles, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MapPin, Sparkles, TriangleAlert } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, useDB } from '@/lib/store'
 import type { SkillLevel, Sport } from '@/lib/types'
+import { keyOf, labelFromKey } from '@/lib/datetime'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
+import { WhenCard } from './WhenCard'
 
 /** Create / Edit Match — single long scroll (create-match-v1.jsx, Editorial
  *  Calm). Cost and Joining must be explicitly chosen before creating.
@@ -21,7 +23,6 @@ const SPORTS: { id: Sport; label: string }[] = [
 ]
 
 const LEVEL_NAMES = ['Baby', 'Beginner', 'Low int.', 'High int.', 'Advanced']
-const PRESET_DUR = [30, 60, 90, 120]
 
 /** map the 1–5 dual-slider range onto the schema's single skill_level */
 function levelRange(min: number, max: number): SkillLevel {
@@ -30,17 +31,6 @@ function levelRange(min: number, max: number): SkillLevel {
   if (mid <= 2) return 'beginner'
   if (mid >= 4.5) return 'advanced'
   return 'intermediate'
-}
-
-const addMinutes = (hhmm: string, mins: number) => {
-  const [h, mn] = hhmm.split(':').map(Number)
-  const total = (((h * 60 + mn + mins) % 1440) + 1440) % 1440
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
-}
-const diffMinutes = (a: string, b: string) => {
-  const [ah, am] = a.split(':').map(Number)
-  const [bh, bm] = b.split(':').map(Number)
-  return (((bh * 60 + bm - ah * 60 - am) % 1440) + 1440) % 1440
 }
 
 const cardCls = 'rounded-[22px] border bg-card'
@@ -73,24 +63,10 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const { showToast } = useToast()
   const existing = isEdit ? db.matches.find((m) => m.id === id) : undefined
 
-  // 10-day date strip starting today
-  const dateDays = useMemo(() => {
-    const out: { label: string; day: number; key: string; date: Date }[] = []
-    const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const base = new Date()
-    for (let i = 0; i < 10; i++) {
-      const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i)
-      out.push({ label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : wd[d.getDay()], day: d.getDate(), key: d.toISOString().slice(0, 10), date: d })
-    }
-    return out
-  }, [])
-
   const [sport, setSport] = useState<Sport>(existing?.sport ?? 'padel')
-  const [dateKey, setDateKey] = useState(existing ? existing.start_time.slice(0, 10) : dateDays[0].key)
+  const [dateKey, setDateKey] = useState(existing ? existing.start_time.slice(0, 10) : keyOf(new Date()))
   const [startTime, setStartTime] = useState(existing ? existing.start_time.slice(11, 16) : '18:30')
   const [endTime, setEndTime] = useState(existing ? existing.end_time.slice(11, 16) : '20:00')
-  const duration = diffMinutes(startTime, endTime)
-  const setDuration = (mins: number) => setEndTime(addMinutes(startTime, mins))
   const [players, setPlayers] = useState(existing?.total_spots ?? 4)
   const [minLevel, setMinLevel] = useState(2)
   const [maxLevel, setMaxLevel] = useState(4)
@@ -100,8 +76,6 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const [description, setDescription] = useState(existing?.notes ?? '')
   const [showVenue, setShowVenue] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
-  const [showDur, setShowDur] = useState(false)
-  const [customDur, setCustomDur] = useState('')
 
   const [venue, setVenue] = useState<VenueSelection | null>(() => {
     if (existing) {
@@ -162,8 +136,6 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
     }
   }
 
-  const selectedDay = dateDays.find((d) => d.key === dateKey)
-
   return (
     <Shell nav={false}>
       <div className="flex h-full flex-col">
@@ -182,7 +154,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
           {/* hero copy */}
           <div className="pt-2 pb-[22px]">
             <div className="mb-2.5 text-[11px] font-medium uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-muted)' }}>
-              {isEdit ? `You're hosting · ${selectedDay?.label ?? ''}` : 'Step one of one'}
+              {isEdit ? `You're hosting · ${labelFromKey(dateKey)}` : 'Step one of one'}
             </div>
             <h1 className="m-0 font-display text-[40px] font-normal leading-none" style={{ letterSpacing: '-0.022em', textWrap: 'balance' }}>
               {isEdit ? (
@@ -221,150 +193,15 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
 
           {/* When */}
           <div className="mt-2">
-            <Eyebrow accent="var(--color-brand)">When</Eyebrow>
-            <div className={`relative mt-3 ${cardCls}`} style={cardStyle}>
-              {/* date strip */}
-              <div className="px-3.5 pt-3.5 pb-2.5">
-                <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                  {dateDays.map((d) => {
-                    const on = d.key === dateKey
-                    return (
-                      <button
-                        key={d.key}
-                        type="button"
-                        onClick={() => setDateKey(d.key)}
-                        className="flex min-w-[46px] shrink-0 cursor-pointer flex-col items-center gap-0.5 rounded-[14px] px-1.5 pt-2 pb-2.5"
-                        style={{
-                          border: on ? '1.5px solid var(--color-brand)' : '1px solid transparent',
-                          background: on ? 'var(--color-brand)' : 'transparent',
-                          color: on ? 'var(--color-text-onbrand)' : 'var(--color-text)',
-                        }}
-                      >
-                        <span className="text-[10px] font-medium uppercase tracking-[0.08em]" style={{ opacity: on ? 0.7 : 0.55 }}>
-                          {d.label.slice(0, 3)}
-                        </span>
-                        <span className="font-display text-[20px] leading-none nums-tabular">{d.day}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              {/* time row */}
-              <div className="grid border-t" style={{ gridTemplateColumns: '1fr 1px 1fr', borderColor: 'rgba(26,26,26,0.10)' }}>
-                {(
-                  [
-                    { label: 'Starts', value: startTime, set: (v: string) => { setStartTime(v); setEndTime(addMinutes(v, duration)) } },
-                    { label: 'Ends', value: endTime, set: setEndTime },
-                  ] as const
-                ).flatMap((f, i) => [
-                  i === 1 ? <div key="divider" style={{ background: 'rgba(26,26,26,0.10)' }} /> : null,
-                  <label key={f.label} className="flex cursor-pointer flex-col gap-1 px-4 py-3">
-                    <span className="text-[11px] font-medium uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-muted)' }}>
-                      {f.label}
-                    </span>
-                    <input
-                      type="time"
-                      value={f.value}
-                      onChange={(e) => f.set(e.target.value)}
-                      className="border-none bg-transparent p-0 font-display text-[30px] leading-[1.05] text-ink outline-none ltr-nums"
-                      style={{ letterSpacing: '-0.01em' }}
-                    />
-                  </label>,
-                ])}
-              </div>
-              {/* duration row */}
-              <div className="flex items-center justify-between border-t px-4 py-3" style={{ borderColor: 'rgba(26,26,26,0.10)' }}>
-                <span className="text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                  Duration
-                </span>
-                <div className="flex items-center gap-1.5">
-                  {PRESET_DUR.includes(duration) ? (
-                    PRESET_DUR.map((d) => {
-                      const on = duration === d
-                      return (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() => setDuration(d)}
-                          className="cursor-pointer rounded-pill px-3 py-1.5 text-[12px] font-medium nums-tabular"
-                          style={{
-                            border: `1.5px solid ${on ? 'var(--color-brand)' : 'rgba(26,26,26,0.18)'}`,
-                            background: on ? 'var(--color-brand)' : 'transparent',
-                            color: on ? 'var(--color-text-onbrand)' : 'var(--color-text)',
-                          }}
-                        >
-                          {d}m
-                        </button>
-                      )
-                    })
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowDur(true)}
-                      className="cursor-pointer rounded-pill border-[1.5px] border-brand bg-brand px-3 py-1.5 text-[12px] font-medium text-onbrand nums-tabular"
-                    >
-                      {duration}m
-                    </button>
-                  )}
-                  <div className="relative inline-flex">
-                    <button
-                      type="button"
-                      aria-label="Custom duration"
-                      onClick={() => setShowDur((s) => !s)}
-                      className="-ms-0.5 inline-flex cursor-pointer items-center justify-center border-none bg-transparent px-1.5 py-1.5"
-                      style={{ color: showDur ? 'var(--color-brand)' : 'var(--color-text-muted)' }}
-                    >
-                      <Plus size={12} strokeWidth={2.2} />
-                    </button>
-                    {showDur && (
-                      <>
-                        <div onClick={() => setShowDur(false)} className="fixed inset-0 z-30" />
-                        <div
-                          className="absolute end-0 top-[calc(100%+8px)] z-31 w-[210px] rounded-[16px] border bg-card p-3.5"
-                          style={{ borderColor: 'rgba(26,26,26,0.10)', boxShadow: '0 18px 40px -14px rgba(26,26,26,0.45)' }}
-                        >
-                          <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-muted)' }}>
-                            Custom duration
-                          </div>
-                          <div className="flex items-center gap-2.5 rounded-md px-3 py-2" style={{ border: '1px solid rgba(26,26,26,0.18)' }}>
-                            <input
-                              type="number"
-                              autoFocus
-                              value={customDur}
-                              onChange={(e) => setCustomDur(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && parseInt(customDur, 10) > 0) {
-                                  setDuration(parseInt(customDur, 10))
-                                  setShowDur(false)
-                                  setCustomDur('')
-                                }
-                              }}
-                              placeholder={String(duration)}
-                              className="min-w-0 flex-1 border-none bg-transparent p-0 font-display text-[26px] leading-none text-ink outline-none"
-                            />
-                            <span className="text-[12.5px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
-                              min
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={!(parseInt(customDur, 10) > 0)}
-                            onClick={() => {
-                              setDuration(parseInt(customDur, 10))
-                              setShowDur(false)
-                              setCustomDur('')
-                            }}
-                            className="mt-2.5 w-full cursor-pointer rounded-pill border-none bg-ink py-2.5 text-[13px] font-semibold text-onbrand disabled:opacity-60"
-                          >
-                            Set duration
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <WhenCard
+              dateKey={dateKey}
+              onDateKey={setDateKey}
+              startTime={startTime}
+              onStartTime={setStartTime}
+              endTime={endTime}
+              onEndTime={setEndTime}
+              restrictPast={!isEdit}
+            />
           </div>
 
           {/* Where */}

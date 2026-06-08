@@ -1,8 +1,10 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, ChatThread, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, User } from './types'
+import type { ChatMessage, ChatThread, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, User } from './types'
 import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, MATCH_REQUESTS, MATCH_RESULTS, USERS } from './mock/data'
 import { onboarding } from './onboarding'
 import { computeStatus } from './status'
+import { clearHostedMatch } from './hostedMatch'
+import { clearProfileSports } from './profile'
 
 /** signed-in profile pushed by AuthProvider (dev mockUser now, Supabase
  *  session later). Overlaid onto the seeded current user — the id is kept
@@ -11,9 +13,26 @@ import { computeStatus } from './status'
 let signedInProfile: User | null = null
 
 function withSignedIn(users: User[]): User[] {
-  return signedInProfile
-    ? users.map((u) => (u.id === CURRENT_USER_ID ? { ...signedInProfile!, id: CURRENT_USER_ID } : u))
-    : users
+  if (!signedInProfile) return users
+  // In a freshly created account the sign-up answers ARE the identity and must
+  // win over the dev/mock signed-in profile — otherwise the AuthProvider's mock
+  // user ("Jen"), re-applied on every mount/reload, would clobber the name,
+  // sport and skill the user typed at sign-up. This keeps the name (and the
+  // avatar initials derived from it) consistent on every screen.
+  const fresh = isFreshAccount()
+  return users.map((u) =>
+    u.id === CURRENT_USER_ID
+      ? {
+          ...signedInProfile!,
+          id: CURRENT_USER_ID,
+          ...(fresh && {
+            name: onboarding.name ?? signedInProfile!.name,
+            sport: onboarding.sport ?? signedInProfile!.sport,
+            skill_level: onboarding.skill ?? signedInProfile!.skill_level,
+          }),
+        }
+      : u,
+  )
 }
 
 /**
@@ -87,7 +106,7 @@ function freshDB(): DB {
     ...SEEDED,
     users: withSignedIn(SEEDED.users).map((u) =>
       u.id === CURRENT_USER_ID
-        ? { ...u, sport: onboarding.sport ?? u.sport, skill_level: onboarding.skill ?? u.skill_level }
+        ? { ...u, name: onboarding.name ?? u.name, sport: onboarding.sport ?? u.sport, skill_level: onboarding.skill ?? u.skill_level }
         : u,
     ),
     matches: SEEDED.matches
@@ -306,6 +325,11 @@ export const actions = {
     } catch {
       /* storage unavailable (private mode) — fresh state stays in-memory */
     }
+    // clean slate: drop any hosted match left in localStorage from a prior
+    // session, otherwise Home shows "You're hosting" instead of the first-timer
+    // feed (seeded Discover matches + Find a match / Host one CTAs).
+    clearHostedMatch()
+    clearProfileSports()
     mutate(() => freshDB())
   },
 
@@ -317,6 +341,24 @@ export const actions = {
     } catch {
       /* storage unavailable — completion stays in-memory only */
     }
+  },
+
+  /** EditProfile save: persist identity/game edits so every screen that reads
+   *  the current user (Profile, Home greeting/avatar, "Hosted by", cards…)
+   *  reflects them. Keeps the signed-in overlay and the onboarding answers in
+   *  sync too, so the change survives an AuthProvider remount / reload for a
+   *  fresh account (CLAUDE.md §5). The sports list itself (multi-sport) is
+   *  persisted separately via lib/profile; here we store the *primary* sport +
+   *  level onto the single-sport schema fields. */
+  updateProfile(patch: { name?: string; bio?: string; area?: string; sport?: Sport; skill_level?: SkillLevel }) {
+    if (signedInProfile) signedInProfile = { ...signedInProfile, ...patch }
+    if (patch.name != null) onboarding.name = patch.name
+    if (patch.sport != null) onboarding.sport = patch.sport
+    if (patch.skill_level != null && patch.skill_level !== 'any') onboarding.skill = patch.skill_level
+    mutate((d) => ({
+      ...d,
+      users: d.users.map((u) => (u.id === CURRENT_USER_ID ? { ...u, ...patch } : u)),
+    }))
   },
 
   /** Sign out (mock): drop the fresh-account flag and restore the seeded

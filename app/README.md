@@ -20,13 +20,14 @@ npm run build    # type-check + production build
 
 - `src/index.css` — design tokens (single source of truth) + type scale
 - `src/components/` — shared primitives: canonical `MatchCard`, `BottomNav`, lifecycle badges, controls, toasts, blobs
-- `src/lib/` — types, read-time status computation (`status.ts`), mock store, formatters
-- `src/screens/` — auth/onboarding, home, discover, matches (details/create/all), chat, post-match, profile/settings, safety
+- `src/lib/` — types, read-time status computation (`status.ts`), mock store, formatters (`format.ts`), and form date/time helpers (`datetime.ts`)
+- `src/screens/` — auth/onboarding, home, discover, matches (details/create/all), chat, post-match, profile/settings, safety. Both match create/edit forms share `screens/matches/WhenCard.tsx` for date + time
 - `/lab` route — dev-only component playground
 
 ## Key invariants (CLAUDE.md)
 
 - One canonical match card — never per-page variants
+- All times are 24-hour `HH:MM` — no AM/PM anywhere; date + time editing lives in the shared `WhenCard` (typeable times + native calendar)
 - Match status computed at read time from `start_time`/`end_time` — no cron
 - Cancel ≥2h before start, else it counts as a no-show (reputation only, no blocking)
 - 3 tabs only (Discover · Home · Chat); Home is default; My Matches lives in Home

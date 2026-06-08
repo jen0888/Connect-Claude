@@ -3,14 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
-import { CTA, Segmented } from '@/components/controls'
+import { CTA } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, getUser, useDB } from '@/lib/store'
-import type { SkillLevel, Sport } from '@/lib/types'
+import { ratingToSkillLevel, skillLevelToRating, writeProfileSports, type SportLevel } from '@/lib/profile'
+import { SportsLevelSection } from './SportsLevelSection'
 
-/** Edit Player Profile (form version) — save-then-route: Save → Settings +
- *  toast (CLAUDE.md §4). Trust signals (no-shows, stats) are not editable —
- *  public-by-default is the trust mechanism. */
+/** Edit Player Profile (form version) — save-then-route: Save → Home + toast
+ *  (CLAUDE.md §4). Trust signals (no-shows, stats) are not editable —
+ *  public-by-default is the trust mechanism. Sports & level lets players add
+ *  multiple sports and self-rate each one (see SportsLevelSection); on save the
+ *  primary (first) sport + level is written to the schema's single fields via
+ *  actions.updateProfile so every screen reflects it. */
 
 const fieldCls = 'w-full rounded-md border bg-card px-3.5 py-[11px] text-[14px] text-ink outline-none'
 const fieldStyle = { borderColor: 'rgba(26,26,26,0.18)' }
@@ -24,17 +28,31 @@ export function EditProfileScreen() {
   const [name, setName] = useState(me.name)
   const [bio, setBio] = useState(me.bio ?? '')
   const [area, setArea] = useState(me.area ?? '')
-  const [sport, setSport] = useState<Sport>(me.sport)
-  const [level, setLevel] = useState<SkillLevel>(me.skill_level)
+  const [sportLevels, setSportLevels] = useState<SportLevel[]>([{ sport: me.sport, level: skillLevelToRating(me.skill_level) }])
+  const [dirty, setDirty] = useState(false)
 
-  // required fields for a "complete" profile — name plus the game picks (the
-  // segmented controls always carry a value, so name is the only gate)
-  const canSave = !!name.trim()
+  const updateSportLevels = (next: SportLevel[]) => {
+    setSportLevels(next)
+    setDirty(true)
+  }
+
+  // a "complete" profile needs a name plus at least one sport with a level
+  const canSave = !!name.trim() && sportLevels.length > 0
 
   const save = () => {
     if (!canSave) return
-    // mock layer: users are static; the future Supabase update goes here.
-    // Mark setup complete so the first-timer checklist card disappears (§4).
+    // Persist the primary (first) sport + level onto the single-sport schema so
+    // every screen that reads the current user reflects it; keep the full list
+    // saved too. Mark setup complete so the first-timer card disappears (§4).
+    const primary = sportLevels[0]
+    actions.updateProfile({
+      name: name.trim(),
+      bio: bio.trim(),
+      area: area.trim(),
+      sport: primary.sport,
+      skill_level: ratingToSkillLevel(primary.level),
+    })
+    writeProfileSports(sportLevels)
     actions.completeProfile()
     showToast('Profile saved')
     navigate('/home')
@@ -66,7 +84,7 @@ export function EditProfileScreen() {
               <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
                 Name
               </label>
-              <input value={name} onChange={(e) => setName(e.target.value)} className={fieldCls} style={fieldStyle} />
+              <input value={name} onChange={(e) => { setName(e.target.value); setDirty(true) }} className={fieldCls} style={fieldStyle} />
             </div>
             <div>
               <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
@@ -74,7 +92,7 @@ export function EditProfileScreen() {
               </label>
               <textarea
                 value={bio}
-                onChange={(e) => setBio(e.target.value.slice(0, 160))}
+                onChange={(e) => { setBio(e.target.value.slice(0, 160)); setDirty(true) }}
                 rows={3}
                 placeholder="A line or two about how you play…"
                 className={`${fieldCls} resize-none`}
@@ -88,44 +106,11 @@ export function EditProfileScreen() {
               <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
                 Area
               </label>
-              <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Al Waab" className={fieldCls} style={fieldStyle} />
+              <input value={area} onChange={(e) => { setArea(e.target.value); setDirty(true) }} placeholder="e.g. Al Waab" className={fieldCls} style={fieldStyle} />
             </div>
           </div>
 
-          <Eyebrow accent="var(--color-brand)">Game</Eyebrow>
-          <div className="mt-3 flex flex-col gap-4 rounded-[22px] border bg-card p-[18px]" style={{ borderColor: 'rgba(26,26,26,0.10)' }}>
-            <div>
-              <div className="mb-2 text-[13.5px] font-medium text-ink">Main sport</div>
-              <Segmented
-                value={sport}
-                onChange={setSport}
-                options={[
-                  { value: 'padel', label: 'Padel' },
-                  { value: 'tennis', label: 'Tennis' },
-                  { value: 'badminton', label: 'Badm.' },
-                  { value: 'running', label: 'Run' },
-                ]}
-              />
-            </div>
-            <div>
-              <div className="mb-2 text-[13.5px] font-medium text-ink">Level</div>
-              {/* 7-step ladder wraps onto rows — one row can't fit the labels */}
-              <Segmented
-                value={level}
-                onChange={setLevel}
-                columns={2}
-                options={[
-                  { value: 'baby_beginner', label: 'Baby Beginner' },
-                  { value: 'beginner', label: 'Beginner' },
-                  { value: 'low_intermediate', label: 'Low Interm.' },
-                  { value: 'intermediate', label: 'Intermediate' },
-                  { value: 'high_intermediate', label: 'High Interm.' },
-                  { value: 'advanced', label: 'Advanced' },
-                  { value: 'pro', label: 'Pro' },
-                ]}
-              />
-            </div>
-          </div>
+          <SportsLevelSection value={sportLevels} onChange={updateSportLevels} />
 
           <p className="mt-5 mb-0 text-center text-[11.5px] leading-[1.5]" style={{ color: 'var(--color-text-muted)' }}>
             Stats, attendance and no-shows aren't editable — they're what makes profiles trustworthy.
@@ -137,7 +122,13 @@ export function EditProfileScreen() {
           className="absolute inset-x-0 bottom-0 z-5 px-[22px] pt-4 pb-[22px]"
           style={{ background: 'linear-gradient(180deg, transparent, var(--surface-page) 30%)' }}
         >
-          <CTA disabled={!canSave} onClick={save}>Save changes</CTA>
+          {dirty && (
+            <div className="mb-2 flex items-center justify-center gap-1.5 text-[11px] font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              <span className="h-[5px] w-[5px] rounded-full bg-brand" />
+              Unsaved changes
+            </div>
+          )}
+          <CTA disabled={!canSave || !dirty} onClick={save}>Save changes</CTA>
         </div>
       </div>
     </Shell>

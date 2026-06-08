@@ -43,21 +43,18 @@ export function FirstTimerHome() {
   const db = useDB()
   const { showToast } = useToast()
   const me = getUser(db, currentUserId)!
-  // preferences echo the sign-up questionnaire; mock-user profile is the fallback
+  // identity + preferences echo the sign-up questionnaire; mock-user profile is the fallback
+  const name = onboarding.name ?? me.name
   const sport = onboarding.sport ?? me.sport
   const skill = onboarding.skill ?? me.skill_level
-  // rank the shared Discover feed by the saved answers: sport is the hard
-  // filter, level just floats sensible matches up (§3). When nothing's in their
-  // sport yet, fall back to the full nearby feed (never empty, §5) and say so.
+  // Home shows the top slice of the SAME list Discover renders, filtered by the
+  // saved answers: sport is an exact match, level passes when the match suits the
+  // user's level or is open to any ('any'). If that leaves nothing, fall back to
+  // the full nearby feed (never empty, §5) and label it honestly.
   const feed = discoverFeed(db)
-  const inSport = feed.filter((m) => m.sport === sport)
-  const usingFallback = inSport.length === 0
-  const ranked = [...inSport].sort((a, b) => {
-    const aFit = a.skill_level === skill || a.skill_level === 'any' ? 0 : 1
-    const bFit = b.skill_level === skill || b.skill_level === 'any' ? 0 : 1
-    return aFit - bFit || a.start_time.localeCompare(b.start_time)
-  })
-  const nearby = (usingFallback ? feed : ranked).slice(0, 3)
+  const matched = feed.filter((m) => m.sport === sport && (m.skill_level === skill || m.skill_level === 'any'))
+  const usingFallback = matched.length === 0
+  const nearby = (usingFallback ? feed : matched).slice(0, 3)
   // profile-setup card hides once the profile is saved complete (§4)
   const profileComplete = isProfileComplete()
   const done = CHECKLIST.filter((c) => c.done).length
@@ -73,7 +70,7 @@ export function FirstTimerHome() {
               Welcome to Connect!
             </div>
             <h1 className="m-0 font-display text-[32px] font-normal leading-[1.05]" style={{ letterSpacing: '-0.02em' }}>
-              Hello, <span className="italic text-accent">{me.name.split(' ')[0]}</span>.
+              Hello, <span className="italic text-accent">{name.split(' ')[0]}</span>.
               <br />
               Let's get you on a court.
             </h1>
@@ -89,7 +86,7 @@ export function FirstTimerHome() {
             </div>
           </div>
           <Link to="/profile" aria-label="Profile & settings" className="no-underline">
-            <Avatar name={me.name} accent="var(--color-accent)" />
+            <Avatar name={name} accent="var(--color-accent)" />
           </Link>
         </div>
 
@@ -103,7 +100,7 @@ export function FirstTimerHome() {
             <ArrowRight size={15} strokeWidth={2.2} className="rtl:rotate-180" />
           </Link>
           <Link
-            to="/matches/create"
+            to="/matches/create-demo"
             className="flex flex-1 items-center justify-center gap-2 rounded-[12px] bg-transparent px-4 py-3.5 text-[14px] font-semibold text-ink no-underline transition-colors"
             style={{ border: '1.5px solid rgba(26,26,26,0.16)' }}
           >
@@ -143,7 +140,7 @@ export function FirstTimerHome() {
         {/* looking for players — the first three rows of the same list Discover
             renders; "See all" continues into it (§2.4 / §4) */}
         <div className="mb-3 flex items-center justify-between">
-          <Eyebrow accent="var(--color-brand)">{usingFallback ? `No ${sportLabel(sport)} yet — nearby` : 'Looking for players'}</Eyebrow>
+          <Eyebrow accent="var(--color-brand)">{usingFallback ? `No ${sportLabel(sport)} at your level — nearby` : 'Looking for players'}</Eyebrow>
           <Link to="/discover" className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink no-underline">
             See all <ChevronRight size={11} strokeWidth={2.2} className="rtl:rotate-180" />
           </Link>

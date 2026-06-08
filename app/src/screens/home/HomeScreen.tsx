@@ -9,9 +9,11 @@ import { useToast } from '@/components/Toast'
 import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { dayLabel, greetingDate, hoursUntil, timeAgoLabel } from '@/lib/format'
+import { useHostedMatch } from '@/lib/hostedMatch'
 import { LIFECYCLE } from '@/components/lifecycle'
 import { RecordResultHomeCard } from './RecordResultHomeCard'
 import { WeekMatchCard } from './WeekMatchCard'
+import { HostedMatchCard } from './HostedMatchCard'
 import { FirstTimerHome } from './FirstTimerHome'
 
 /** Home — default landing tab. Data-driven sections cover every design
@@ -24,6 +26,9 @@ export function HomeScreen() {
   const { showToast } = useToast()
   const [attended, setAttended] = useState(false)
   const me = getUser(db, currentUserId)!
+  // the host's own match (localStorage source of truth) — written by the
+  // Create/Edit form; preferred over seeded hosted matches when present.
+  const hosted = useHostedMatch()
 
   const data = useMemo(() => {
     const joined = joinedMatches(db)
@@ -45,7 +50,7 @@ export function HomeScreen() {
 
   // empty personal state = no joined (match_players) + no hosted (host_id = me).
   // Purely data-derived — never a "new user" flag or first-session check (§4).
-  if (data.joined.length === 0 && data.hosted.length === 0) {
+  if (data.joined.length === 0 && data.hosted.length === 0 && !hosted) {
     return <FirstTimerHome />
   }
 
@@ -111,24 +116,36 @@ export function HomeScreen() {
           </>
         )}
 
-        {/* you're hosting */}
-        {data.hosted.map((m) => (
-          <div key={m.id}>
-            <div className="flex items-center justify-between">
-              <Eyebrow>You're hosting · {dayLabel(m.start_time)}</Eyebrow>
-              <Link
-                to="/matches/all?filter=hosting"
-                className="inline-flex items-center gap-1 text-[11.5px] font-medium no-underline transition-colors hover:text-accent"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                See all <ChevronRight size={10} strokeWidth={2.2} className="rtl:rotate-180" />
-              </Link>
+        {/* you're hosting — the host's own match from the source of truth wins;
+            otherwise fall back to seeded hosted matches */}
+        {hosted ? (
+          <div>
+            <div className="mb-2.5">
+              <Eyebrow>You're hosting · {hosted.dateLabel}</Eyebrow>
             </div>
-            <div className="mt-2.5 mb-[26px]">
-              <MatchCard match={m} players={matchPlayers(db, m.id)} action="edit" showStatusBadge={false} />
+            <div className="mb-[26px]">
+              <HostedMatchCard match={hosted} />
             </div>
           </div>
-        ))}
+        ) : (
+          data.hosted.map((m) => (
+            <div key={m.id}>
+              <div className="flex items-center justify-between">
+                <Eyebrow>You're hosting · {dayLabel(m.start_time)}</Eyebrow>
+                <Link
+                  to="/matches/all?filter=hosting"
+                  className="inline-flex items-center gap-1 text-[11.5px] font-medium no-underline transition-colors hover:text-accent"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  See all <ChevronRight size={10} strokeWidth={2.2} className="rtl:rotate-180" />
+                </Link>
+              </div>
+              <div className="mt-2.5 mb-[26px]">
+                <MatchCard match={m} players={matchPlayers(db, m.id)} action="edit" showStatusBadge={false} />
+              </div>
+            </div>
+          ))
+        )}
 
         {/* requested to join — awaiting host approval */}
         {data.requested.map((r) => {

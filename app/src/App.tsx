@@ -4,6 +4,7 @@ import { HomeScreen } from '@/screens/home/HomeScreen'
 import { DiscoverScreen } from '@/screens/discover/DiscoverScreen'
 import { AllMatchesScreen } from '@/screens/matches/AllMatchesScreen'
 import { CreateMatchScreen } from '@/screens/matches/CreateMatchScreen'
+import { EditMatchScreen } from '@/screens/matches/EditMatchScreen'
 import { MatchDetailsScreen } from '@/screens/matches/MatchDetailsScreen'
 import { PostMatchScreen } from '@/screens/postmatch/PostMatchScreen'
 import { ChatListScreen } from '@/screens/chat/ChatListScreen'
@@ -42,6 +43,8 @@ function App() {
       <Route path="/chat/dm/:userId" element={<ConversationScreen />} />
       <Route path="/matches/all" element={<AllMatchesScreen />} />
       <Route path="/matches/create" element={<CreateMatchScreen />} />
+      <Route path="/matches/edit-demo" element={<EditMatchScreen />} />
+      <Route path="/matches/create-demo" element={<EditMatchScreen mode="create" />} />
       <Route path="/matches/:id/edit" element={<CreateMatchScreen mode="edit" />} />
       <Route path="/matches/:id" element={<MatchDetailsScreen />} />
       <Route path="/post-match/:id" element={<PostMatchScreen />} />

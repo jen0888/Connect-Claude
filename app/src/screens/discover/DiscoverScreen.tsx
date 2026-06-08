@@ -165,7 +165,7 @@ export function DiscoverScreen() {
               </h1>
             </div>
             <Link
-              to="/matches/create"
+              to="/matches/create-demo"
               aria-label="Create a match"
               className="mt-0.5 inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-transparent text-brand no-underline"
               style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
@@ -323,7 +323,7 @@ export function DiscoverScreen() {
 
               {/* host nudge footer */}
               <Link
-                to="/matches/create"
+                to="/matches/create-demo"
                 className="flex items-center gap-3.5 rounded-[18px] px-5 py-[18px] text-inherit no-underline transition-colors"
                 style={{ background: 'rgba(255,255,255,0.55)', border: '1.5px dashed color-mix(in srgb, var(--color-brand) 33%, transparent)' }}
               >

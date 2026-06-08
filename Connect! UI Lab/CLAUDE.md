@@ -92,6 +92,40 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 
 **Save-then-route (action-specific, not blanket):** Match Edit → Home + toast · Edit Profile → Settings + toast · Settings inline toggles → save in place (no Save button, no nav). Toasts (created/cancelled/saved) are transient (~2s), never destination screens.
 
+**Carry-forward state (data persists across a flow — never re-ask):** Anything the user types or selects on one screen must travel to every later screen where it's relevant. Never re-prompt for a value already given, and never blank a field on navigation. Examples: sign-up questionnaire answers (sport, skill, DOB, country/city, language) pre-fill the new profile; Create-a-Match fields persist into the review/confirm step and onto the created match card; the Choose Location sub-screen returns the picked venue + court # to the create form (and the form keeps everything else entered); Match Edit and Edit Profile open **pre-filled with current values**; going back then forward keeps prior entries intact. Implement by holding each flow's data in **shared form/route state** (context, route params, or a draft object) — not per-screen local state that resets on unmount. This is the companion to Save-then-route: save-then-route decides *where you land* after an action; carry-forward decides *what data you bring with you*.
+
+**Route map (proposed paths — keep paths stable; screens map 1:1 to routes).** React Router over Vite. Only the three tabs keep the bottom tab bar; everything else is a **stacked sub-screen** (pushes over the active tab, back returns) or a **bottom sheet / modal** for transient pickers and confirms. Every screen is reachable by a canonical URL so PWA deep-links and Realtime notifications resolve to one place and never fork a second copy.
+
+| Path | Screen | Type / notes |
+|---|---|---|
+| `/` | — | Redirect: session → `/home`, else → `/splash` |
+| `/splash` | Splash | Public (unauth) |
+| `/login` | Log In | Public. On success → `/home` directly (**no questionnaire**) |
+| `/signup` | Sign Up questionnaire | Public. Multi-step (sport · skill · DOB · country · city · language); steps share one draft (carry-forward). DOB hard-gates under-18 |
+| `/welcome` | "You're all set" | Post-signup confirmation → `/home` |
+| `/discover` | **Discover** | Tab. Always-seeded feed, no empty state |
+| `/home` | **Home** | Tab. **Default landing.** Sections: NEXT UP · You're hosting · This week · Host CTA (+ transient JUST PLAYED) |
+| `/chat` | **Chat** | Tab. Unified inbox; notifications inline in threads |
+| `/chat/:threadId` | Chat thread | Sub-screen. Canonical group **or** DM thread (deep-link, never fork). No chat before joining |
+| `/my-matches` | My Matches | Sub-screen of Home (hosting "See all" archive) |
+| `/matches/new` | Create-a-Match | Sub-screen. Holds a **draft** object across the whole create flow |
+| `/matches/new/location` | Choose Location | Sub-screen. Search · recent · curated · add custom → returns venue + court # to the draft |
+| `/matches/new/review` | Review / Confirm | Sub-screen. Pre-filled from the draft → on confirm `/home` + toast |
+| `/matches/:id` | Match Details | Sub-screen. Result is canonical here |
+| `/matches/:id/edit` | Match Edit | Sub-screen, **pre-filled** with current values → save `/home` + toast |
+| `/matches/:id/results` | Post-match | Sub-screen. 2 steps: who played (no-show flag) → optional win/lose/draw. Open ≤24h after end |
+| `/players/:id` | Other-Player Profile | Sub-screen. ⋯ menu → Report / Block (no primary Block button) |
+| `/profile` | Profile + Settings | Sub-screen from Home header (avatar/gear) — **not a tab** |
+| `/profile/edit` | Edit Profile | Sub-screen, **pre-filled** → save `/profile` + toast |
+| `/settings` | Settings | Sub-screen. ~80% inline toggles (save in place, no nav) |
+| `/settings/safety` | Safety | Drill-down |
+| `/settings/safety/blocked` | Blocked players | Drill-down (only place to unblock) |
+| `/settings/legal/*` | Legal | External links, not screens |
+
+- **Auth guard:** every route except `/splash` `/login` `/signup` `/welcome` requires a session; unauthenticated hits redirect to `/login`. The sign-up questionnaire runs on `/signup` only.
+- **Tabs never nest as routes** — there is no 4th tab. My Matches, Profile, Settings are sub-screens under Home, not tab routes.
+- **Save-then-route + carry-forward are route behaviors:** the destination column above is Save-then-route; the draft/pre-fill notes are carry-forward. Don't blank a draft on a sub-screen detour (e.g. `/matches/new` → `/matches/new/location` → back).
+
 ---
 
 ## 5. Key business logic (the non-obvious rules)
@@ -166,9 +200,11 @@ Apply **Row Level Security on all tables.**
 
 - Tokens over hardcoded values — always.
 - Reuse the canonical match card; don't create per-page card variants.
+- Carry data forward across a flow — values entered on an earlier screen pre-fill/inform every later screen where they're relevant; never re-ask, never blank on nav (see §4 *Carry-forward state*).
 - Prefer read-time computation (views, computed status) over cron jobs/triggers.
 - Keep Stage 1 scope tight — if a request smells like a deferred feature (§1), confirm before building.
 - When touching auth, no-show, RLS, or chat, re-check the rules in §5 — they have been deliberately tuned and several "obvious" alternatives were explicitly rejected.
+- **Dev reset helper (test accounts only).** Provide a one-command way to reset a test user back to the original clean state so sign-up/onboarding can be re-run from scratch every time. "Original setup" = a freshly-created account with **no** carried-forward profile, drafts, or activity. The reset must: (1) delete the user's dependent rows — `match_players`, `match_requests`, `no_show_reports`, `match_results`, `notifications`, chat messages, and any `matches` they host; (2) either **delete the auth user** (so the next login goes through `/signup` again) or blank the profile back to questionnaire defaults (clears sport/skill/DOB/country/city/language and any settings toggles); (3) clear client-side draft/carry-forward state and local storage so no stale data survives the reset. Keep it a **dev-only script/seed task (e.g. a Supabase SQL/seed script), never an in-app feature**, never run against real/production accounts, and gate it so it only targets seeded test users.
 
 ## 9. Reference docs (in this folder)
 

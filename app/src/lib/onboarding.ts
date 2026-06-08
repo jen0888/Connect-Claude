@@ -10,6 +10,8 @@ import type { SkillLevel, Sport } from './types'
 export type OnboardingSkill = Exclude<SkillLevel, 'any'>
 
 export interface OnboardingAnswers {
+  /** display name captured on the Sign Up screen (Create account) */
+  name: string | null
   /** month is 0-based (JS Date convention) */
   dob: { year: number; month: number; day: number } | null
   sport: Sport | null
@@ -23,6 +25,7 @@ export interface OnboardingAnswers {
 const STORAGE_KEY = 'connect.onboarding'
 
 const DEFAULTS: OnboardingAnswers = {
+  name: null,
   dob: null,
   sport: null,
   skill: null,
@@ -58,6 +61,7 @@ export const onboarding: OnboardingAnswers = new Proxy(load(), {
  *  Mid-questionnaire Back/Next still hydrates from here; only a fresh sign-up
  *  resets it (CLAUDE.md §3). */
 export function resetOnboarding() {
+  onboarding.name = null
   onboarding.dob = null
   onboarding.sport = null
   onboarding.skill = null

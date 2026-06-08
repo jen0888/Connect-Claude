@@ -139,6 +139,47 @@
 @utility nums-tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* Digits-only number field — strip the native spinner so a serif numeral
+   reads as plain type (Cost · price per player). Pair with inputMode="numeric"
+   + onChange sanitising to digits in the component. */
+.num::-webkit-outer-spin-button,
+.num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.num {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Fixed-height phone-frame scroll setup — a screen is a flex column that owns
+   one vertical scroll region; horizontal strips (date chips, sport pills) hide
+   their scrollbar. */
+.screen {
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 56px 22px 130px;
+  position: relative;
+  z-index: 1;
+}
+.hscroll {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hscroll::-webkit-scrollbar {
+  display: none;
+}
 /* Numbers/times stay LTR even in Arabic (CLAUDE.md §7) */
 @utility ltr-nums {
   direction: ltr;
@@ -225,6 +266,30 @@
 }
 @utility conn-toast-in {
   animation: conn-toast-in 0.22s ease-out;
+}
+
+/* Bottom-sheet entrance — dim/blur backdrop fades, panel slides up. */
+@keyframes conn-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@utility conn-fade-in {
+  animation: conn-fade-in 0.18s ease-out;
+}
+@keyframes conn-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@utility conn-sheet-in {
+  animation: conn-sheet-in 0.26s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Blob drift animation (blobs-bg.js port) */

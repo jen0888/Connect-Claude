@@ -7,8 +7,10 @@ import { CTA } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
 import { onboarding, resetOnboarding, type OnboardingSkill } from '@/lib/onboarding'
+// `onboarding` is the questionnaire's localStorage store; the name joins sport/skill there.
 import { mockUser } from '@/lib/mockUser'
 import { useAuth } from '@/context/AuthContext'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { actions } from '@/lib/store'
 import { USERS } from '@/lib/mock/data'
 import type { Sport } from '@/lib/types'
@@ -332,6 +334,9 @@ export function SignUpScreen() {
       else {
         // new account → start the questionnaire blank, nothing pre-selected (§3)
         resetOnboarding()
+        // keep the entered name (after the reset) — Home reads it back for the
+        // greeting, avatar initial and host identity. Empty falls back gracefully.
+        if (name.trim()) onboarding.name = name.trim()
         navigate('/onboarding/age')
       }
     }, FAKE_LATENCY)
@@ -393,7 +398,7 @@ export function SignUpScreen() {
 export function LoginScreen() {
   const navigate = useNavigate()
   const { t } = useI18n()
-  const { signIn } = useAuth()
+  const { signIn, signInWithMock } = useAuth()
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [touched, setTouched] = useState(false)
@@ -403,26 +408,36 @@ export function LoginScreen() {
   const emailError = touched && email && !isValidEmail(email) ? t('auth.err.invalidEmail') : null
   const canGo = isValidEmail(email) && !!pw
 
-  const submit = () => {
+  const submit = async () => {
     if (!canGo || busy) return
+    setWrongCreds(false)
     setBusy(true)
+
+    // real auth: supabase.auth.signInWithPassword via AuthContext. The
+    // onAuthStateChange listener sets the session; navigate on success.
+    if (isSupabaseConfigured) {
+      const { error } = await signIn(email, pw)
+      setBusy(false)
+      if (error) setWrongCreds(true)
+      else navigate('/home') // returning login → straight to Home
+      return
+    }
+
+    // no project wired → dev-mock login: the password must match
+    // VITE_DEV_PASSWORD (.env.development, gitignored). The whole branch is
+    // dead-code-eliminated from production bundles.
     setTimeout(() => {
       setBusy(false)
-      // dev-only mock login: the password must match VITE_DEV_PASSWORD
-      // (.env.development, gitignored) and success signs in as mockUser.
-      // import.meta.env.MODE is replaced at build time, so this whole branch
-      // is dead-code-eliminated from production bundles.
       if (import.meta.env.MODE === 'development') {
         if (import.meta.env.VITE_DEV_PASSWORD && pw === import.meta.env.VITE_DEV_PASSWORD) {
-          signIn(mockUser)
-          // returning login → straight to Home, never the questionnaire
-          navigate('/home')
+          signInWithMock(mockUser)
+          navigate('/home') // returning login → straight to Home, never the questionnaire
         } else {
           setWrongCreds(true)
         }
         return
       }
-      // becomes supabase.auth.signInWithPassword; mock convention until then
+      // prod with no Supabase configured — mock convention until a project lands
       if (isRegistered(email)) navigate('/home')
       else setWrongCreds(true)
     }, FAKE_LATENCY)

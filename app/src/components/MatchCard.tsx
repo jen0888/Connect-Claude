@@ -4,6 +4,7 @@ import { Bookmark, CalendarCheck, Check, Clock, Eye, Hourglass, ListPlus, Lock, 
 import type { Match, MatchStatus, User } from '@/lib/types'
 import { artType, courtLabel, hm, matchKind, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
+import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
 import { SportArt } from './SportArt'
 import { LifecycleAction, LifecycleNote, StatusBadge, lifecycleHasAction, lifecycleSpots } from './lifecycle'
@@ -68,6 +69,14 @@ export function MatchCard({
   const filled = match.total_spots - match.spots_available
   const imgH = featured ? 140 : 118
   const detailHref = `/matches/${match.id}`
+
+  /* Location line on the card art: court name · court no. · indoor/outdoor.
+     Never repeat the venue name (courtLabel falls back to it), and pull the
+     indoor/outdoor setting from the curated venue when we know it. */
+  const setting = match.venue_id ? VENUES.find((v) => v.id === match.venue_id)?.setting ?? null : null
+  const locationLine = match.sport === 'running'
+    ? [match.venue_name, match.route_end].filter(Boolean).join(' · ')
+    : [match.venue_name, match.court_number, setting].filter(Boolean).join(' · ')
 
   const done = joinStatus === 'joined' || joinStatus === 'requested'
   const joinLabel = joinStatus === 'joined' ? 'Joined' : joinStatus === 'requested' ? 'Requested' : match.join_mode === 'approval' ? 'Request' : 'Join'
@@ -224,7 +233,7 @@ export function MatchCard({
           style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 20%, transparent) 0%, transparent 50%)' }}
         />
         <div className="absolute start-3.5 top-3 text-[10.5px] font-medium uppercase tracking-[0.18em]" style={{ color: 'rgba(244,240,232,0.92)' }}>
-          {match.venue_name} · {courtLabel(match)}
+          {locationLine}
         </div>
         {onToggleSave && (
           <button
