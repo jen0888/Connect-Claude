@@ -8,6 +8,7 @@
 **/*recovery*codes*
 **/*.env
 **/.env.*
+.env.local
 **/credentials*
 **/secrets*
 
