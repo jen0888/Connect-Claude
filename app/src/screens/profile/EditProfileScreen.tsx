@@ -5,7 +5,7 @@ import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { CTA, Segmented } from '@/components/controls'
 import { useToast } from '@/components/Toast'
-import { currentUserId, getUser, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, useDB } from '@/lib/store'
 import type { SkillLevel, Sport } from '@/lib/types'
 
 /** Edit Player Profile (form version) — save-then-route: Save → Settings +
@@ -27,10 +27,17 @@ export function EditProfileScreen() {
   const [sport, setSport] = useState<Sport>(me.sport)
   const [level, setLevel] = useState<SkillLevel>(me.skill_level)
 
+  // required fields for a "complete" profile — name plus the game picks (the
+  // segmented controls always carry a value, so name is the only gate)
+  const canSave = !!name.trim()
+
   const save = () => {
-    // mock layer: users are static; the future Supabase update goes here
+    if (!canSave) return
+    // mock layer: users are static; the future Supabase update goes here.
+    // Mark setup complete so the first-timer checklist card disappears (§4).
+    actions.completeProfile()
     showToast('Profile saved')
-    navigate('/settings')
+    navigate('/home')
   }
 
   return (
@@ -130,7 +137,7 @@ export function EditProfileScreen() {
           className="absolute inset-x-0 bottom-0 z-5 px-[22px] pt-4 pb-[22px]"
           style={{ background: 'linear-gradient(180deg, transparent, var(--surface-page) 30%)' }}
         >
-          <CTA onClick={save}>Save changes</CTA>
+          <CTA disabled={!canSave} onClick={save}>Save changes</CTA>
         </div>
       </div>
     </Shell>

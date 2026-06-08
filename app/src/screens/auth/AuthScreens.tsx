@@ -6,7 +6,7 @@ import { Logo } from '@/components/Logo'
 import { CTA } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
-import { onboarding, type OnboardingSkill } from '@/lib/onboarding'
+import { onboarding, resetOnboarding, type OnboardingSkill } from '@/lib/onboarding'
 import { mockUser } from '@/lib/mockUser'
 import { useAuth } from '@/context/AuthContext'
 import { actions } from '@/lib/store'
@@ -27,7 +27,6 @@ import type { Sport } from '@/lib/types'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const isValidEmail = (v: string) => EMAIL_RE.test(v.trim())
 const isStrongPassword = (v: string) => v.length >= 8
-const isValidPhone = (v: string) => /^[+0-9][0-9\s()-]*$/.test(v.trim()) && (v.match(/\d/g)?.length ?? 0) >= 8
 const isRegistered = (email: string) => USERS.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())
 /** simulated network latency for loading states */
 const FAKE_LATENCY = 900
@@ -68,40 +67,6 @@ function Wordmark({ size = 44 }: { size?: number }) {
     <h1 className="m-0 text-center font-display font-normal leading-none" style={{ fontSize: size, letterSpacing: '-0.02em' }}>
       Connect<span className="italic text-brand">!</span>
     </h1>
-  )
-}
-
-/** EN / عربي switch — sits at the inline end (top-right LTR, top-left RTL via
- *  logical flex `justify-end`); the control itself never flips. Labels are
- *  deliberately fixed-language (EN stays Latin, عربي stays Arabic), so they
- *  bypass t(). Choice persists via LocaleProvider (localStorage + dir/lang). */
-function LangBar() {
-  const { locale, setLocale } = useI18n()
-  return (
-    <div className="flex justify-end">
-      <div className="inline-flex rounded-pill p-[3px]" style={{ background: 'rgba(26,26,26,0.06)' }}>
-        {(
-          [
-            { id: 'en', label: 'EN' },
-            { id: 'ar', label: 'عربي' },
-          ] as const
-        ).map((o) => (
-          <button
-            key={o.id}
-            onClick={() => setLocale(o.id)}
-            aria-pressed={locale === o.id}
-            className="min-h-[34px] cursor-pointer rounded-pill border-none px-3.5 py-1.5 text-[12px] font-semibold transition-colors"
-            style={{
-              background: locale === o.id ? 'var(--surface-card)' : 'transparent',
-              color: locale === o.id ? 'var(--color-text)' : 'var(--color-text-muted)',
-              boxShadow: locale === o.id ? '0 2px 8px -4px rgba(26,26,26,0.3)' : 'none',
-            }}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </div>
   )
 }
 
@@ -315,7 +280,7 @@ export function SplashScreen() {
   return (
     <Shell nav={false}>
       <div className="relative z-1 flex h-full flex-col px-7 pt-8 pb-9">
-        <LangBar />
+        {/* TODO: language switching lives in Settings, not onboarding */}
         {/* logo (transparent PNG, bakes in wordmark + tagline) is the sole focus */}
         <div className="flex flex-1 items-center justify-center">
           <Logo className="w-[82vw] max-w-[360px]" />
@@ -347,7 +312,6 @@ export function SignUpScreen() {
   const { t } = useI18n()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
   const [pw, setPw] = useState('')
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [emailInUse, setEmailInUse] = useState(false)
@@ -355,9 +319,8 @@ export function SignUpScreen() {
 
   const touch = (k: string) => setTouched((s) => ({ ...s, [k]: true }))
   const emailError = emailInUse ? t('auth.err.emailInUse') : touched.email && email && !isValidEmail(email) ? t('auth.err.invalidEmail') : null
-  const phoneError = touched.phone && phone && !isValidPhone(phone) ? t('auth.err.phone') : null
   const pwError = touched.pw && pw && !isStrongPassword(pw) ? t('auth.err.weakPassword') : null
-  const canGo = !!name.trim() && isValidEmail(email) && isValidPhone(phone) && isStrongPassword(pw)
+  const canGo = !!name.trim() && isValidEmail(email) && isStrongPassword(pw)
 
   const submit = () => {
     if (!canGo || busy) return
@@ -366,14 +329,18 @@ export function SignUpScreen() {
     setTimeout(() => {
       setBusy(false)
       if (isRegistered(email)) setEmailInUse(true)
-      else navigate('/onboarding/age')
+      else {
+        // new account → start the questionnaire blank, nothing pre-selected (§3)
+        resetOnboarding()
+        navigate('/onboarding/age')
+      }
     }, FAKE_LATENCY)
   }
 
   return (
     <Shell nav={false}>
       <div className="relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
-        <LangBar />
+        {/* TODO: language switching lives in Settings, not onboarding */}
         <div className="pt-5 pb-6">
           <Wordmark />
         </div>
@@ -395,18 +362,6 @@ export function SignUpScreen() {
             onBlur={() => touch('email')}
             placeholder={t('auth.ph.email')}
             error={emailError}
-          />
-          <TextField
-            label={t('auth.field.phone')}
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            ltr
-            value={phone}
-            onChange={setPhone}
-            onBlur={() => touch('phone')}
-            placeholder={t('auth.ph.phone')}
-            error={phoneError}
           />
           <PasswordField
             label={t('auth.field.password')}
@@ -476,7 +431,7 @@ export function LoginScreen() {
   return (
     <Shell nav={false}>
       <div className="relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
-        <LangBar />
+        {/* TODO: language switching lives in Settings, not onboarding */}
         <div className="pt-5 pb-6">
           <Wordmark />
         </div>

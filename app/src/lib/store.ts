@@ -64,6 +64,20 @@ function isFreshAccount(): boolean {
   }
 }
 
+/** profile-setup completion flag — set when the user saves a complete profile
+ *  (EditProfile). Gates the first-timer "Profile setup" card so it disappears
+ *  once done and stays gone on reload (CLAUDE.md §4). UI-only; becomes
+ *  per-account data when Supabase auth lands. */
+const PROFILE_DONE_KEY = 'connect.profileDone'
+
+export function isProfileComplete(): boolean {
+  try {
+    return localStorage.getItem(PROFILE_DONE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 /** strip the demo user's seeded history → true brand-new account. Profile
  *  picks up the questionnaire answers; the Discover feed (other hosts)
  *  stays seeded, never empty (CLAUDE.md §5). */
@@ -168,27 +182,14 @@ export function discoverMatches(d: DB): Match[] {
     .sort((a, b) => a.start_time.localeCompare(b.start_time))
 }
 
-/** Home "Open to join" rail (empty personal state) — seeded Discover pool,
- *  curated so every join path's CTA is visible: a free open match (instant
- *  Join), an approval match (Request to join), and a full match (Join
- *  waitlist); remaining slots fill by soonest start_time.
+/** The Discover feed exactly as the browsing user sees it — open/full matches
+ *  not hosted by me, soonest first. Discover renders the whole list (then
+ *  applies its filters); the First-Timer Home renders the first three. Both
+ *  surfaces read this one selector so they can never drift (CLAUDE.md §4).
  *  Future SQL: select * from matches where read_status in ('open','full')
- *  and host_id != :me and id not in (my match_players) order by start_time. */
-export function openToJoinMatches(d: DB, limit = 4): Match[] {
-  const pool = discoverMatches(d).filter((m) => m.host_id !== CURRENT_USER_ID && !isJoined(d, m.id))
-  const picks = new Set<string>()
-  const take = (pred: (m: Match) => boolean) => {
-    const hit = pool.find((m) => !picks.has(m.id) && pred(m))
-    if (hit) picks.add(hit.id)
-  }
-  take((m) => computeStatus(m) === 'open' && m.join_mode === 'open' && m.fee_per_player == null) // free instant Join
-  take((m) => computeStatus(m) === 'open' && m.join_mode === 'approval') // Request to join
-  take((m) => computeStatus(m) === 'full') // Join waitlist
-  for (const m of pool) {
-    if (picks.size >= limit) break
-    picks.add(m.id)
-  }
-  return pool.filter((m) => picks.has(m.id)) // pool is already start_time-ordered
+ *  and host_id != :me order by start_time. */
+export function discoverFeed(d: DB): Match[] {
+  return discoverMatches(d).filter((m) => m.host_id !== CURRENT_USER_ID)
 }
 
 export function joinedMatches(d: DB, userId = CURRENT_USER_ID): Match[] {
@@ -300,10 +301,22 @@ export const actions = {
   startFreshAccount() {
     try {
       localStorage.setItem(FRESH_KEY, '1')
+      // a brand-new account hasn't set up its profile yet — clear any prior flag
+      localStorage.removeItem(PROFILE_DONE_KEY)
     } catch {
       /* storage unavailable (private mode) — fresh state stays in-memory */
     }
     mutate(() => freshDB())
+  },
+
+  /** EditProfile save: mark profile setup complete so the first-timer
+   *  checklist card stops rendering and stays gone on reload (CLAUDE.md §4) */
+  completeProfile() {
+    try {
+      localStorage.setItem(PROFILE_DONE_KEY, '1')
+    } catch {
+      /* storage unavailable — completion stays in-memory only */
+    }
   },
 
   /** Sign out (mock): drop the fresh-account flag and restore the seeded

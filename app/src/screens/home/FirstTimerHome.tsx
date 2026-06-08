@@ -8,10 +8,11 @@ import { useToast } from '@/components/Toast'
 import {
   actions,
   currentUserId,
+  discoverFeed,
   getUser,
   isJoined,
+  isProfileComplete,
   matchPlayers,
-  openToJoinMatches,
   pendingRequest,
   useDB,
   waitlistEntry,
@@ -45,8 +46,20 @@ export function FirstTimerHome() {
   // preferences echo the sign-up questionnaire; mock-user profile is the fallback
   const sport = onboarding.sport ?? me.sport
   const skill = onboarding.skill ?? me.skill_level
-  // seeded "Open to join" rail — curated so every join path's CTA is visible
-  const openToJoin = openToJoinMatches(db)
+  // rank the shared Discover feed by the saved answers: sport is the hard
+  // filter, level just floats sensible matches up (§3). When nothing's in their
+  // sport yet, fall back to the full nearby feed (never empty, §5) and say so.
+  const feed = discoverFeed(db)
+  const inSport = feed.filter((m) => m.sport === sport)
+  const usingFallback = inSport.length === 0
+  const ranked = [...inSport].sort((a, b) => {
+    const aFit = a.skill_level === skill || a.skill_level === 'any' ? 0 : 1
+    const bFit = b.skill_level === skill || b.skill_level === 'any' ? 0 : 1
+    return aFit - bFit || a.start_time.localeCompare(b.start_time)
+  })
+  const nearby = (usingFallback ? feed : ranked).slice(0, 3)
+  // profile-setup card hides once the profile is saved complete (§4)
+  const profileComplete = isProfileComplete()
   const done = CHECKLIST.filter((c) => c.done).length
   const pct = Math.round((done / CHECKLIST.length) * 100)
 
@@ -80,7 +93,33 @@ export function FirstTimerHome() {
           </Link>
         </div>
 
-        {/* checklist nudge — count + bar only, the task list lives on Edit Profile */}
+        {/* primary CTAs — find vs host, side by side (§2) */}
+        <div className="mb-[26px] flex gap-2.5">
+          <Link
+            to="/discover"
+            className="flex flex-1 items-center justify-center gap-2 rounded-[12px] bg-brand px-4 py-3.5 text-[14px] font-semibold text-onbrand no-underline shadow-cta transition-colors active:bg-brandstrong"
+          >
+            Find a match
+            <ArrowRight size={15} strokeWidth={2.2} className="rtl:rotate-180" />
+          </Link>
+          <Link
+            to="/matches/create"
+            className="flex flex-1 items-center justify-center gap-2 rounded-[12px] bg-transparent px-4 py-3.5 text-[14px] font-semibold text-ink no-underline transition-colors"
+            style={{ border: '1.5px solid rgba(26,26,26,0.16)' }}
+          >
+            <span
+              className="inline-flex h-[24px] w-[24px] items-center justify-center rounded-full text-brand"
+              style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 45%, transparent)' }}
+            >
+              <Plus size={15} strokeWidth={2.4} />
+            </span>
+            Host one
+          </Link>
+        </div>
+
+        {/* checklist nudge — count + bar only, the task list lives on Edit Profile.
+            Hides once the profile is saved complete and stays gone on reload (§4) */}
+        {!profileComplete && (
         <div className="mb-[26px] rounded-[18px] border bg-card p-3.5 shadow-row" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
           <div className="mb-2.5 flex items-center justify-between">
             <div>
@@ -99,17 +138,18 @@ export function FirstTimerHome() {
             <div className="h-full rounded-pill bg-accent transition-[width]" style={{ width: `${pct}%` }} />
           </div>
         </div>
+        )}
 
-        {/* open to join — read-only discovery surfaced on Home; cards deep-link
-            to Match Details, CTAs cover all join paths incl. the waitlist */}
+        {/* looking for players — the first three rows of the same list Discover
+            renders; "See all" continues into it (§2.4 / §4) */}
         <div className="mb-3 flex items-center justify-between">
-          <Eyebrow accent="var(--color-brand)">Open to join</Eyebrow>
+          <Eyebrow accent="var(--color-brand)">{usingFallback ? `No ${sportLabel(sport)} yet — nearby` : 'Looking for players'}</Eyebrow>
           <Link to="/discover" className="inline-flex items-center gap-1 text-[11.5px] font-medium text-ink no-underline">
             See all <ChevronRight size={11} strokeWidth={2.2} className="rtl:rotate-180" />
           </Link>
         </div>
-        <div className="mb-[26px] flex flex-col gap-3.5">
-          {openToJoin.map((m) => {
+        <div className="flex flex-col gap-3.5">
+          {nearby.map((m) => {
             const status = computeStatus(m)
             const joined = isJoined(db, m.id)
             const pending = pendingRequest(db, m.id)
@@ -140,29 +180,6 @@ export function FirstTimerHome() {
             )
           })}
         </div>
-
-        {/* host CTA — last, per §4's fixed section order */}
-        <Link
-          to="/matches/create"
-          className="flex items-center gap-3.5 rounded-[18px] px-5 py-[18px] text-inherit no-underline transition-colors"
-          style={{ background: 'rgba(255,255,255,0.55)', border: '1.5px dashed color-mix(in srgb, var(--color-brand) 33%, transparent)' }}
-        >
-          <div
-            className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full text-brand"
-            style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
-          >
-            <Plus size={16} strokeWidth={2} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="font-display text-[20px] leading-[1.1]" style={{ letterSpacing: '-0.012em' }}>
-              Don't see what you want?
-            </div>
-            <div className="mt-0.5 text-[12px]" style={{ color: 'rgba(26,26,26,0.6)' }}>
-              Host your own and we'll fill the spots.
-            </div>
-          </div>
-          <ChevronRight size={14} strokeWidth={2.2} className="shrink-0 text-brand rtl:rotate-180" />
-        </Link>
       </div>
     </Shell>
   )

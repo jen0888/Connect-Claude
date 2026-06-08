@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, ListFilter, Plus, Search, X } from 'lucide-r
 import { Shell } from '@/components/Shell'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, discoverFeed, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import type { Match, SkillLevel, Sport } from '@/lib/types'
 
@@ -88,8 +88,7 @@ export function DiscoverScreen() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return discoverMatches(db).filter((m) => {
-      if (m.host_id === currentUserId) return false
+    return discoverFeed(db).filter((m) => {
       if (sport !== 'All' && m.sport !== (sport.toLowerCase() as Sport)) return false
       if (time !== 'all' && bucketOf(m) !== time) return false
       if (level !== 'all' && m.skill_level !== (level as SkillLevel) && m.skill_level !== 'any') return false

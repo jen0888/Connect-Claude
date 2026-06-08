@@ -51,3 +51,16 @@ export const onboarding: OnboardingAnswers = new Proxy(load(), {
     return true
   },
 })
+
+/** Wipe saved answers so a *new* sign-up starts the questionnaire blank — every
+ *  step renders with nothing pre-selected. Mutates the shared proxy in place
+ *  (each write persists), so it never replaces the singleton screens read.
+ *  Mid-questionnaire Back/Next still hydrates from here; only a fresh sign-up
+ *  resets it (CLAUDE.md §3). */
+export function resetOnboarding() {
+  onboarding.dob = null
+  onboarding.sport = null
+  onboarding.skill = null
+  onboarding.agreedGuidelines = false
+  onboarding.notifications = false
+}
