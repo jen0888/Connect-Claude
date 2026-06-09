@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { Sport } from './types'
+import type { JoinMode, Sport } from './types'
 
 /** Single source of truth for the host's own match.
  *
@@ -21,7 +21,14 @@ export interface HostedMatch {
   endTime: string // "20:00"
   matchType: 'casual' | 'competition'
   gender: 'mixed' | 'ladies'
+  /** how players get in (CLAUDE.md §5). `requireApproval` is kept derived
+   *  (= joinMode === 'approval') so older readers/persisted rows still work. */
+  joinMode: JoinMode
   requireApproval: boolean
+  /** invite-only matches: the specific players the host has invited. Holds no
+   *  slot — mirrors the store's host→player invite, but self-contained to the
+   *  localStorage demo flow (the hosted match isn't a store Match). */
+  invitedPlayerIds: string[]
   isFree: boolean
   pricePerPlayer: string // digits only
   players: number // total spots

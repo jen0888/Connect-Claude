@@ -63,7 +63,7 @@ function Sheet({ title, subtitle, onClose, children }: { title: ReactNode; subti
             <X size={16} strokeWidth={2} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-[22px] pt-1 pb-[26px]" style={{ scrollbarWidth: 'none' }}>
+        <div className="scroll-area flex-1 overflow-y-auto px-[22px] pt-1 pb-[26px]" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {children}
         </div>
       </div>

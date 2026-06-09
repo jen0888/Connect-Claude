@@ -6,6 +6,7 @@ import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
 import { actions, discoverFeed, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
+import { usePersistedState } from '@/lib/usePersistedState'
 import type { Match, SkillLevel, Sport } from '@/lib/types'
 
 /** Discover — browse open matches (discover.jsx DiscoverScreen).
@@ -46,7 +47,7 @@ const BUCKET_LABEL: Record<TimeBucket, string> = { tonight: 'Tonight', tomorrow:
 
 function ChipRow<T extends string>({ items, value, onChange }: { items: readonly { id: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <div className="flex gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+    <div className="scroll-area flex gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
       {items.map(({ id, label }) => {
         const on = id === value
         return (
@@ -73,9 +74,11 @@ function ChipRow<T extends string>({ items, value, onChange }: { items: readonly
 export function DiscoverScreen() {
   const db = useDB()
   const { showToast } = useToast()
-  const [sport, setSport] = useState<(typeof SPORT_FILTERS)[number]>('All')
-  const [time, setTime] = useState<(typeof TIME_FILTERS)[number]['id']>('all')
-  const [level, setLevel] = useState<(typeof LEVEL_FILTERS)[number]['id']>('all')
+  // filter choices persist per-user across refreshes; search text + panel
+  // open/closed stay ephemeral UI.
+  const [sport, setSport] = usePersistedState<(typeof SPORT_FILTERS)[number]>('discover:sport', 'All')
+  const [time, setTime] = usePersistedState<(typeof TIME_FILTERS)[number]['id']>('discover:time', 'all')
+  const [level, setLevel] = usePersistedState<(typeof LEVEL_FILTERS)[number]['id']>('discover:level', 'all')
   const [query, setQuery] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
 
@@ -214,7 +217,7 @@ export function DiscoverScreen() {
                 {summary.length === 0 ? (
                   <span>Filters</span>
                 ) : (
-                  <span className="flex min-w-0 items-center gap-[5px] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                  <span className="scroll-area flex min-w-0 items-center gap-[5px] overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {summary.map((s) => (
                       <span
                         key={s}
@@ -278,7 +281,7 @@ export function DiscoverScreen() {
         </div>
 
         {/* scrollable body */}
-        <div className="relative z-1 flex flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-3.5 pb-[120px]">
+        <div className="scroll-area relative z-1 flex flex-1 flex-col gap-[18px] overflow-y-auto px-6 pt-3.5 pb-[120px]">
           {filtered.length === 0 ? (
             <div className="mt-1.5 rounded-[18px] px-[22px] py-8 text-center" style={{ background: 'rgba(255,255,255,0.5)', border: '1px dashed rgba(26,26,26,0.18)' }}>
               <div className="mb-1.5 font-display text-[24px]" style={{ letterSpacing: '-0.012em' }}>

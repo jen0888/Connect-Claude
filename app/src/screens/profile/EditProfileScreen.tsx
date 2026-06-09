@@ -61,7 +61,7 @@ export function EditProfileScreen() {
   return (
     <Shell nav={false}>
       <div className="flex h-full flex-col">
-        <div className="relative z-1 flex-1 overflow-y-auto px-[22px] pt-14 pb-[120px]">
+        <div className="scroll-area relative z-1 flex-1 overflow-y-auto px-[22px] pt-14 pb-[120px]">
           <button
             type="button"
             onClick={() => navigate(-1)}

@@ -344,7 +344,7 @@ export function SignUpScreen() {
 
   return (
     <Shell nav={false}>
-      <div className="relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
+      <div className="scroll-area relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
         {/* TODO: language switching lives in Settings, not onboarding */}
         <div className="pt-5 pb-6">
           <Wordmark />
@@ -445,7 +445,7 @@ export function LoginScreen() {
 
   return (
     <Shell nav={false}>
-      <div className="relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
+      <div className="scroll-area relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
         {/* TODO: language switching lives in Settings, not onboarding */}
         <div className="pt-5 pb-6">
           <Wordmark />
@@ -794,7 +794,7 @@ function DobDropdown({
       </button>
       {open && (
         <div
-          className="absolute inset-x-0 top-[calc(100%+6px)] z-30 max-h-[200px] overflow-y-auto rounded-[14px] border bg-card py-1"
+          className="scroll-area absolute inset-x-0 top-[calc(100%+6px)] z-30 max-h-[200px] overflow-y-auto rounded-[14px] border bg-card py-1"
           style={{ borderColor: 'rgba(26,26,26,0.10)', boxShadow: '0 18px 40px -14px rgba(26,26,26,0.4)' }}
         >
           {options.map((o) => (

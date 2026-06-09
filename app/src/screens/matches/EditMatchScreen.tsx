@@ -9,6 +9,7 @@ import {
   Footprints,
   Lock,
   LockOpen,
+  MailPlus,
   MapPin,
   Plus,
   Sparkles,
@@ -21,10 +22,14 @@ import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
 import { useToast } from '@/components/Toast'
-import type { Sport } from '@/lib/types'
+import { getUser, useDB } from '@/lib/store'
+import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
+import type { JoinMode, Sport } from '@/lib/types'
 import { clearHostedMatch, readHostedMatch, writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
+import { initials } from '@/lib/format'
 import { keyOf, labelFromKey } from '@/lib/datetime'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
+import { InvitePicker } from './InvitePicker'
 import { WhenCard } from './WhenCard'
 
 /** Edit Match — the create-match form rendered in "edit" mode (Editorial Calm).
@@ -85,7 +90,8 @@ const SEED = {
   endTime: '20:00',
   matchType: 'casual' as 'casual' | 'competition',
   gender: 'mixed' as 'mixed' | 'ladies',
-  requireApproval: false,
+  joinMode: 'open' as JoinMode,
+  invitedPlayerIds: [] as string[],
   isFree: false,
   pricePerPlayer: '25',
   players: 2,
@@ -106,7 +112,8 @@ const CREATE_DEFAULTS = {
   endTime: '20:00',
   matchType: 'casual' as 'casual' | 'competition',
   gender: 'mixed' as 'mixed' | 'ladies',
-  requireApproval: false,
+  joinMode: 'open' as JoinMode,
+  invitedPlayerIds: [] as string[],
   isFree: false,
   pricePerPlayer: '',
   players: 4,
@@ -127,6 +134,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
   const fallback = isCreate ? CREATE_DEFAULTS : SEED
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const db = useDB()
 
   // Edit pre-fills from the live match (localStorage source of truth); create
   // opens from blank defaults with nothing pre-loaded. Read once on mount.
@@ -137,25 +145,34 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
       : { id: 'custom', name: stored.venueName, area: stored.area, setting: stored.setting as VenueSelection['setting'], court: stored.court }
     : fallback.venue
 
-  const [sport, setSport] = useState<Sport>(stored?.sport ?? fallback.sport)
-  const [name, setName] = useState(stored?.name ?? fallback.name)
-  const [dateKey, setDateKey] = useState(stored?.dateKey ?? (isCreate ? keyOf(new Date()) : fallback.dateKey))
-  const [startTime, setStartTime] = useState(stored?.startTime ?? fallback.startTime)
-  const [endTime, setEndTime] = useState(stored?.endTime ?? fallback.endTime)
-  const [matchType, setMatchType] = useState(stored?.matchType ?? fallback.matchType)
-  const [gender, setGender] = useState(stored?.gender ?? fallback.gender)
-  const [players, setPlayers] = useState(stored?.players ?? fallback.players)
-  const [minLevel, setMinLevel] = useState(stored?.minLevel ?? fallback.minLevel)
-  const [maxLevel, setMaxLevel] = useState(stored?.maxLevel ?? fallback.maxLevel)
-  const [isFree, setIsFree] = useState(stored?.isFree ?? fallback.isFree)
-  const [pricePerPlayer, setPricePerPlayer] = useState(stored?.pricePerPlayer ?? fallback.pricePerPlayer)
-  const [requireApproval, setRequireApproval] = useState(stored?.requireApproval ?? fallback.requireApproval)
-  const [waitlistOpen, setWaitlistOpen] = useState(stored?.waitlistOpen ?? fallback.waitlistOpen)
-  const [waitlistSize, setWaitlistSize] = useState(stored?.waitlistSize ?? fallback.waitlistSize)
-  const [description, setDescription] = useState(stored?.description ?? fallback.description)
-  const [venue, setVenue] = useState<VenueSelection | null>(storedVenue)
+  // Draft persistence: only "create" (the New match path) keeps a draft across
+  // refreshes — edit mode reads from the live hosted match, so `dk()` returns
+  // null there. The draft is cleared once a match is created.
+  const dk = (field: string) => (isCreate ? `match:create-demo:${field}` : null)
+
+  const [sport, setSport] = usePersistedState<Sport>(dk('sport'), stored?.sport ?? fallback.sport)
+  const [name, setName] = usePersistedState(dk('name'), stored?.name ?? fallback.name)
+  const [dateKey, setDateKey] = usePersistedState(dk('dateKey'), stored?.dateKey ?? (isCreate ? keyOf(new Date()) : fallback.dateKey))
+  const [startTime, setStartTime] = usePersistedState(dk('startTime'), stored?.startTime ?? fallback.startTime)
+  const [endTime, setEndTime] = usePersistedState(dk('endTime'), stored?.endTime ?? fallback.endTime)
+  const [matchType, setMatchType] = usePersistedState(dk('matchType'), stored?.matchType ?? fallback.matchType)
+  const [gender, setGender] = usePersistedState(dk('gender'), stored?.gender ?? fallback.gender)
+  const [players, setPlayers] = usePersistedState(dk('players'), stored?.players ?? fallback.players)
+  const [minLevel, setMinLevel] = usePersistedState(dk('minLevel'), stored?.minLevel ?? fallback.minLevel)
+  const [maxLevel, setMaxLevel] = usePersistedState(dk('maxLevel'), stored?.maxLevel ?? fallback.maxLevel)
+  const [isFree, setIsFree] = usePersistedState(dk('isFree'), stored?.isFree ?? fallback.isFree)
+  const [pricePerPlayer, setPricePerPlayer] = usePersistedState(dk('pricePerPlayer'), stored?.pricePerPlayer ?? fallback.pricePerPlayer)
+  // joinMode supersedes the old binary requireApproval; fall back to it for
+  // any match persisted before invite-only existed.
+  const [joinMode, setJoinMode] = usePersistedState<JoinMode>(dk('joinMode'), stored?.joinMode ?? (stored?.requireApproval ? 'approval' : undefined) ?? fallback.joinMode)
+  const [invitedPlayerIds, setInvitedPlayerIds] = usePersistedState<string[]>(dk('invitedPlayerIds'), stored?.invitedPlayerIds ?? fallback.invitedPlayerIds)
+  const [waitlistOpen, setWaitlistOpen] = usePersistedState(dk('waitlistOpen'), stored?.waitlistOpen ?? fallback.waitlistOpen)
+  const [waitlistSize, setWaitlistSize] = usePersistedState(dk('waitlistSize'), stored?.waitlistSize ?? fallback.waitlistSize)
+  const [description, setDescription] = usePersistedState(dk('description'), stored?.description ?? fallback.description)
+  const [venue, setVenue] = usePersistedState<VenueSelection | null>(dk('venue'), storedVenue)
 
   const [showVenue, setShowVenue] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
 
   const isRoute = venue?.id === 'route' || !!venue?.endName
@@ -172,7 +189,9 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
       endTime,
       matchType,
       gender,
-      requireApproval,
+      joinMode,
+      requireApproval: joinMode === 'approval', // derived for older readers
+      invitedPlayerIds: joinMode === 'invite' ? invitedPlayerIds : [],
       isFree,
       pricePerPlayer: isFree ? '' : pricePerPlayer,
       players,
@@ -192,6 +211,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
       km: isRoute ? venue?.km : undefined,
     }
     writeHostedMatch(next)
+    if (isCreate) clearPersistedState('match:create-demo:') // draft committed — reset for next time
     showToast(isCreate ? 'Match created' : 'Changes saved')
     navigate('/home') // save-then-route: Create/Edit → Home + transient toast
   }
@@ -205,7 +225,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
   return (
     <Shell nav={false}>
       <div className="flex h-full flex-col">
-        <div className="relative z-1 flex-1 overflow-y-auto px-[22px] pt-14 pb-[140px]">
+        <div className="scroll-area relative z-1 flex-1 overflow-y-auto px-[22px] pt-14 pb-[140px]">
           {/* back */}
           <button
             type="button"
@@ -510,15 +530,61 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
 
               <Divider />
 
-              <FieldRow label="Joining" hint={requireApproval ? "You'll review each join request." : 'Anyone can join instantly.'}>
+              <FieldRow
+                label="Joining"
+                hint={
+                  joinMode === 'open'
+                    ? 'Anyone can join instantly.'
+                    : joinMode === 'approval'
+                      ? "You'll review each join request."
+                      : 'Private — only players you invite can join.'
+                }
+              >
                 <Segmented
-                  value={requireApproval}
-                  onChange={setRequireApproval}
+                  value={joinMode}
+                  onChange={setJoinMode}
+                  columns={3}
                   options={[
-                    { value: false, label: 'Join instantly', icon: <LockOpen size={14} strokeWidth={1.8} /> },
-                    { value: true, label: 'Require approval', icon: <Lock size={14} strokeWidth={1.8} /> },
+                    { value: 'open', label: 'Open', icon: <LockOpen size={14} strokeWidth={1.8} /> },
+                    { value: 'approval', label: 'Approval', icon: <Lock size={14} strokeWidth={1.8} /> },
+                    { value: 'invite', label: 'Invite', icon: <MailPlus size={14} strokeWidth={1.8} /> },
                   ]}
                 />
+
+                {/* invite-only: pick the specific players you're inviting (the
+                    dropdown holds no slot — first to accept fills the match, §5) */}
+                {joinMode === 'invite' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowInvite(true)}
+                    className="mt-3.5 flex w-full cursor-pointer items-center gap-3 rounded-[16px] border bg-page px-3.5 py-3 text-start"
+                    style={{ borderColor: 'rgba(26,26,26,0.10)' }}
+                  >
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(26,26,26,0.06)', color: 'var(--color-text)' }}>
+                      <MailPlus size={16} strokeWidth={1.8} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13.5px] font-medium text-ink">Invite players</div>
+                      <div className="mt-0.5 truncate text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {invitedPlayerIds.length === 0
+                          ? 'Choose who can join this match.'
+                          : invitedPlayerIds
+                              .map((pid) => getUser(db, pid)?.name.split(' ')[0])
+                              .filter(Boolean)
+                              .join(', ')}
+                      </div>
+                    </div>
+                    {invitedPlayerIds.length > 0 ? (
+                      <span className="inline-flex shrink-0 items-center rounded-pill bg-brand px-2.5 py-1 text-[11px] font-semibold text-onbrand nums-tabular">
+                        {invitedPlayerIds.length} invited
+                      </span>
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-pill px-3 py-1.5 text-[12px] font-medium text-brand" style={{ border: '1.5px solid color-mix(in srgb, var(--color-brand) 33%, transparent)' }}>
+                        <Plus size={13} strokeWidth={2.2} /> Add
+                      </span>
+                    )}
+                  </button>
+                )}
               </FieldRow>
 
               <Divider />
@@ -580,7 +646,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
                     </div>
                     {/* contextual note — depends on Joining */}
                     <div className="mt-3.5 rounded-[14px] px-3.5 py-3 text-[11.5px] leading-normal" style={{ background: 'rgba(26,26,26,0.06)', color: 'var(--color-text-muted)' }}>
-                      {requireApproval ? (
+                      {joinMode === 'approval' ? (
                         <>
                           If a player drops out, the next person on the waitlist <span className="font-medium text-ink">still needs your approval</span> before they join — they'll move up the queue and wait for your OK.
                         </>
@@ -684,6 +750,18 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
             onSelect={(v) => {
               setVenue(v)
               setShowVenue(false)
+            }}
+          />
+        )}
+
+        {/* invite players picker (invite-only matches) */}
+        {showInvite && (
+          <InvitePicker
+            selected={invitedPlayerIds}
+            onClose={() => setShowInvite(false)}
+            onConfirm={(ids) => {
+              setInvitedPlayerIds(ids)
+              setShowInvite(false)
             }}
           />
         )}

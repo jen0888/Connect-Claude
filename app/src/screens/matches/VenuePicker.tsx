@@ -141,7 +141,7 @@ export function VenuePicker({
             </div>
             {/* setting chips */}
             {availSettings.length > 1 && (
-              <div className="flex gap-[7px] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+              <div className="scroll-area flex gap-[7px] overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {[['all', 'All'], ...availSettings.map((s) => [s, s[0].toUpperCase() + s.slice(1)])].map(([val, label]) => {
                   const on = setF === val
                   return (
@@ -166,7 +166,7 @@ export function VenuePicker({
         )}
 
         {/* body */}
-        <div className="flex-1 overflow-y-auto px-3.5 pt-0.5 pb-2" style={{ scrollbarWidth: 'none' }}>
+        <div className="scroll-area flex-1 overflow-y-auto px-3.5 pt-0.5 pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {customMode ? (
             !hasFixed ? (
               /* running: plot a route */

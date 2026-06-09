@@ -1,10 +1,10 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, PenLine } from 'lucide-react'
+import { ArrowRight, MailPlus, PenLine } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { SportArt } from '@/components/SportArt'
-import { currentUserId, getUser, inboxThreads, threadMessages, unreadCount, useDB } from '@/lib/store'
+import { currentUserId, getUser, inboxThreads, myInvites, threadMessages, unreadCount, useDB } from '@/lib/store'
+import { usePersistedState } from '@/lib/usePersistedState'
 import { artType, hm, initials, matchKind, courtLabel, whenLabel } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
 import type { ChatThread } from '@/lib/types'
@@ -25,7 +25,8 @@ function threadTime(iso: string): string {
 
 export function ChatListScreen() {
   const db = useDB()
-  const [filter, setFilter] = useState<'all' | 'match' | 'dm'>('all')
+  // persisted per-user so the chosen filter survives a refresh
+  const [filter, setFilter] = usePersistedState<'all' | 'match' | 'dm'>('chat:filter', 'all')
 
   const threads = inboxThreads(db).filter((t) => (filter === 'all' ? true : filter === 'match' ? t.match_id !== null : t.match_id === null))
   const totalUnread = inboxThreads(db).reduce((n, t) => n + unreadCount(db, t.id), 0)
@@ -39,6 +40,8 @@ export function ChatListScreen() {
     return (s === 'open' || s === 'full' || s === 'live') && whenLabel(m.start_time) === 'Today'
   })
   const rest = threads.filter((t) => t !== pinned)
+  // pending invites surface as notifications in Chat (CLAUDE.md §4) — hidden on the People filter
+  const invites = filter === 'dm' ? [] : myInvites(db)
 
   const rowFor = (t: ChatThread) => {
     const isMatch = t.match_id !== null
@@ -173,7 +176,42 @@ export function ChatListScreen() {
         </div>
 
         {/* scrollable list */}
-        <div className="relative z-1 flex flex-1 flex-col gap-2.5 overflow-y-auto px-6 pt-2 pb-[120px]">
+        <div className="scroll-area relative z-1 flex flex-1 flex-col gap-2.5 overflow-y-auto px-6 pt-2 pb-[120px]">
+          {/* invitations — host→player invites awaiting your reply; tap to respond */}
+          {invites.length > 0 && (
+            <>
+              <Eyebrow>Invitations</Eyebrow>
+              {invites.map((r) => {
+                const m = db.matches.find((x) => x.id === r.match_id)
+                if (!m) return null
+                const host = getUser(db, m.host_id)
+                return (
+                  <Link
+                    key={r.id}
+                    to={`/matches/${m.id}`}
+                    className="flex shrink-0 items-center gap-[13px] rounded-[16px] border px-3.5 py-3 text-inherit no-underline transition-all hover:-translate-y-px"
+                    style={{ background: 'color-mix(in srgb, var(--color-brand) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-brand) 25%, transparent)' }}
+                  >
+                    <div className="h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[14px]">
+                      <SportArt type={artType(m)} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="truncate text-[14.5px] font-semibold text-ink">
+                        {matchKind(m)} · {courtLabel(m)}
+                      </span>
+                      <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {host?.name.split(' ')[0]} invited you · {whenLabel(m.start_time)}
+                      </div>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill bg-brand px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ boxShadow: '0 6px 14px -6px var(--color-brand)' }}>
+                      <MailPlus size={12} strokeWidth={2} /> Invite
+                    </span>
+                  </Link>
+                )
+              })}
+            </>
+          )}
+
           {pinned && pinnedMatch && (
             <>
               <Eyebrow>Active now · Today's match</Eyebrow>

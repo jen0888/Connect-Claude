@@ -46,7 +46,7 @@ export function PostMatchScreen() {
           </span>
         </div>
 
-        <div className="relative z-1 flex-1 overflow-y-auto pt-[104px] pb-10">
+        <div className="scroll-area relative z-1 flex-1 overflow-y-auto pt-[104px] pb-10">
           {/* hero */}
           <div className="px-[22px] pb-1">
             <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>

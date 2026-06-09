@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MapPin, Sparkles, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MailPlus, MapPin, Sparkles, TriangleAlert } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, useDB } from '@/lib/store'
-import type { SkillLevel, Sport } from '@/lib/types'
+import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
+import type { JoinMode, SkillLevel, Sport } from '@/lib/types'
 import { keyOf, labelFromKey } from '@/lib/datetime'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
 import { WhenCard } from './WhenCard'
@@ -63,33 +64,35 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const { showToast } = useToast()
   const existing = isEdit ? db.matches.find((m) => m.id === id) : undefined
 
-  const [sport, setSport] = useState<Sport>(existing?.sport ?? 'padel')
-  const [dateKey, setDateKey] = useState(existing ? existing.start_time.slice(0, 10) : keyOf(new Date()))
-  const [startTime, setStartTime] = useState(existing ? existing.start_time.slice(11, 16) : '18:30')
-  const [endTime, setEndTime] = useState(existing ? existing.end_time.slice(11, 16) : '20:00')
-  const [players, setPlayers] = useState(existing?.total_spots ?? 4)
-  const [minLevel, setMinLevel] = useState(2)
-  const [maxLevel, setMaxLevel] = useState(4)
-  const [isFree, setIsFree] = useState<boolean | null>(existing ? existing.fee_per_player == null : null)
-  const [pricePerPlayer, setPricePerPlayer] = useState(existing?.fee_per_player ? String(existing.fee_per_player) : '')
-  const [requireApproval, setRequireApproval] = useState<boolean | null>(existing ? existing.join_mode === 'approval' : null)
-  const [description, setDescription] = useState(existing?.notes ?? '')
+  // Draft persistence: only "create" keeps a draft across refreshes — in edit
+  // mode `dk()` returns null so the form always reflects the live match, never
+  // a stale draft. The draft is cleared once a match is actually created.
+  const dk = (field: string) => (isEdit ? null : `match:create:${field}`)
+  const initialVenue: VenueSelection | null = existing
+    ? existing.sport === 'running' && existing.route_start
+      ? { id: 'route', name: existing.route_start, endName: existing.route_end ?? '', loop: existing.round_trip, km: '', area: '', setting: '', court: '' }
+      : { id: existing.venue_id ?? 'custom', name: existing.venue_name, area: existing.venue_location ?? '', setting: '', court: existing.court_number ?? '' }
+    : null
+
+  const [sport, setSport] = usePersistedState<Sport>(dk('sport'), existing?.sport ?? 'padel')
+  const [dateKey, setDateKey] = usePersistedState(dk('dateKey'), existing ? existing.start_time.slice(0, 10) : keyOf(new Date()))
+  const [startTime, setStartTime] = usePersistedState(dk('startTime'), existing ? existing.start_time.slice(11, 16) : '18:30')
+  const [endTime, setEndTime] = usePersistedState(dk('endTime'), existing ? existing.end_time.slice(11, 16) : '20:00')
+  const [players, setPlayers] = usePersistedState(dk('players'), existing?.total_spots ?? 4)
+  const [minLevel, setMinLevel] = usePersistedState(dk('minLevel'), 2)
+  const [maxLevel, setMaxLevel] = usePersistedState(dk('maxLevel'), 4)
+  const [isFree, setIsFree] = usePersistedState<boolean | null>(dk('isFree'), existing ? existing.fee_per_player == null : null)
+  const [pricePerPlayer, setPricePerPlayer] = usePersistedState(dk('pricePerPlayer'), existing?.fee_per_player ? String(existing.fee_per_player) : '')
+  const [joinMode, setJoinMode] = usePersistedState<JoinMode | null>(dk('joinMode'), existing ? existing.join_mode : null)
+  const [description, setDescription] = usePersistedState(dk('description'), existing?.notes ?? '')
+  const [venue, setVenue] = usePersistedState<VenueSelection | null>(dk('venue'), initialVenue)
+
   const [showVenue, setShowVenue] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
 
-  const [venue, setVenue] = useState<VenueSelection | null>(() => {
-    if (existing) {
-      if (existing.sport === 'running' && existing.route_start) {
-        return { id: 'route', name: existing.route_start, endName: existing.route_end ?? '', loop: existing.round_trip, km: '', area: '', setting: '', court: '' }
-      }
-      return { id: existing.venue_id ?? 'custom', name: existing.venue_name, area: existing.venue_location ?? '', setting: '', court: existing.court_number ?? '' }
-    }
-    return null
-  })
-
   const isRoute = venue?.id === 'route' || !!venue?.endName
   const venueCompatible = venue != null && (sport === 'running' ? isRoute : !isRoute)
-  const allChosen = isFree !== null && requireApproval !== null
+  const allChosen = isFree !== null && joinMode !== null
 
   const save = () => {
     if (!allChosen) {
@@ -115,7 +118,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       total_spots: players,
       fee_per_player: price,
       fee_total: price ? price * players : null,
-      join_mode: (requireApproval ? 'approval' : 'open') as 'approval' | 'open',
+      join_mode: (joinMode ?? 'open') as JoinMode,
       notes: description.trim() || null,
     }
     if (isEdit && existing) {
@@ -123,6 +126,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       showToast('Changes saved')
     } else {
       actions.createMatch({ ...base, host_id: currentUserId })
+      clearPersistedState('match:create:') // draft committed — reset for next time
       showToast('Match created')
     }
     navigate('/home') // save-then-route: Match edit/create → Home + toast
@@ -139,7 +143,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   return (
     <Shell nav={false}>
       <div className="flex h-full flex-col">
-        <div className="relative z-1 flex-1 overflow-y-auto px-[22px] pt-14 pb-[130px]">
+        <div className="scroll-area relative z-1 flex-1 overflow-y-auto px-[22px] pt-14 pb-[130px]">
           {/* back */}
           <button
             type="button"
@@ -170,7 +174,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
           </div>
 
           {/* sport pills */}
-          <div className="-ms-0.5 flex gap-2 overflow-x-auto pb-3.5" style={{ scrollbarWidth: 'none' }}>
+          <div className="scroll-area -ms-0.5 flex gap-2 overflow-x-auto pb-3.5" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {SPORTS.map((s) => {
               const on = sport === s.id
               return (
@@ -388,19 +392,23 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
               <FieldRow
                 label="Joining"
                 hint={
-                  requireApproval === null
+                  joinMode === null
                     ? 'Choose how players get in.'
-                    : requireApproval
-                      ? "You'll review each join request."
-                      : 'Anyone can join instantly.'
+                    : joinMode === 'open'
+                      ? 'Anyone can join instantly.'
+                      : joinMode === 'approval'
+                        ? "You'll review each join request."
+                        : 'Private — only players you invite can join.'
                 }
               >
                 <Segmented
-                  value={requireApproval}
-                  onChange={setRequireApproval}
+                  value={joinMode}
+                  onChange={setJoinMode}
+                  columns={3}
                   options={[
-                    { value: false, label: 'Join instantly', icon: <LockOpen size={14} strokeWidth={1.8} /> },
-                    { value: true, label: 'Require approval', icon: <Lock size={14} strokeWidth={1.8} /> },
+                    { value: 'open', label: 'Open', icon: <LockOpen size={14} strokeWidth={1.8} /> },
+                    { value: 'approval', label: 'Approval', icon: <Lock size={14} strokeWidth={1.8} /> },
+                    { value: 'invite', label: 'Invite', icon: <MailPlus size={14} strokeWidth={1.8} /> },
                   ]}
                 />
               </FieldRow>
@@ -474,7 +482,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
               <div className="mb-5 flex flex-col gap-2.5">
                 {[
                   { ok: isFree !== null, label: 'Cost — free or split' },
-                  { ok: requireApproval !== null, label: 'Joining — instant or approval' },
+                  { ok: joinMode !== null, label: 'Joining — open, approval or invite' },
                 ].map((r) => (
                   <div key={r.label} className="flex items-center gap-2.5 text-[13.5px] font-medium" style={{ color: r.ok ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
                     <span

@@ -121,7 +121,7 @@ export function CommunityStandardsScreen() {
 
         {/* ── scrollable body with top fade mask + visible pill scrollbar ── */}
         <div
-          className="conn-scrollbar flex-1 overflow-y-auto px-6 pb-8"
+          className="scroll-area flex-1 overflow-y-auto px-6 pb-8"
           style={{
             maskImage: 'linear-gradient(180deg, transparent 0, #000 28px)',
             WebkitMaskImage: 'linear-gradient(180deg, transparent 0, #000 28px)',

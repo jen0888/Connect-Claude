@@ -188,6 +188,44 @@ export function waitlistPosition(d: DB, matchId: string, userId = CURRENT_USER_I
   return i === -1 ? null : i + 1
 }
 
+/** invites awaiting MY response — kind 'invite', status 'invited', on a match
+ *  that's still joinable (open/full, not cancelled). Drives the Home + Chat
+ *  invite surfaces; FIFO by created_at so the oldest invite shows first. */
+export function myInvites(d: DB, userId = CURRENT_USER_ID): MatchRequest[] {
+  return d.matchRequests
+    .filter((r) => r.player_id === userId && r.kind === 'invite' && r.status === 'invited')
+    .filter((r) => {
+      const m = d.matches.find((x) => x.id === r.match_id)
+      if (!m || m.status === 'cancelled') return false
+      const s = computeStatus(m)
+      return s === 'open' || s === 'full'
+    })
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
+/** every invite a host has sent on a match (any status), newest first —
+ *  host view of who's been invited and where each invite stands. */
+export function matchInvites(d: DB, matchId: string): MatchRequest[] {
+  return d.matchRequests
+    .filter((r) => r.match_id === matchId && r.kind === 'invite')
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+/** players the host can still invite: not the host, not already joined, and
+ *  with no active invite/request pending (CLAUDE.md §5 — invite is host→player). */
+export function invitablePlayers(d: DB, matchId: string): User[] {
+  const m = d.matches.find((x) => x.id === matchId)
+  return d.users.filter((u) => {
+    if (u.id === CURRENT_USER_ID || (m && u.id === m.host_id)) return false
+    if (isJoined(d, matchId, u.id)) return false
+    if (d.blockedUserIds.includes(u.id)) return false
+    const active = d.matchRequests.some(
+      (r) => r.match_id === matchId && r.player_id === u.id && (r.status === 'invited' || r.status === 'requested'),
+    )
+    return !active
+  })
+}
+
 /** matches visible in Discover — seeded feed, never empty (CLAUDE.md §5);
  *  blocked users' matches are hidden both ways. Live matches are excluded:
  *  joining is locked and chat is members-only (no chat before joining). */

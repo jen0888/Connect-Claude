@@ -143,7 +143,7 @@ export function ConversationScreen() {
         )}
 
         {/* messages */}
-        <div ref={scrollRef} className="relative z-1 flex flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2.5 pb-3.5">
+        <div ref={scrollRef} className="scroll-area relative z-1 flex flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2.5 pb-3.5">
           {msgs.map((msg, i) => {
             const mine = msg.sender_id === currentUserId
             const prev = msgs[i - 1]

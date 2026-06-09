@@ -16,7 +16,7 @@ function SafetyShell({ title, accent, eyebrow, children }: { title: string; acce
   const navigate = useNavigate()
   return (
     <Shell nav={false}>
-      <div className="relative z-1 h-full overflow-y-auto px-[22px] pt-14 pb-12">
+      <div className="scroll-area relative z-1 h-full overflow-y-auto px-[22px] pt-14 pb-12">
         <button
           type="button"
           onClick={() => navigate(-1)}

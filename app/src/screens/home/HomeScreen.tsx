@@ -6,7 +6,8 @@ import { Avatar } from '@/components/Avatar'
 import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, myInvites, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { DecisionButtons } from '../matches/ApprovalCard'
 import { computeStatus } from '@/lib/status'
 import { dayLabel, greetingDate, hoursUntil, timeAgoLabel } from '@/lib/format'
 import { useHostedMatch } from '@/lib/hostedMatch'
@@ -44,13 +45,14 @@ export function HomeScreen() {
     const nextUp = upcoming[0]
     const week = upcoming.slice(1).filter((m) => !hosted.some((h) => h.id === m.id))
     const requested = db.matchRequests.filter((r) => r.player_id === currentUserId && r.kind === 'request' && r.status === 'requested')
+    const invited = myInvites(db)
     const saved = db.matches.filter((m) => db.savedMatchIds.includes(m.id) && !isJoined(db, m.id))
-    return { joined, hosted, justPlayed, nextUp, week, requested, saved }
+    return { joined, hosted, justPlayed, nextUp, week, requested, invited, saved }
   }, [db])
 
-  // empty personal state = no joined (match_players) + no hosted (host_id = me).
-  // Purely data-derived — never a "new user" flag or first-session check (§4).
-  if (data.joined.length === 0 && data.hosted.length === 0 && !hosted) {
+  // empty personal state = no joined (match_players) + no hosted (host_id = me)
+  // + no pending invites. Purely data-derived — never a "new user" flag (§4).
+  if (data.joined.length === 0 && data.hosted.length === 0 && !hosted && data.invited.length === 0) {
     return <FirstTimerHome />
   }
 
@@ -115,6 +117,37 @@ export function HomeScreen() {
             </div>
           </>
         )}
+
+        {/* you're invited — host→player invites awaiting your reply (§5).
+            Accept/Decline inline; tapping the card opens Match Details. */}
+        {data.invited.map((r) => {
+          const m = db.matches.find((x) => x.id === r.match_id)
+          if (!m) return null
+          return (
+            <div key={r.id}>
+              <div className="mb-2.5">
+                <Eyebrow>You're invited</Eyebrow>
+              </div>
+              <div className="mb-[26px]">
+                <MatchCard match={m} host={getUser(db, m.host_id)} players={matchPlayers(db, m.id)} action="view" showStatusBadge={false} badge={{ text: 'Invite' }} />
+                <div className="mt-3">
+                  <DecisionButtons
+                    mode="invite"
+                    size="sm"
+                    onApprove={() => {
+                      actions.acceptInvite(r.id)
+                      showToast("You're in")
+                    }}
+                    onDecline={() => {
+                      actions.declineInvite(r.id)
+                      showToast('Invite declined')
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )
+        })}
 
         {/* you're hosting — the host's own match from the source of truth wins;
             otherwise fall back to seeded hosted matches */}

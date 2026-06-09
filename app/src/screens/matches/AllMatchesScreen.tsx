@@ -235,7 +235,7 @@ export function AllMatchesScreen() {
         </div>
 
         {/* scrollable list */}
-        <div className="relative z-1 flex flex-1 flex-col gap-3 overflow-y-auto px-6 pt-2 pb-[120px]">
+        <div className="scroll-area relative z-1 flex flex-1 flex-col gap-3 overflow-y-auto px-6 pt-2 pb-[120px]">
           {/* month header */}
           <div className="-mb-0.5 mt-1 flex items-center gap-3">
             <MonthYearPicker value={activeSel} onChange={setActiveSel} available={activeAvailable} />

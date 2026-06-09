@@ -106,7 +106,7 @@ export function SettingsScreen() {
 
   return (
     <Shell>
-      <div className="relative z-1 h-full overflow-y-auto px-6 pt-12 pb-[120px]">
+      <div className="scroll-area relative z-1 h-full overflow-y-auto px-6 pt-12 pb-[120px]">
         {/* top bar */}
         <div className="mb-4 flex items-center gap-3">
           <button

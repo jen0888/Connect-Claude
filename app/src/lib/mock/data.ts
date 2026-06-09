@@ -265,6 +265,8 @@ export const MATCH_REQUESTS: MatchRequest[] = [
   { id: 'mr-3', match_id: 'm-cancelled', player_id: 'u-you', kind: 'invite', status: 'expired', created_at: iso(-40) },
   // FIFO waitlist head on the full padel match — waitlisting after this lands at #2
   { id: 'mr-4', match_id: 'm-full-padel', player_id: 'u-lb', kind: 'waitlist', status: 'waitlisted', created_at: iso(-6) },
+  // live invite → you, from Noor's invite-only tennis (surfaces on Home + Chat; accept/decline in Match Details)
+  { id: 'mr-5', match_id: 'm-invite-tennis', player_id: 'u-you', kind: 'invite', status: 'invited', created_at: iso(-3) },
 ]
 
 export const MATCH_RESULTS: MatchResult[] = [

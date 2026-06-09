@@ -249,7 +249,7 @@ export function MatchChatScreen() {
             {/* drop-down detail */}
             <div className="overflow-hidden transition-all" style={{ maxHeight: expanded ? (played ? 560 : 260) : 0, opacity: expanded ? 1 : 0 }}>
               {played ? (
-                <div className="max-h-[524px] overflow-y-auto bg-page pt-3.5 pb-4">
+                <div className="scroll-area max-h-[524px] overflow-y-auto bg-page pt-3.5 pb-4">
                   <RecordResultForm match={match} onSaved={onResultSaved} />
                 </div>
               ) : (
@@ -304,7 +304,7 @@ export function MatchChatScreen() {
         )}
 
         {/* timeline */}
-        <div ref={scrollRef} className="relative z-1 flex flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2.5 pb-3.5">
+        <div ref={scrollRef} className="scroll-area relative z-1 flex flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2.5 pb-3.5">
           {msgs.map((msg, i) => {
             if (msg.system) return <SystemLine key={msg.id} item={msg} />
             const mine = msg.sender_id === currentUserId

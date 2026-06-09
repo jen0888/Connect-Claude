@@ -57,7 +57,7 @@ export function NewMessageScreen() {
           </div>
         </div>
 
-        <div className="relative z-1 flex flex-1 flex-col gap-1.5 overflow-y-auto px-6 pb-10">
+        <div className="scroll-area relative z-1 flex flex-1 flex-col gap-1.5 overflow-y-auto px-6 pb-10">
           {players.map((p) => (
             <button
               key={p.id}

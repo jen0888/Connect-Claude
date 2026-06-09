@@ -170,6 +170,11 @@
   padding: 56px 22px 130px;
   position: relative;
   z-index: 1;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scroll::-webkit-scrollbar {
+  display: none;
 }
 .hscroll {
   display: flex;
@@ -179,6 +184,17 @@
 }
 .hscroll::-webkit-scrollbar {
   display: none;
+}
+/* Hidden-scrollbar treatment — the element still scrolls, but the bar is
+   visually hidden in every browser. Add `scroll-area` to ANY overflow
+   auto/scroll container (the element keeps its own overflow-y/-x) for a
+   consistent chromeless look across the app. */
+.scroll-area {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE / old Edge */
+}
+.scroll-area::-webkit-scrollbar {
+  display: none; /* Chrome / Safari / WebKit */
 }
 /* Numbers/times stay LTR even in Arabic (CLAUDE.md §7) */
 @utility ltr-nums {
