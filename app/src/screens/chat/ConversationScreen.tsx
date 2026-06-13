@@ -43,10 +43,10 @@ export function ConversationScreen() {
 
   if (!other) return null
 
-  const send = () => {
+  const send = async () => {
     if (!draft.trim()) return
-    const id = thread?.id ?? actions.getOrCreateDM(other.id)
-    actions.sendMessage(id, draft)
+    const id = thread?.id ?? (await actions.getOrCreateDM(other.id))
+    if (id) actions.sendMessage(id, draft)
     setDraft('')
   }
 

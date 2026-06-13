@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MailPlus, MapPin, Sparkles, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MailPlus, MapPin, Plus, Sparkles, TriangleAlert, Trophy, UserRound, Users } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
-import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider } from '@/components/controls'
+import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, useDB } from '@/lib/store'
 import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
+import { writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
 import type { JoinMode, SkillLevel, Sport } from '@/lib/types'
 import { keyOf, labelFromKey } from '@/lib/datetime'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
+import { InvitePicker } from './InvitePicker'
 import { WhenCard } from './WhenCard'
 
 /** Create / Edit Match — single long scroll (create-match-v1.jsx, Editorial
@@ -75,26 +77,34 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
     : null
 
   const [sport, setSport] = usePersistedState<Sport>(dk('sport'), existing?.sport ?? 'padel')
+  const [name, setName] = usePersistedState(dk('name'), existing?.name ?? '')
   const [dateKey, setDateKey] = usePersistedState(dk('dateKey'), existing ? existing.start_time.slice(0, 10) : keyOf(new Date()))
   const [startTime, setStartTime] = usePersistedState(dk('startTime'), existing ? existing.start_time.slice(11, 16) : '18:30')
   const [endTime, setEndTime] = usePersistedState(dk('endTime'), existing ? existing.end_time.slice(11, 16) : '20:00')
   const [players, setPlayers] = usePersistedState(dk('players'), existing?.total_spots ?? 4)
   const [minLevel, setMinLevel] = usePersistedState(dk('minLevel'), 2)
   const [maxLevel, setMaxLevel] = usePersistedState(dk('maxLevel'), 4)
+  const [matchType, setMatchType] = usePersistedState<'casual' | 'competition'>(dk('matchType'), 'casual')
+  const [gender, setGender] = usePersistedState<'mixed' | 'ladies'>(dk('gender'), 'mixed')
   const [isFree, setIsFree] = usePersistedState<boolean | null>(dk('isFree'), existing ? existing.fee_per_player == null : null)
   const [pricePerPlayer, setPricePerPlayer] = usePersistedState(dk('pricePerPlayer'), existing?.fee_per_player ? String(existing.fee_per_player) : '')
   const [joinMode, setJoinMode] = usePersistedState<JoinMode | null>(dk('joinMode'), existing ? existing.join_mode : null)
+  const [waitlistOpen, setWaitlistOpen] = usePersistedState(dk('waitlistOpen'), existing?.waitlist_open ?? false)
+  const [waitlistSize, setWaitlistSize] = usePersistedState(dk('waitlistSize'), existing?.waitlist_size ?? 2)
   const [description, setDescription] = usePersistedState(dk('description'), existing?.notes ?? '')
   const [venue, setVenue] = usePersistedState<VenueSelection | null>(dk('venue'), initialVenue)
 
+  const [invitedIds, setInvitedIds] = usePersistedState<string[]>(dk('invitedIds'), [])
+
   const [showVenue, setShowVenue] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
   const [showReminder, setShowReminder] = useState(false)
 
   const isRoute = venue?.id === 'route' || !!venue?.endName
   const venueCompatible = venue != null && (sport === 'running' ? isRoute : !isRoute)
   const allChosen = isFree !== null && joinMode !== null
 
-  const save = () => {
+  const save = async () => {
     if (!allChosen) {
       setShowReminder(true)
       return
@@ -105,6 +115,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
     const price = isFree ? null : parseFloat(pricePerPlayer) || null
     const base = {
       sport,
+      name: name.trim() || null,
       venue_id: venue && venue.id !== 'custom' && venue.id !== 'route' ? venue.id : null,
       venue_name: venue?.name ?? '',
       venue_location: venue?.area || null,
@@ -119,16 +130,55 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       fee_per_player: price,
       fee_total: price ? price * players : null,
       join_mode: (joinMode ?? 'open') as JoinMode,
+      waitlist_open: waitlistOpen,
+      waitlist_size: waitlistOpen ? waitlistSize : undefined,
       notes: description.trim() || null,
     }
     if (isEdit && existing) {
       actions.updateMatch(existing.id, base)
       showToast('Changes saved')
     } else {
-      actions.createMatch({ ...base, host_id: currentUserId })
+      const newId = await actions.createMatch({ ...base, host_id: currentUserId })
+      // invite-only: send the picked invites (live: real invites that auto-notify;
+      // mock: the demo sim has each accept a beat later)
+      if (newId && base.join_mode === 'invite') invitedIds.forEach((id) => actions.invitePlayer(newId, id))
       clearPersistedState('match:create:') // draft committed — reset for next time
-      showToast('Match created')
+      showToast(base.join_mode === 'invite' && invitedIds.length ? `Match created · ${invitedIds.length} invited` : 'Match created')
     }
+    // Also write the localStorage source-of-truth so Home's "You're hosting" card
+    // shows this match (and survives reload) — Home prefers this over the
+    // in-memory store.
+    const hosted: HostedMatch = {
+      sport,
+      name: name.trim() || 'Untitled match',
+      dateKey,
+      dateLabel: labelFromKey(dateKey),
+      startTime,
+      endTime,
+      matchType,
+      gender,
+      joinMode: (joinMode ?? 'open') as JoinMode,
+      requireApproval: joinMode === 'approval',
+      invitedPlayerIds: joinMode === 'invite' ? invitedIds : [],
+      isFree: isFree === true,
+      pricePerPlayer: isFree === true ? '' : pricePerPlayer,
+      players,
+      filled: 1, // host always holds the first spot
+      minLevel,
+      maxLevel,
+      waitlistOpen,
+      waitlistSize,
+      description: description.trim(),
+      venueName: venue?.name ?? '',
+      area: venue?.area ?? '',
+      setting: venue?.setting ?? '',
+      court: venue?.court ?? '',
+      isRoute,
+      routeEnd: isRoute ? (venue?.loop ? venue?.name : venue?.endName) : undefined,
+      loop: isRoute ? venue?.loop : undefined,
+      km: isRoute ? venue?.km : undefined,
+    }
+    writeHostedMatch(hosted)
     navigate('/home') // save-then-route: Match edit/create → Home + toast
   }
 
@@ -195,8 +245,22 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
             })}
           </div>
 
+          {/* match name */}
+          <div className="mt-3">
+            <label className="text-[10.5px] font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-muted)' }}>
+              Match name
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name your match"
+              className="mt-1.5 block w-full border-0 border-b bg-transparent pb-2 font-display text-[24px] leading-tight text-ink outline-none placeholder:opacity-40"
+              style={{ borderBottomColor: 'rgba(26,26,26,0.18)' }}
+            />
+          </div>
+
           {/* When */}
-          <div className="mt-2">
+          <div className="mt-6">
             <WhenCard
               dateKey={dateKey}
               onDateKey={setDateKey}
@@ -285,6 +349,36 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                   {venueCompatible ? 'Change' : 'Choose a location'}
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Vibe */}
+          <div className="mt-6">
+            <Eyebrow accent="var(--color-brand)">Vibe</Eyebrow>
+            <div className={`mt-3 flex flex-col gap-[18px] p-[18px] ${cardCls}`} style={cardStyle}>
+              <FieldRow label="Match type" hint={matchType === 'casual' ? 'Just for fun.' : 'Ranked & rated.'}>
+                <Segmented
+                  value={matchType}
+                  onChange={setMatchType}
+                  options={[
+                    { value: 'casual', label: 'Casual', icon: <Sparkles size={14} strokeWidth={1.8} /> },
+                    { value: 'competition', label: 'Competition', icon: <Trophy size={14} strokeWidth={1.8} /> },
+                  ]}
+                />
+              </FieldRow>
+
+              <div className="h-px" style={{ background: 'rgba(26,26,26,0.10)' }} />
+
+              <FieldRow label="Open to" hint={gender === 'mixed' ? 'Any gender welcome.' : 'Female players only.'}>
+                <Segmented
+                  value={gender}
+                  onChange={setGender}
+                  options={[
+                    { value: 'mixed', label: 'Mixed', icon: <Users size={14} strokeWidth={1.8} /> },
+                    { value: 'ladies', label: 'Ladies only', icon: <UserRound size={14} strokeWidth={1.8} /> },
+                  ]}
+                />
+              </FieldRow>
             </div>
           </div>
 
@@ -411,7 +505,112 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                     { value: 'invite', label: 'Invite', icon: <MailPlus size={14} strokeWidth={1.8} /> },
                   ]}
                 />
+
+                {/* invite-only: pick the specific players you're inviting (the
+                    invite holds no slot — first to accept fills the match, §5) */}
+                {joinMode === 'invite' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowInvite(true)}
+                    className="mt-3.5 flex w-full cursor-pointer items-center gap-3 rounded-[16px] border bg-page px-3.5 py-3 text-start"
+                    style={{ borderColor: 'rgba(26,26,26,0.10)' }}
+                  >
+                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(26,26,26,0.06)', color: 'var(--color-text)' }}>
+                      <MailPlus size={16} strokeWidth={1.8} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13.5px] font-medium text-ink">Invite players</div>
+                      <div className="mt-0.5 truncate text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {invitedIds.length === 0
+                          ? 'Choose who can join this match.'
+                          : invitedIds
+                              .map((pid) => getUser(db, pid)?.name.split(' ')[0])
+                              .filter(Boolean)
+                              .join(', ')}
+                      </div>
+                    </div>
+                    {invitedIds.length > 0 ? (
+                      <span className="inline-flex shrink-0 items-center rounded-pill bg-brand px-2.5 py-1 text-[11px] font-semibold text-onbrand nums-tabular">
+                        {invitedIds.length} invited
+                      </span>
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-pill px-3 py-1.5 text-[12px] font-medium text-brand" style={{ border: '1.5px solid color-mix(in srgb, var(--color-brand) 33%, transparent)' }}>
+                        <Plus size={13} strokeWidth={2.2} /> Add
+                      </span>
+                    )}
+                  </button>
+                )}
               </FieldRow>
+
+              <div className="h-px" style={{ background: 'rgba(26,26,26,0.10)' }} />
+
+              {/* Waitlist — available for all join modes; on a full match players
+                  queue FIFO and auto-promote (approval still gates promotion, §5) */}
+              <div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: 'rgba(26,26,26,0.06)', color: 'var(--color-text)' }}
+                  >
+                    <Users size={16} strokeWidth={1.8} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-medium text-ink">Waitlist open</div>
+                    <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                      {waitlistOpen ? "Players can queue once it's full." : 'No queue — full means closed.'}
+                    </div>
+                  </div>
+                  <Toggle value={waitlistOpen} onChange={setWaitlistOpen} />
+                </div>
+
+                {waitlistOpen && (
+                  <>
+                    <div className="my-[18px] h-px" style={{ background: 'rgba(26,26,26,0.10)' }} />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[13.5px] font-medium text-ink">Waitlist size</div>
+                        <div className="mt-0.5 text-[11.5px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
+                          Up to {waitlistSize} {waitlistSize === 1 ? 'player' : 'players'} can queue.
+                        </div>
+                      </div>
+                      <div className="inline-flex items-center gap-3">
+                        <button
+                          type="button"
+                          aria-label="Fewer"
+                          disabled={waitlistSize <= 1}
+                          onClick={() => setWaitlistSize((n) => Math.max(1, n - 1))}
+                          className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-ink disabled:opacity-40"
+                          style={{ border: '1.5px solid rgba(26,26,26,0.18)' }}
+                        >
+                          –
+                        </button>
+                        <span className="min-w-[18px] text-center font-display text-[22px] leading-none nums-tabular">{waitlistSize}</span>
+                        <button
+                          type="button"
+                          aria-label="More"
+                          disabled={waitlistSize >= 8}
+                          onClick={() => setWaitlistSize((n) => Math.min(8, n + 1))}
+                          className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-ink disabled:opacity-40"
+                          style={{ border: '1.5px solid rgba(26,26,26,0.18)' }}
+                        >
+                          <Plus size={14} strokeWidth={2.2} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3.5 rounded-[14px] px-3.5 py-3 text-[11.5px] leading-normal" style={{ background: 'rgba(26,26,26,0.06)', color: 'var(--color-text-muted)' }}>
+                      {joinMode === 'approval' ? (
+                        <>
+                          If a player drops out, the next person on the waitlist <span className="font-medium text-ink">still needs your approval</span> before they join — they'll move up the queue and wait for your OK.
+                        </>
+                      ) : (
+                        <>
+                          If a player drops out, the next person on the waitlist <span className="font-medium text-ink">joins automatically</span> — no action needed from you.
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -512,6 +711,14 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
 
         {/* venue / court picker */}
         {showVenue && <VenuePicker sport={sport} current={venueCompatible ? venue : null} onClose={() => setShowVenue(false)} onSelect={(v) => { setVenue(v); setShowVenue(false) }} />}
+
+        {showInvite && (
+          <InvitePicker
+            selected={invitedIds}
+            onClose={() => setShowInvite(false)}
+            onConfirm={(ids) => { setInvitedIds(ids); setShowInvite(false) }}
+          />
+        )}
       </div>
     </Shell>
   )

@@ -49,6 +49,7 @@ export interface Match {
   id: string
   host_id: string
   sport: Sport
+  name?: string | null // optional host-given title (store flow); null/absent → derive a label
   venue_id: string | null // FK for curated venues
   venue_name: string // display name; used alone for custom venues
   venue_location: string | null
@@ -65,6 +66,8 @@ export interface Match {
   fee_total: number | null // informational only — never a transaction
   fee_per_player: number | null // display only
   join_mode: JoinMode
+  waitlist_open?: boolean // queue allowed once full (default off)
+  waitlist_size?: number // max queued players, 1–8 (only meaningful when waitlist_open)
   status: StoredMatchStatus
   notes: string | null
   created_at: string

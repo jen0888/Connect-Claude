@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
 import type { User } from '@/lib/types'
 import { mockUser } from '@/lib/mockUser'
-import { actions } from '@/lib/store'
+import { actions, connectLive, disconnectLive } from '@/lib/store'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 
 /** Global auth — real Supabase Auth when a project is wired
@@ -89,10 +89,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // mirror the signed-in profile into the data layer
+  // drive the data layer:
+  //  • configured → hydrate from Supabase on a live session (and re-fetch on
+  //    sign-in/out); the store's identity becomes the real session UUID.
+  //  • unconfigured (dev mock) → mirror the mock profile onto the seeded user.
   useEffect(() => {
-    if (user) actions.setSignedInUser(user)
-  }, [user])
+    if (isSupabaseConfigured) {
+      if (session?.user) void connectLive(session.user.id)
+      else disconnectLive()
+    } else if (user) {
+      actions.setSignedInUser(user)
+    }
+  }, [session, user])
 
   const signIn: AuthValue['signIn'] = async (email, password) => {
     if (!supabase) return { error: 'Auth is not configured' }

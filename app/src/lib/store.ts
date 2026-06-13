@@ -5,6 +5,8 @@ import { onboarding } from './onboarding'
 import { computeStatus } from './status'
 import { clearHostedMatch } from './hostedMatch'
 import { clearProfileSports } from './profile'
+import { supabase, isSupabaseConfigured } from './supabase'
+import { fetchSnapshot } from './repo'
 
 /** signed-in profile pushed by AuthProvider (dev mockUser now, Supabase
  *  session later). Overlaid onto the seeded current user — the id is kept
@@ -121,7 +123,16 @@ function freshDB(): DB {
   }
 }
 
-let db: DB = isFreshAccount() ? freshDB() : SEEDED
+/** empty graph for live mode — hydrated from Supabase once a session lands */
+const EMPTY_DB: DB = {
+  users: [], matches: [], matchPlayers: [], matchRequests: [], matchResults: [],
+  noShowReports: [], chatThreads: [], chatMessages: [], threadReadAt: {},
+  blockedUserIds: [], savedMatchIds: [],
+}
+
+// Live mode (Supabase configured): start empty, hydrate on connectLive(). Mock
+// mode: the seeded demo dataset (or a fresh account) as before.
+let db: DB = isSupabaseConfigured ? EMPTY_DB : isFreshAccount() ? freshDB() : SEEDED
 
 const listeners = new Set<() => void>()
 
@@ -144,12 +155,184 @@ export function useDB(): DB {
   )
 }
 
+/** Live-mode hydration gate. In mock/unconfigured builds the seeded store is
+ *  ready synchronously, so this is `true` from the start. In live mode it stays
+ *  `false` from the moment a session connects until the first snapshot lands —
+ *  letting route guards hold rendering so screens never read an empty `db`
+ *  (e.g. `getUser(db, currentUserId)` returning undefined right after sign-in). */
+let liveHydrated = !isSupabaseConfigured
+
+export function useHydrated(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb)
+      return () => listeners.delete(cb)
+    },
+    () => liveHydrated,
+  )
+}
+
 let idCounter = 0
 const newId = (prefix: string) => `${prefix}-${++idCounter}-${Math.random().toString(36).slice(2, 7)}`
 
+/* ── demo simulation: the seeded dummy accounts respond, so invite + chat
+ *  flows run end-to-end with no backend. Pure setTimeout over the existing
+ *  mutations — invited players auto-accept (and the match thread announces
+ *  the join), DM'd / group-chat players send a canned reply. Delete this
+ *  block when a real backend drives counterparty behaviour (CLAUDE.md §7). */
+const INVITE_ACCEPT_DELAY = 1600
+const REPLY_DELAY = 1500
+let replyTick = 0
+
+const CANNED_REPLIES = [
+  'Sounds good — count me in! 👍',
+  'Nice, see you on court.',
+  'Perfect, that works for me.',
+  'Great — looking forward to it!',
+  'On my way shortly.',
+  'Appreciate the message — let’s do it.',
+]
+
+/** An invited dummy player accepts a beat later: they join the roster, and if
+ *  the match has a group thread the join is announced there too. */
+function simulateInviteAccept(reqId: string) {
+  const req = db.matchRequests.find((r) => r.id === reqId)
+  if (!req || req.status !== 'invited') return
+  const name = getUser(db, req.player_id)?.name?.split(' ')[0] ?? 'A player'
+  actions.acceptInvite(reqId) // existing logic: fills a spot, expires others if it just filled
+  const joined = db.matchPlayers.some((mp) => mp.match_id === req.match_id && mp.player_id === req.player_id)
+  const thread = db.chatThreads.find((t) => t.match_id === req.match_id)
+  if (joined && thread) {
+    mutate((d) => ({
+      ...d,
+      chatMessages: [
+        ...d.chatMessages,
+        { id: newId('msg'), thread_id: thread.id, sender_id: req.player_id, body: `${name} joined`, created_at: new Date().toISOString(), system: true, tone: 'info', icon: 'userPlus' },
+      ],
+    }))
+  }
+}
+
+/** A canned reply from the first other (non-blocked) participant of a thread —
+ *  works for both 1:1 DMs and match group threads. */
+function botReply(threadId: string, senderId: string, index: number) {
+  mutate((d) => {
+    const t = d.chatThreads.find((x) => x.id === threadId)
+    if (!t || !t.participant_ids.includes(senderId) || d.blockedUserIds.includes(senderId)) return d
+    return {
+      ...d,
+      chatMessages: [
+        ...d.chatMessages,
+        { id: newId('msg'), thread_id: threadId, sender_id: senderId, body: CANNED_REPLIES[index % CANNED_REPLIES.length], created_at: new Date().toISOString() },
+      ],
+    }
+  })
+}
+
+function scheduleReply(threadId: string) {
+  const thread = db.chatThreads.find((t) => t.id === threadId)
+  if (!thread) return
+  const responder = thread.participant_ids.find((p) => p !== CURRENT_USER_ID && !db.blockedUserIds.includes(p))
+  if (!responder) return // your own solo thread (e.g. hosted) — nobody to reply
+  setTimeout(() => botReply(threadId, responder, replyTick++), REPLY_DELAY)
+}
+
 /* ── selectors (future Supabase selects / views) ───────────────────── */
 
-export const currentUserId = CURRENT_USER_ID
+/** The acting user. Mock mode: the seeded 'u-you'. Live mode: the Supabase
+ *  session UUID (set by connectLive). Exported as a live binding so screens
+ *  that import it always read the current value. */
+export let currentUserId = CURRENT_USER_ID
+
+/* ── Supabase live mode ─────────────────────────────────────────────────
+ *  When a project is configured AND a session is active, `db` is hydrated from
+ *  Supabase and every mutating action goes through the flow RPCs / RLS-guarded
+ *  writes; Realtime re-hydrates `db` so changes from other windows appear live.
+ *  `liveReady` gates the per-action branch — false until connectLive() runs, so
+ *  the mock store keeps working before sign-in and in unconfigured builds. */
+let liveReady = false
+let realtimeBound = false
+
+async function rehydrate() {
+  if (!supabase) return
+  try {
+    const snap = await fetchSnapshot(supabase)
+    // keep client-only state (block/save/read) that has no table yet
+    db = { ...db, ...snap }
+    liveHydrated = true // first snapshot is in — release the route guard
+    emit()
+  } catch (e) {
+    console.error('[store] hydrate failed', e)
+  }
+}
+
+let rehydrateTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleRehydrate() {
+  if (rehydrateTimer) return
+  rehydrateTimer = setTimeout(() => {
+    rehydrateTimer = null
+    void rehydrate()
+  }, 150)
+}
+
+/** AuthProvider → data layer: a Supabase session is ready. Switch to live mode,
+ *  hydrate, and subscribe to Realtime (once). */
+export async function connectLive(userId: string) {
+  if (!supabase) return
+  currentUserId = userId
+  liveReady = true
+  liveHydrated = false // gate screens until the first snapshot lands
+  db = { ...EMPTY_DB }
+  await rehydrate()
+  if (!realtimeBound) {
+    realtimeBound = true
+    supabase
+      .channel('connect-db')
+      .on('postgres_changes', { event: '*', schema: 'public' }, scheduleRehydrate)
+      .subscribe()
+  }
+}
+
+/** AuthProvider → data layer: signed out. Configured → empty graph (a
+ *  logged-out live app shows nothing, RLS would deny anyway); unconfigured →
+ *  the seeded demo dataset. */
+export function disconnectLive() {
+  liveReady = false
+  liveHydrated = !isSupabaseConfigured // configured: re-gate until next sign-in
+  currentUserId = CURRENT_USER_ID
+  db = isSupabaseConfigured ? EMPTY_DB : SEEDED
+  emit()
+}
+
+/** curated mock venues use slug ids ('padelin-aspire'); the DB venue_id is a
+ *  uuid FK. Pass null for anything that isn't a real uuid — venue_name carries
+ *  the display either way. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const asUuidOrNull = (v: unknown): string | null => (typeof v === 'string' && UUID_RE.test(v) ? v : null)
+
+/** call a flow RPC, then refresh `db` (Realtime will also fire, but this makes
+ *  the acting window feel instant). Errors are logged; callers stay fire-and-forget. */
+async function rpc(fn: string, params: Record<string, unknown>): Promise<unknown> {
+  if (!supabase) return
+  const { data, error } = await supabase.rpc(fn, params)
+  if (error) {
+    console.error(`[rpc] ${fn} failed:`, error.message)
+    return
+  }
+  await rehydrate()
+  return data
+}
+
+/** run a direct (RLS-guarded) table write, then refresh `db`. For the few
+ *  mutations with no dedicated RPC (leave waitlist, cancel request, cancel
+ *  match, results, no-show, chat insert). */
+function afterWrite(p: PromiseLike<{ error: unknown }>) {
+  void Promise.resolve(p).then((res) => {
+    const err = (res as { error?: { message?: string } } | null)?.error
+    if (err) console.error('[write] failed:', err.message)
+    return rehydrate()
+  })
+}
 
 export function getUser(d: DB, id: string): User | undefined {
   return d.users.find((u) => u.id === id)
@@ -162,25 +345,25 @@ export function matchPlayers(d: DB, matchId: string): User[] {
     .filter((u): u is User => !!u)
 }
 
-export function isJoined(d: DB, matchId: string, userId = CURRENT_USER_ID): boolean {
+export function isJoined(d: DB, matchId: string, userId = currentUserId): boolean {
   return d.matchPlayers.some((mp) => mp.match_id === matchId && mp.player_id === userId)
 }
 
-export function pendingRequest(d: DB, matchId: string, userId = CURRENT_USER_ID): MatchRequest | undefined {
+export function pendingRequest(d: DB, matchId: string, userId = currentUserId): MatchRequest | undefined {
   return d.matchRequests.find(
     (r) => r.match_id === matchId && r.player_id === userId && (r.status === 'requested' || r.status === 'invited'),
   )
 }
 
 /** active waitlist entry for a player on a match (kind 'waitlist', §5) */
-export function waitlistEntry(d: DB, matchId: string, userId = CURRENT_USER_ID): MatchRequest | undefined {
+export function waitlistEntry(d: DB, matchId: string, userId = currentUserId): MatchRequest | undefined {
   return d.matchRequests.find(
     (r) => r.match_id === matchId && r.player_id === userId && r.kind === 'waitlist' && r.status === 'waitlisted',
   )
 }
 
 /** 1-based FIFO position — derived from created_at ordering, never stored (§5) */
-export function waitlistPosition(d: DB, matchId: string, userId = CURRENT_USER_ID): number | null {
+export function waitlistPosition(d: DB, matchId: string, userId = currentUserId): number | null {
   const queue = d.matchRequests
     .filter((r) => r.match_id === matchId && r.kind === 'waitlist' && r.status === 'waitlisted')
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -191,7 +374,7 @@ export function waitlistPosition(d: DB, matchId: string, userId = CURRENT_USER_I
 /** invites awaiting MY response — kind 'invite', status 'invited', on a match
  *  that's still joinable (open/full, not cancelled). Drives the Home + Chat
  *  invite surfaces; FIFO by created_at so the oldest invite shows first. */
-export function myInvites(d: DB, userId = CURRENT_USER_ID): MatchRequest[] {
+export function myInvites(d: DB, userId = currentUserId): MatchRequest[] {
   return d.matchRequests
     .filter((r) => r.player_id === userId && r.kind === 'invite' && r.status === 'invited')
     .filter((r) => {
@@ -216,7 +399,7 @@ export function matchInvites(d: DB, matchId: string): MatchRequest[] {
 export function invitablePlayers(d: DB, matchId: string): User[] {
   const m = d.matches.find((x) => x.id === matchId)
   return d.users.filter((u) => {
-    if (u.id === CURRENT_USER_ID || (m && u.id === m.host_id)) return false
+    if (u.id === currentUserId || (m && u.id === m.host_id)) return false
     if (isJoined(d, matchId, u.id)) return false
     if (d.blockedUserIds.includes(u.id)) return false
     const active = d.matchRequests.some(
@@ -246,16 +429,16 @@ export function discoverMatches(d: DB): Match[] {
  *  Future SQL: select * from matches where read_status in ('open','full')
  *  and host_id != :me order by start_time. */
 export function discoverFeed(d: DB): Match[] {
-  return discoverMatches(d).filter((m) => m.host_id !== CURRENT_USER_ID)
+  return discoverMatches(d).filter((m) => m.host_id !== currentUserId)
 }
 
-export function joinedMatches(d: DB, userId = CURRENT_USER_ID): Match[] {
+export function joinedMatches(d: DB, userId = currentUserId): Match[] {
   return d.matches
     .filter((m) => isJoined(d, m.id, userId))
     .sort((a, b) => a.start_time.localeCompare(b.start_time))
 }
 
-export function hostedMatches(d: DB, userId = CURRENT_USER_ID): Match[] {
+export function hostedMatches(d: DB, userId = currentUserId): Match[] {
   return d.matches.filter((m) => m.host_id === userId).sort((a, b) => a.start_time.localeCompare(b.start_time))
 }
 
@@ -267,7 +450,7 @@ export function threadForMatch(d: DB, matchId: string): ChatThread | undefined {
 }
 
 export function dmThreadWith(d: DB, userId: string): ChatThread | undefined {
-  return d.chatThreads.find((t) => t.match_id === null && t.participant_ids.includes(userId) && t.participant_ids.includes(CURRENT_USER_ID))
+  return d.chatThreads.find((t) => t.match_id === null && t.participant_ids.includes(userId) && t.participant_ids.includes(currentUserId))
 }
 
 export function threadMessages(d: DB, threadId: string): ChatMessage[] {
@@ -280,13 +463,13 @@ export function threadMessages(d: DB, threadId: string): ChatMessage[] {
 
 export function unreadCount(d: DB, threadId: string): number {
   const readAt = d.threadReadAt[threadId] ?? ''
-  return threadMessages(d, threadId).filter((m) => !m.system && m.sender_id !== CURRENT_USER_ID && m.created_at > readAt).length
+  return threadMessages(d, threadId).filter((m) => !m.system && m.sender_id !== currentUserId && m.created_at > readAt).length
 }
 
 /** inbox threads — block kills DM threads both ways (removed from inbox) */
 export function inboxThreads(d: DB): ChatThread[] {
   return d.chatThreads
-    .filter((t) => t.participant_ids.includes(CURRENT_USER_ID))
+    .filter((t) => t.participant_ids.includes(currentUserId))
     .filter((t) => t.match_id !== null || !t.participant_ids.some((p) => d.blockedUserIds.includes(p)))
     .map((t) => ({ t, last: threadMessages(d, t.id).at(-1) }))
     .sort((a, b) => (b.last?.created_at ?? b.t.created_at).localeCompare(a.last?.created_at ?? a.t.created_at))
@@ -349,6 +532,7 @@ export const actions = {
   /** AuthProvider → data layer: overlay the signed-in profile onto the
    *  seeded current user (id preserved, see withSignedIn) */
   setSignedInUser(profile: User) {
+    if (isSupabaseConfigured) return // live mode: identity comes from the hydrated users table
     signedInProfile = profile
     mutate((d) => ({ ...d, users: withSignedIn(d.users) }))
   },
@@ -356,6 +540,7 @@ export const actions = {
   /** onboarding "Create account" (the future Supabase signUp): wipe the demo
    *  user's history so Home renders the first-timer variant until they join */
   startFreshAccount() {
+    if (isSupabaseConfigured) return // live mode: real sign-up owns account creation
     try {
       localStorage.setItem(FRESH_KEY, '1')
       // a brand-new account hasn't set up its profile yet — clear any prior flag
@@ -389,19 +574,29 @@ export const actions = {
    *  persisted separately via lib/profile; here we store the *primary* sport +
    *  level onto the single-sport schema fields. */
   updateProfile(patch: { name?: string; bio?: string; area?: string; sport?: Sport; skill_level?: SkillLevel }) {
+    if (liveReady) {
+      // public.users has no bio/area columns — persist the identity/game fields it has
+      const up: Record<string, unknown> = {}
+      if (patch.name != null) up.name = patch.name
+      if (patch.sport != null) up.sport = patch.sport
+      if (patch.skill_level != null) up.skill_level = patch.skill_level
+      if (supabase && Object.keys(up).length) afterWrite(supabase.from('users').update(up).eq('id', currentUserId))
+      return
+    }
     if (signedInProfile) signedInProfile = { ...signedInProfile, ...patch }
     if (patch.name != null) onboarding.name = patch.name
     if (patch.sport != null) onboarding.sport = patch.sport
     if (patch.skill_level != null && patch.skill_level !== 'any') onboarding.skill = patch.skill_level
     mutate((d) => ({
       ...d,
-      users: d.users.map((u) => (u.id === CURRENT_USER_ID ? { ...u, ...patch } : u)),
+      users: d.users.map((u) => (u.id === currentUserId ? { ...u, ...patch } : u)),
     }))
   },
 
   /** Sign out (mock): drop the fresh-account flag and restore the seeded
    *  returning-user demo dataset */
   restoreDemoAccount() {
+    if (isSupabaseConfigured) return // live mode: sign-out is handled by disconnectLive
     try {
       localStorage.removeItem(FRESH_KEY)
     } catch {
@@ -412,6 +607,7 @@ export const actions = {
 
   /** open join_mode: instant membership — no gatekeeping */
   joinMatch(matchId: string) {
+    if (liveReady) { void rpc('join_match', { p_match: matchId }); return }
     mutate((d) => {
       const m = d.matches.find((x) => x.id === matchId)
       if (!m || m.spots_available <= 0 || isJoined(d, matchId)) return d
@@ -420,19 +616,20 @@ export const actions = {
         matches: d.matches.map((x) => (x.id === matchId ? { ...x, spots_available: x.spots_available - 1 } : x)),
         matchPlayers: [
           ...d.matchPlayers,
-          { id: newId('mp'), match_id: matchId, player_id: CURRENT_USER_ID, joined_at: new Date().toISOString(), attended: null },
+          { id: newId('mp'), match_id: matchId, player_id: currentUserId, joined_at: new Date().toISOString(), attended: null },
         ],
       }
     })
   },
 
   leaveMatch(matchId: string) {
+    if (liveReady) { void rpc('cancel_participation', { p_match: matchId }); return }
     mutate((d) => {
       if (!isJoined(d, matchId)) return d
       const freed: DB = {
         ...d,
         matches: d.matches.map((x) => (x.id === matchId ? { ...x, spots_available: x.spots_available + 1 } : x)),
-        matchPlayers: d.matchPlayers.filter((mp) => !(mp.match_id === matchId && mp.player_id === CURRENT_USER_ID)),
+        matchPlayers: d.matchPlayers.filter((mp) => !(mp.match_id === matchId && mp.player_id === currentUserId)),
       }
       // the freed slot auto-promotes the earliest waitlister — promotion
       // lives in the cancel action, not a cron/trigger (§5)
@@ -445,12 +642,13 @@ export const actions = {
    *  'left'/'expired' reuses the row with a fresh created_at (old position
    *  forfeited). Can't waitlist your own or an already-joined match. */
   joinWaitlist(matchId: string) {
+    if (liveReady) { void rpc('join_waitlist', { p_match: matchId }); return }
     mutate((d) => {
       const m = d.matches.find((x) => x.id === matchId)
-      if (!m || m.host_id === CURRENT_USER_ID || isJoined(d, matchId)) return d
+      if (!m || m.host_id === currentUserId || isJoined(d, matchId)) return d
       if (computeStatus(m) !== 'full') return d
       const existing = d.matchRequests.find(
-        (r) => r.match_id === matchId && r.player_id === CURRENT_USER_ID && r.kind === 'waitlist',
+        (r) => r.match_id === matchId && r.player_id === currentUserId && r.kind === 'waitlist',
       )
       if (existing && existing.status === 'waitlisted') return d
       const now = new Date().toISOString()
@@ -460,7 +658,7 @@ export const actions = {
           ? d.matchRequests.map((r) => (r.id === existing.id ? { ...r, status: 'waitlisted' as const, created_at: now } : r))
           : [
               ...d.matchRequests,
-              { id: newId('mr'), match_id: matchId, player_id: CURRENT_USER_ID, kind: 'waitlist' as const, status: 'waitlisted' as const, created_at: now },
+              { id: newId('mr'), match_id: matchId, player_id: currentUserId, kind: 'waitlist' as const, status: 'waitlisted' as const, created_at: now },
             ],
       }
     })
@@ -468,10 +666,15 @@ export const actions = {
 
   /** waitlisted → left (player removes themselves from the queue) */
   leaveWaitlist(matchId: string) {
+    if (liveReady) {
+      if (supabase) afterWrite(supabase.from('match_requests').update({ status: 'left' })
+        .eq('match_id', matchId).eq('player_id', currentUserId).eq('kind', 'waitlist').eq('status', 'waitlisted'))
+      return
+    }
     mutate((d) => ({
       ...d,
       matchRequests: d.matchRequests.map((r) =>
-        r.match_id === matchId && r.player_id === CURRENT_USER_ID && r.kind === 'waitlist' && r.status === 'waitlisted'
+        r.match_id === matchId && r.player_id === currentUserId && r.kind === 'waitlist' && r.status === 'waitlisted'
           ? { ...r, status: 'left' as const }
           : r,
       ),
@@ -480,23 +683,29 @@ export const actions = {
 
   /** approval join_mode: player → host. Pending request holds NO slot. */
   requestToJoin(matchId: string) {
+    if (liveReady) { void rpc('request_to_join', { p_match: matchId }); return }
     mutate((d) => {
       if (pendingRequest(d, matchId)) return d
       return {
         ...d,
         matchRequests: [
           ...d.matchRequests,
-          { id: newId('mr'), match_id: matchId, player_id: CURRENT_USER_ID, kind: 'request', status: 'requested', created_at: new Date().toISOString() },
+          { id: newId('mr'), match_id: matchId, player_id: currentUserId, kind: 'request', status: 'requested', created_at: new Date().toISOString() },
         ],
       }
     })
   },
 
   cancelRequest(matchId: string) {
+    if (liveReady) {
+      if (supabase) afterWrite(supabase.from('match_requests').update({ status: 'declined' })
+        .eq('match_id', matchId).eq('player_id', currentUserId).eq('kind', 'request').eq('status', 'requested'))
+      return
+    }
     mutate((d) => ({
       ...d,
       matchRequests: d.matchRequests.filter(
-        (r) => !(r.match_id === matchId && r.player_id === CURRENT_USER_ID && r.status === 'requested'),
+        (r) => !(r.match_id === matchId && r.player_id === currentUserId && r.status === 'requested'),
       ),
     }))
   },
@@ -504,6 +713,7 @@ export const actions = {
   /** host approves: requested → approved → joined; first to fill wins,
    *  remaining pending requests expire when the match fills. */
   approveRequest(requestId: string) {
+    if (liveReady) { void rpc('approve_request', { p_request: requestId }); return }
     mutate((d) => {
       const r = d.matchRequests.find((x) => x.id === requestId)
       if (!r) return d
@@ -530,23 +740,30 @@ export const actions = {
 
   /** host → player invite. A pending invite holds NO slot (CLAUDE.md §5). */
   invitePlayer(matchId: string, playerId: string) {
+    if (liveReady) { void rpc('invite_player', { p_match: matchId, p_player: playerId }); return }
+    const reqId = newId('mr')
+    let created = false
     mutate((d) => {
       const dup = d.matchRequests.some(
         (r) => r.match_id === matchId && r.player_id === playerId && (r.status === 'invited' || r.status === 'requested'),
       )
       if (dup || isJoined(d, matchId, playerId)) return d
+      created = true
       return {
         ...d,
         matchRequests: [
           ...d.matchRequests,
-          { id: newId('mr'), match_id: matchId, player_id: playerId, kind: 'invite', status: 'invited', created_at: new Date().toISOString() },
+          { id: reqId, match_id: matchId, player_id: playerId, kind: 'invite', status: 'invited', created_at: new Date().toISOString() },
         ],
       }
     })
+    // demo: the invited dummy account accepts a beat later so the flow runs end-to-end
+    if (created) setTimeout(() => simulateInviteAccept(reqId), INVITE_ACCEPT_DELAY)
   },
 
   /** invited player accepts: invited → accepted → joined (first to fill wins) */
   acceptInvite(requestId: string) {
+    if (liveReady) { void rpc('accept_invite', { p_request: requestId }); return }
     mutate((d) => {
       const r = d.matchRequests.find((x) => x.id === requestId)
       if (!r || r.status !== 'invited') return d
@@ -577,6 +794,7 @@ export const actions = {
   },
 
   declineInvite(requestId: string) {
+    if (liveReady) { void rpc('decline_invite', { p_request: requestId }); return }
     mutate((d) => ({
       ...d,
       matchRequests: d.matchRequests.map((x) => (x.id === requestId && x.status === 'invited' ? { ...x, status: 'declined' as const } : x)),
@@ -584,6 +802,7 @@ export const actions = {
   },
 
   declineRequest(requestId: string) {
+    if (liveReady) { void rpc('decline_request', { p_request: requestId }); return }
     mutate((d) => ({
       ...d,
       matchRequests: d.matchRequests.map((x) => (x.id === requestId ? { ...x, status: 'declined' as const } : x)),
@@ -591,6 +810,10 @@ export const actions = {
   },
 
   cancelMatch(matchId: string) {
+    if (liveReady) {
+      if (supabase) afterWrite(supabase.from('matches').update({ status: 'cancelled' }).eq('id', matchId))
+      return
+    }
     mutate((d) => ({
       ...d,
       matches: d.matches.map((x) => (x.id === matchId ? { ...x, status: 'cancelled' as const } : x)),
@@ -601,7 +824,33 @@ export const actions = {
     }))
   },
 
-  createMatch(input: Omit<Match, 'id' | 'created_at' | 'status' | 'spots_available'> & { spots_available?: number }) {
+  async createMatch(
+    input: Omit<Match, 'id' | 'created_at' | 'status' | 'spots_available'> & { spots_available?: number },
+  ): Promise<string> {
+    if (liveReady) {
+      if (!supabase) return ''
+      const { data, error } = await supabase.rpc('create_match', {
+        p_sport: input.sport,
+        p_venue_id: asUuidOrNull(input.venue_id),
+        p_venue_name: input.venue_name,
+        p_venue_location: input.venue_location ?? null,
+        p_court_number: input.court_number ?? null,
+        p_start: input.start_time,
+        p_end: input.end_time,
+        p_skill: input.skill_level,
+        p_total_spots: input.total_spots,
+        p_fee_total: input.fee_total ?? 0,
+        p_fee_per_player: input.fee_per_player ?? 0,
+        p_join_mode: input.join_mode,
+        p_notes: input.notes ?? null,
+      })
+      if (error) {
+        console.error('[rpc] create_match failed:', error.message)
+        return ''
+      }
+      await rehydrate()
+      return (data as string) ?? ''
+    }
     const id = newId('m')
     mutate((d) => ({
       ...d,
@@ -624,6 +873,20 @@ export const actions = {
   },
 
   updateMatch(matchId: string, patch: Partial<Match>) {
+    if (liveReady) {
+      if (!supabase) return
+      // map app fields → matches columns (drop route_*/round_trip/status — not
+      // in the Stage-1 schema; cancel goes through cancelMatch)
+      const cols = ['sport', 'venue_id', 'venue_name', 'venue_location', 'court_number', 'start_time', 'end_time', 'skill_level', 'total_spots', 'spots_available', 'fee_total', 'fee_per_player', 'join_mode', 'notes']
+      const src = patch as Record<string, unknown>
+      const dbPatch: Record<string, unknown> = {}
+      for (const k of cols) if (k in src) dbPatch[k] = src[k] ?? null
+      if ('venue_id' in dbPatch) dbPatch.venue_id = asUuidOrNull(dbPatch.venue_id)
+      if (dbPatch.fee_total == null && 'fee_total' in dbPatch) dbPatch.fee_total = 0
+      if (dbPatch.fee_per_player == null && 'fee_per_player' in dbPatch) dbPatch.fee_per_player = 0
+      afterWrite(supabase.from('matches').update(dbPatch).eq('id', matchId))
+      return
+    }
     mutate((d) => ({
       ...d,
       matches: d.matches.map((x) => (x.id === matchId ? { ...x, ...patch } : x)),
@@ -632,6 +895,7 @@ export const actions = {
 
   /** post-match step 1: everyone defaults to Played; flag no-shows */
   setAttendance(matchId: string, playerId: string, attended: boolean) {
+    if (liveReady) { void rpc('set_attendance', { p_match: matchId, p_player: playerId, p_attended: attended }); return }
     mutate((d) => ({
       ...d,
       matchPlayers: d.matchPlayers.map((mp) =>
@@ -642,6 +906,11 @@ export const actions = {
 
   /** post-match step 2: optional result, feeds win rate */
   recordResult(matchId: string, playerId: string, result: MatchResult['result']) {
+    if (liveReady) {
+      // RLS results_insert_self → only your own result persists
+      if (supabase) afterWrite(supabase.from('match_results').insert({ match_id: matchId, player_id: playerId, result }))
+      return
+    }
     mutate((d) => ({
       ...d,
       matchResults: [
@@ -652,18 +921,23 @@ export const actions = {
   },
 
   reportNoShow(matchId: string, reportedPlayer: string) {
+    if (liveReady) {
+      if (reportedPlayer === currentUserId) return
+      if (supabase) afterWrite(supabase.from('no_show_reports').insert({ match_id: matchId, reported_player: reportedPlayer, reporter_id: currentUserId }))
+      return
+    }
     mutate((d) => {
       // unique(match_id, reported_player, reporter_id); no self-report
-      if (reportedPlayer === CURRENT_USER_ID) return d
+      if (reportedPlayer === currentUserId) return d
       const dup = d.noShowReports.some(
-        (r) => r.match_id === matchId && r.reported_player === reportedPlayer && r.reporter_id === CURRENT_USER_ID,
+        (r) => r.match_id === matchId && r.reported_player === reportedPlayer && r.reporter_id === currentUserId,
       )
       if (dup) return d
       return {
         ...d,
         noShowReports: [
           ...d.noShowReports,
-          { id: newId('nsr'), match_id: matchId, reported_player: reportedPlayer, reporter_id: CURRENT_USER_ID, created_at: new Date().toISOString() },
+          { id: newId('nsr'), match_id: matchId, reported_player: reportedPlayer, reporter_id: currentUserId, created_at: new Date().toISOString() },
         ],
       }
     })
@@ -680,21 +954,27 @@ export const actions = {
   sendMessage(threadId: string, body: string) {
     const text = body.trim()
     if (!text) return
+    if (liveReady) {
+      if (supabase) afterWrite(supabase.from('chat_messages').insert({ thread_id: threadId, sender_id: currentUserId, body: text }))
+      return
+    }
     mutate((d) => ({
       ...d,
       chatMessages: [
         ...d.chatMessages,
-        { id: newId('msg'), thread_id: threadId, sender_id: CURRENT_USER_ID, body: text, created_at: new Date().toISOString() },
+        { id: newId('msg'), thread_id: threadId, sender_id: currentUserId, body: text, created_at: new Date().toISOString() },
       ],
     }))
+    scheduleReply(threadId) // demo: the other side replies shortly so chats run end-to-end
   },
 
   postSystemLine(threadId: string, body: string, tone: ChatMessage['tone'] = 'info', icon: ChatMessage['icon'] = 'flag') {
+    if (liveReady) return // system lines come from DB triggers/RPCs in live mode
     mutate((d) => ({
       ...d,
       chatMessages: [
         ...d.chatMessages,
-        { id: newId('msg'), thread_id: threadId, sender_id: CURRENT_USER_ID, body, created_at: new Date().toISOString(), system: true, tone, icon },
+        { id: newId('msg'), thread_id: threadId, sender_id: currentUserId, body, created_at: new Date().toISOString(), system: true, tone, icon },
       ],
     }))
   },
@@ -704,13 +984,23 @@ export const actions = {
   },
 
   /** open DM (anyone → anyone) — returns the one canonical thread */
-  getOrCreateDM(userId: string): string {
+  async getOrCreateDM(userId: string): Promise<string> {
+    if (liveReady) {
+      if (!supabase) return ''
+      const { data, error } = await supabase.rpc('get_or_create_dm', { p_other: userId })
+      if (error) {
+        console.error('[rpc] get_or_create_dm failed:', error.message)
+        return ''
+      }
+      await rehydrate()
+      return (data as string) ?? ''
+    }
     const existing = dmThreadWith(db, userId)
     if (existing) return existing.id
     const id = newId('t-dm')
     mutate((d) => ({
       ...d,
-      chatThreads: [...d.chatThreads, { id, match_id: null, participant_ids: [CURRENT_USER_ID, userId], created_at: new Date().toISOString() }],
+      chatThreads: [...d.chatThreads, { id, match_id: null, participant_ids: [currentUserId, userId], created_at: new Date().toISOString() }],
     }))
     return id
   },
