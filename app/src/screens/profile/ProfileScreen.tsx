@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronLeft, EllipsisVertical, Flag, MapPin, MessageCircle, Pencil, Settings, ShieldAlert } from 'lucide-react'
+import { BadgeCheck, ChevronLeft, EllipsisVertical, Flag, MapPin, MessageCircle, Pencil, ShieldAlert } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
@@ -9,6 +9,8 @@ import { useToast } from '@/components/Toast'
 import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, courtLabel, dayLabel, matchKind, skillLabel, sportLabel, initials as userInitials } from '@/lib/format'
+import { sportEmoji } from '@/lib/sports'
+import { readProfileSports, skillLevelToRating, type SportLevel } from '@/lib/profile'
 import type { User } from '@/lib/types'
 
 /** Player Profile (Player Profile.html / Other Player Profile.html).
@@ -36,6 +38,16 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
 
   const rate = winRate(db, user.id)
   const joinedYear = new Date(user.created_at).getFullYear().toString().slice(-2)
+
+  // Sports & level. The canonical primary sport + level is ALWAYS the one on the
+  // store `users` row (the single source of truth everyone reads — /players/:id,
+  // match cards, roster, chat — §5), so it can never drift from what others see.
+  // On the viewer's OWN profile we additionally surface the extra sports they
+  // saved in Edit Profile (readProfileSports, lib/profile); other players only
+  // ever see the primary, since the multi-sport list isn't on the users row.
+  const primarySport: SportLevel = { sport: user.sport, level: skillLevelToRating(user.skill_level) }
+  const extraSports = isMe ? (readProfileSports() ?? []).filter((s) => s.sport !== user.sport) : []
+  const sportsList: SportLevel[] = [primarySport, ...extraSports]
   const [first, ...restName] = user.name.split(' ')
 
   // their open matches (hosted by them, joinable)
@@ -63,24 +75,14 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
             <ChevronLeft size={18} strokeWidth={2} className="rtl:rotate-180" />
           </button>
           {isMe ? (
-            <div className="flex gap-2">
-              <button
-                onClick={() => navigate('/profile/edit')}
-                aria-label="Edit profile"
-                className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-none text-ink"
-                style={{ background: 'rgba(26,26,26,0.05)' }}
-              >
-                <Pencil size={16} strokeWidth={1.9} />
-              </button>
-              <button
-                onClick={() => navigate('/settings')}
-                aria-label="Settings"
-                className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-none text-ink"
-                style={{ background: 'rgba(26,26,26,0.05)' }}
-              >
-                <Settings size={16} strokeWidth={1.9} />
-              </button>
-            </div>
+            <button
+              onClick={() => navigate('/profile/edit')}
+              aria-label="Edit profile"
+              className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-none text-ink"
+              style={{ background: 'rgba(26,26,26,0.05)' }}
+            >
+              <Pencil size={16} strokeWidth={1.9} />
+            </button>
           ) : (
             <div className="relative">
               <button
@@ -127,24 +129,56 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
           )}
         </div>
 
-        {/* hero */}
+        {/* hero — identity stacks name → location → bio directly under the
+            name (CLAUDE.md §5); empty location/bio lines hide cleanly. */}
         <div className="flex flex-col items-center pt-2 text-center">
-          <div className="inline-flex h-[88px] w-[88px] items-center justify-center rounded-full bg-accent font-display text-[40px] italic text-page" style={{ boxShadow: '0 14px 30px -14px rgba(26,26,26,0.35)' }}>
+          <div className="inline-flex h-[88px] w-[88px] items-center justify-center rounded-full bg-accent font-display text-[48px] italic leading-none text-page" style={{ letterSpacing: '-0.01em', boxShadow: '0 14px 30px -14px rgba(26,26,26,0.35)' }}>
             {userInitials(user)[0]}
           </div>
-          <h1 className="mt-3.5 mb-0 font-display text-[34px] font-normal leading-none" style={{ letterSpacing: '-0.02em' }}>
-            {first} <span className="italic text-accent">{restName.join(' ')}</span>
-          </h1>
+          <div className="mt-3.5 flex items-center justify-center gap-1.5">
+            {/* name — Instrument Serif 44px, tight tracking; first name carried in
+                italic accent as the recurring identity motif (typography brief). */}
+            <h1 className="m-0 font-display text-[44px] font-normal leading-[1.05]" style={{ letterSpacing: '-0.02em' }}>
+              <span className="italic text-accent">{first}</span>
+              {restName.length > 0 && <> {restName.join(' ')}</>}
+            </h1>
+            {user.verified && (
+              <BadgeCheck size={20} strokeWidth={2} className="shrink-0 text-brand" aria-label="Verified" />
+            )}
+          </div>
+          {/* location — muted line with a MapPin (not flipped in RTL, §7); city + area */}
+          {[user.area, user.city].filter(Boolean).length > 0 && (
+            <div className="mt-2.5 flex items-center gap-1.5 text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
+              <MapPin size={13} strokeWidth={1.9} className="shrink-0" />
+              <span>{[user.area, user.city].filter(Boolean).join(' · ')}</span>
+            </div>
+          )}
           <div className="mt-2 flex items-center gap-2 text-[11.5px] font-medium uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
             <span>{skillLabel(user.skill_level)} player</span>
             <span className="h-[3px] w-[3px] rounded-full" style={{ background: 'var(--color-text-faint)' }} />
-            <span>Member · '{joinedYear}</span>
+            <span>Member · <span className="ltr-nums">'{joinedYear}</span></span>
           </div>
-          {user.bio && (
-            <p className="mt-3 mb-0 max-w-[280px] text-[13px] leading-[1.5]" style={{ color: 'rgba(26,26,26,0.65)', textWrap: 'pretty' }}>
-              {user.bio}
+          {/* bio — body in ink; empty: own profile gets an "Add a bio" deep-link,
+              other-player profiles just hide the line (§5) */}
+          {user.bio ? (
+            /* bio — the "voice" of the page, set like a hand-set pull quote:
+               Instrument Serif italic 17px, balanced wrap, ink stepped to 0.78
+               opacity, curly quotes as an editorial accent (typography brief). */
+            <p
+              className="mt-4 mb-0 max-w-[300px] font-display text-[17px] italic leading-[1.35]"
+              style={{ color: 'rgba(26,26,26,0.78)', letterSpacing: '0.005em', textWrap: 'balance' }}
+            >
+              {'“'}{user.bio}{'”'}
             </p>
-          )}
+          ) : isMe ? (
+            <button
+              onClick={() => navigate('/profile/edit')}
+              className="mt-3 cursor-pointer rounded-pill border-none bg-transparent px-3 py-1 text-[12.5px] font-medium"
+              style={{ color: 'var(--color-accent)' }}
+            >
+              + Add a bio
+            </button>
+          ) : null}
           {!isMe && (
             <button
               onClick={() => navigate(`/chat/dm/${user.id}`)}
@@ -188,50 +222,36 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
           ))}
         </div>
 
-        {/* attendance + languages line */}
-        <div className="mt-3 flex items-center justify-center gap-2 text-[11.5px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
-          <span>
-            <span className="font-semibold text-ink">{user.attendance_rate}%</span> attendance
-          </span>
-          <span className="h-[3px] w-[3px] rounded-full" style={{ background: 'var(--color-text-faint)' }} />
-          <span>{user.languages.join(' · ')}</span>
-        </div>
-
-        {/* location */}
-        {user.area && (
-          <div className="mt-7">
-            <Eyebrow>Location</Eyebrow>
-            <div className="mt-3 flex items-center gap-3.5 rounded-[18px] border bg-card p-4 shadow-row" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-accent" style={{ background: 'color-mix(in srgb, var(--color-accent) 9%, transparent)' }}>
-                <MapPin size={17} strokeWidth={1.9} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold text-ink">{user.area}</div>
-                <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                  Doha, Qatar
-                </div>
-              </div>
-            </div>
+        {/* languages line */}
+        {user.languages.length > 0 && (
+          <div className="mt-3 flex items-center justify-center gap-2 text-[11.5px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
+            <span>{user.languages.join(' · ')}</span>
           </div>
         )}
 
-        {/* sports & level */}
+        {/* sports & level — own profile shows every sport the player added in
+            Edit Profile (persisted via writeProfileSports); other players fall
+            back to the single primary sport carried on the store user. */}
         <div className="mt-7">
           <Eyebrow>Sports &amp; level</Eyebrow>
-          <div className="mt-3 flex items-center gap-3.5 rounded-[18px] border bg-card px-4 py-3.5 shadow-row" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
-            <div className="h-[42px] w-[42px] shrink-0 overflow-hidden rounded-[11px]">
-              <SportArt type={artType({ sport: user.sport })} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-semibold text-ink">{sportLabel(user.sport)}</div>
-              <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                Plays most weeks
+          <div className="mt-3 flex flex-col gap-2">
+            {sportsList.map((row, i) => (
+              <div key={row.sport} className="flex items-center gap-3.5 rounded-[18px] border bg-card px-4 py-3.5 shadow-row" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
+                <span className="shrink-0 text-[28px] leading-none">{sportEmoji(row.sport)}</span>
+                <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                  <span className="text-[14px] font-semibold text-ink">{sportLabel(row.sport)}</span>
+                  {i === 0 && (
+                    <span className="truncate text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                      Plays most weeks
+                    </span>
+                  )}
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-pill bg-page px-3 py-1.5 text-[11.5px] font-semibold">
+                  <span className="h-[5px] w-[5px] rounded-full bg-accent" />
+                  {row.level}
+                </span>
               </div>
-            </div>
-            <span className="inline-flex items-center gap-1.5 rounded-pill bg-page px-3 py-1.5 text-[11.5px] font-semibold">
-              <span className="h-[5px] w-[5px] rounded-full bg-accent" />
-              {skillLabel(user.skill_level)}
-            </span>
+            ))}
           </div>
         </div>
 

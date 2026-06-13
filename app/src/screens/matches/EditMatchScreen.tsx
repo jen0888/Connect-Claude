@@ -2,11 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
-  Circle,
-  CircleDot,
   Coins,
-  Feather,
-  Footprints,
   Lock,
   LockOpen,
   MailPlus,
@@ -27,6 +23,7 @@ import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
 import type { JoinMode, Sport } from '@/lib/types'
 import { clearHostedMatch, readHostedMatch, writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
 import { keyOf, labelFromKey } from '@/lib/datetime'
+import { sportEmoji } from '@/lib/sports'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
 import { InvitePicker } from './InvitePicker'
 import { WhenCard } from './WhenCard'
@@ -37,11 +34,11 @@ import { WhenCard } from './WhenCard'
  *  (Save changes + Cancel match). Self-contained around the seed below so it
  *  renders faithfully without touching the create flow or the store schema. */
 
-const SPORTS: { id: Sport; label: string; icon: typeof Circle }[] = [
-  { id: 'padel', label: 'Padel', icon: CircleDot },
-  { id: 'tennis', label: 'Tennis', icon: Circle },
-  { id: 'badminton', label: 'Badminton', icon: Feather },
-  { id: 'running', label: 'Running', icon: Footprints },
+const SPORTS: { id: Sport; label: string }[] = [
+  { id: 'padel', label: 'Padel' },
+  { id: 'tennis', label: 'Tennis' },
+  { id: 'badminton', label: 'Badminton' },
+  { id: 'running', label: 'Running' },
 ]
 
 const LEVEL_NAMES = ['Baby', 'Beginner', 'Low int.', 'High int.', 'Advanced']
@@ -258,7 +255,6 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
           <div className="hscroll -ms-0.5 gap-2 pb-3.5">
             {SPORTS.map((s) => {
               const on = sport === s.id
-              const Icon = s.icon
               return (
                 <button
                   key={s.id}
@@ -271,7 +267,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
                     color: on ? 'var(--color-text-onbrand)' : 'var(--color-text)',
                   }}
                 >
-                  <Icon size={14} strokeWidth={1.8} />
+                  <span className="text-[16px] leading-none">{sportEmoji(s.id)}</span>
                   {s.label}
                 </button>
               )

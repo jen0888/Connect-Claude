@@ -285,7 +285,7 @@ export function InviteApprovalSheet({
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
-        className="flex h-full w-full max-w-[430px] flex-col rounded-t-[28px] bg-card outline-none"
+        className="flex max-h-[90%] w-full max-w-[430px] flex-col rounded-t-[28px] bg-card outline-none"
         style={{
           boxShadow: '0 -24px 60px -24px rgba(26,26,26,0.6)',
           transform: reduce ? 'none' : shown ? 'translateY(0)' : 'translateY(100%)',
@@ -304,7 +304,7 @@ export function InviteApprovalSheet({
         </div>
 
         <div
-          className="scroll-area flex flex-1 flex-col overflow-y-auto px-[22px]"
+          className="scroll-area flex min-h-0 flex-col overflow-y-auto px-[22px]"
           style={{ scrollbarWidth: 'none', overscrollBehavior: 'contain', paddingBottom: 'max(36px, calc(env(safe-area-inset-bottom, 0px) + 20px))' }}
         >
           {/* header */}
@@ -400,8 +400,8 @@ export function InviteApprovalSheet({
                 </div>
               )}
 
-              {/* actions pinned to the bottom of the full-height sheet */}
-              <div className="mt-auto pt-5">
+              {/* actions sit directly below the content (content-sized half sheet) */}
+              <div className="pt-5">
               {/* decision buttons — 3-action (Accept · Decide later · Decline)
                   when a defer handler is supplied, else the classic 2-up row. */}
               {onDefer ? (
@@ -515,7 +515,7 @@ function ResolvedBlock({ resolved, match, first, onClose }: { resolved: Exclude<
         <button
           type="button"
           onClick={onClose}
-          className="mt-auto inline-flex h-[52px] w-full cursor-pointer items-center justify-center rounded-pill border-none text-[15px] font-semibold text-onbrand"
+          className="mt-5 inline-flex h-[52px] w-full cursor-pointer items-center justify-center rounded-pill border-none text-[15px] font-semibold text-onbrand"
           style={{ background: 'var(--color-text)' }}
         >
           Done
@@ -524,7 +524,7 @@ function ResolvedBlock({ resolved, match, first, onClose }: { resolved: Exclude<
         <button
           type="button"
           onClick={onClose}
-          className="mt-auto inline-flex h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-pill border-none text-[15px] font-semibold text-onbrand"
+          className="mt-5 inline-flex h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-pill border-none text-[15px] font-semibold text-onbrand"
           style={{ background: 'var(--color-brand)', boxShadow: '0 12px 28px -10px var(--color-brand)' }}
         >
           <MessageCircle size={16} strokeWidth={2} /> Open match chat

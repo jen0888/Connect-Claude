@@ -90,7 +90,7 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 
 **Home sections (fixed order):** 1) NEXT UP (imminent joined match) · 2) You're hosting (See all → hosting-only archive; per-card Edit + Record results) · 3) This week (other joined matches) · 4) Host CTA. Plus a transient JUST PLAYED card when a finished match awaits post-match input (24h window).
 
-**Save-then-route (action-specific, not blanket):** Match Edit → Home + toast · Edit Profile → Settings + toast · Settings inline toggles → save in place (no Save button, no nav). Toasts (created/cancelled/saved) are transient (~2s), never destination screens.
+**Save-then-route (action-specific, not blanket):** Match Edit → Home + toast · Edit Profile → View Profile (`/profile`) + toast · Settings inline toggles → save in place (no Save button, no nav). Toasts (created/cancelled/saved) are transient (~2s), never destination screens.
 
 **Carry-forward state (data persists across a flow — never re-ask):** Anything the user types or selects on one screen must travel to every later screen where it's relevant. Never re-prompt for a value already given, and never blank a field on navigation. Examples: sign-up questionnaire answers (sport, skill, DOB, country/city, language) pre-fill the new profile; Create-a-Match fields persist into the review/confirm step and onto the created match card; the Choose Location sub-screen returns the picked venue + court # to the create form (and the form keeps everything else entered); Match Edit and Edit Profile open **pre-filled with current values**; going back then forward keeps prior entries intact. Implement by holding each flow's data in **shared form/route state** (context, route params, or a draft object) — not per-screen local state that resets on unmount. This is the companion to Save-then-route: save-then-route decides *where you land* after an action; carry-forward decides *what data you bring with you*.
 
@@ -104,8 +104,8 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 | `/signup` | Sign Up questionnaire | Public. Multi-step (sport · skill · DOB · country · city · language); steps share one draft (carry-forward). DOB hard-gates under-18 |
 | `/welcome` | "You're all set" | Post-signup confirmation → `/home` |
 | `/discover` | **Discover** | Tab. Always-seeded feed, no empty state |
-| `/home` | **Home** | Tab. **Default landing.** Sections: NEXT UP · You're hosting · This week · Host CTA (+ transient JUST PLAYED) |
-| `/chat` | **Chat** | Tab. Unified inbox; notifications inline in threads |
+| `/home` | **Home** | Tab. **Default landing.** Sections: NEXT UP · You're hosting · This week · Host CTA (+ transient JUST PLAYED). Pending **invites surface as a transient pop-up sheet over Home** on load (see §5 invite flow); accepted invites land in NEXT UP/This week |
+| `/chat` | **Chat** | Tab. Unified inbox; notifications inline in threads. "Decide later" invites land here as an actionable notification |
 | `/chat/:threadId` | Chat thread | Sub-screen. Canonical group **or** DM thread (deep-link, never fork). No chat before joining |
 | `/my-matches` | My Matches | Sub-screen of Home (hosting "See all" archive) |
 | `/matches/new` | Create-a-Match | Sub-screen. Holds a **draft** object across the whole create flow |
@@ -137,6 +137,14 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 - **Slot hold while a request/invite is pending = NO.** A pending request or invite does not reserve a slot; first to fill it wins, remaining pending requests/invites expire when the match fills.
 - Request states: `requested → approved → joined` | `requested → declined` | `requested → expired`.
 - Invite states: `invited → accepted → joined` | `invited → declined` | `invited → expired` (match filled / cancelled / time passed).
+- **Invite flow (full UX — host-initiated):**
+  - **On create:** an invite match is created, lands the host on `/home` (toast), and shows immediately in the host's **"You're hosting"** section regardless of pending invites. The **group chat thread is auto-created at creation** with the **host as sole member** — invited players are NOT added yet (no chat before joining, see §4).
+  - **Invited player — Home pop-up:** on `/home` load, any still-joinable `invited` rows surface as a **transient invitation sheet/modal over Home** (not a route/tab), built from the canonical match card. Three actions:
+    - **Accept** → insert `match_players`, set invite `joined`, decrement `spots_available`, **add player to the chat thread and route them into `/chat/:threadId`**; the match now appears on the player's Home under **NEXT UP / This week** (joined-match sections), never "You're hosting". Post system message "[Name] joined". **The acceptance propagates live (Supabase Realtime) to every surface on both sides — no manual refresh:** the player's name + avatar fill the roster on the canonical match card and Match Details, the joined count / `spots_available` updates everywhere the card renders, the chat thread's member roster gains the player, and the **host's Match Details shows the invitee as `Accepted`/joined** (invite row no longer pending).
+    - **Decide later** → dismiss the sheet (stays `invited`) and surface the invite as an **actionable notification inline in Chat** (`/chat`; notifications live in Chat per §4 — no Home bell). Re-acting (Accept/Decline) is possible from there; the sheet does **not** re-pop on later loads unless a new invite arrives.
+    - **Decline** → set `declined`; match shows **nowhere** on the player's side — no Home entry, no Chat notification, no chat access.
+  - **No chat access until Accept** — decide-later and declined players never see the thread.
+  - **Pending holds no slot:** if the match fills / is cancelled / `start_time` passes while still `invited`, the invite `expires` (read-time, no cron); the pop-up/notification then shows a disabled "Match full / no longer available" state, and a race-losing late Accept fails gracefully ("Match just filled").
 - Player profiles are for **peer transparency / accountability**, never host gatekeeping. Trust signals (matches played, attendance %, no-show count, languages) are public, never a gate.
 
 **Waitlist (full matches only — orthogonal to `join_mode`)**
@@ -167,6 +175,8 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 
 **Settings:** hybrid — ~80% inline toggles, drill-downs for lists/forms/long text. Language (inline EN/عربي), Push (single master toggle, no per-type), Biometric login, Safety drill-down, Legal (links only). **Profiles are public by default** — no-show count and stats are public on every profile surface. This public-by-default stance is the trust mechanism that makes stranger-matching safe; do not gate stats behind a toggle.
 
+**Profile display & edits (single source of truth):** the profile header stacks identity as **name → location → bio** directly beneath the name (location is a muted line with a `MapPin` icon — not flipped in RTL; empty location/bio lines hide cleanly, no layout jump). **Edit Profile → save → `/profile` (View Profile) + toast**, and **every edited field propagates everywhere the profile renders — no manual refresh.** All profile surfaces read from one shared store / the `users` row, never per-screen copies. Editable public fields (name, avatar, location, bio, **sport, skill level**, languages, stats) must reflect on **View Profile (`/profile`)**, **Other-Player Profile (`/players/:id`)** as seen by everyone else (public fields only; viewer fetches the current row, Realtime updates in place if already open), **Settings** (mirrored name/avatar/language), and the **canonical match card / Match Details roster / chat identity**.
+
 **Discover feed is always seeded** — new users never see a blank cold-start. No empty state.
 
 ---
@@ -175,7 +185,7 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 
 Apply **Row Level Security on all tables.**
 
-- `users` — id, name, email, phone, avatar_url, sport, skill_level, language (ar/en), dob, attendance_rate, created_at
+- `users` — id, name, email, phone, avatar_url, sport, skill_level, language (ar/en), dob, **city/location** (from sign-up), **bio** (text, nullable), attendance_rate, created_at
 - `matches` — id, host_id, sport, venue_id (FK nullable), venue_name, venue_location, court_number, start_time, end_time, skill_level, total_spots, spots_available, fee_total, fee_per_player (display only), join_mode (`open`/`approval`/`invite`), status, notes, created_at
 - `match_players` — id, match_id, player_id, joined_at, attended
 - `match_requests` — id, match_id, player_id, kind (`request`/`invite`/`waitlist`), status (`requested`/`invited`/`waitlisted`/`approved`/`accepted`/`promoted`/`joined`/`declined`/`left`/`expired`), created_at. RLS so only the host and the player involved can see/act. (`request` = player→host; `invite` = host→player; `waitlist` = player joins the FIFO queue on a full match.) Add **unique(match_id, player_id, kind)** so a player can't double-waitlist. Waitlist position = `created_at` order; FIFO promotion runs in the cancellation action, not a trigger.

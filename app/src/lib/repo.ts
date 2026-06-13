@@ -50,7 +50,11 @@ function mapUser(row: any, playedById: Map<string, number>): User {
     created_at: row.created_at ?? new Date(0).toISOString(),
     matches_played: playedById.get(row.id) ?? 0,
     no_show_count: 0, // RLS scopes no_show_reports to the viewer — not derivable for others
-    languages: [],
+    languages: Array.isArray(row.languages) ? row.languages : [],
+    bio: row.bio ?? undefined,
+    area: row.area ?? undefined,
+    city: row.city ?? undefined,
+    verified: row.verified === true,
   }
 }
 

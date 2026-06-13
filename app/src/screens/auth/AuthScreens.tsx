@@ -447,8 +447,9 @@ export function LoginScreen() {
     <Shell nav={false}>
       <div className="scroll-area relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
         {/* TODO: language switching lives in Settings, not onboarding */}
-        <div className="pt-5 pb-6">
-          <Wordmark />
+        {/* same brand logo as the Splash screen (transparent PNG wordmark + tagline) */}
+        <div className="flex justify-center pt-5 pb-6">
+          <Logo className="w-[62vw] max-w-[260px]" />
         </div>
         <SocialButtons />
         <OrDivider />

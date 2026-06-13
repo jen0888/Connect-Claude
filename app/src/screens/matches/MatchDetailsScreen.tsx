@@ -544,8 +544,15 @@ function MatchDetailsBody({
                       <DecisionButtons
                         mode="invite"
                         onApprove={() => {
-                          actions.acceptInvite(r.id)
-                          showToast("You're in")
+                          // race-safe accept → route into the match chat the
+                          // accept just added us to (CLAUDE.md §5)
+                          const res = actions.acceptInvite(r.id)
+                          if (res === 'expired') {
+                            showToast('Match just filled')
+                          } else {
+                            showToast("You're in")
+                            navigate(`/chat/match/${m.id}`)
+                          }
                         }}
                         onDecline={() => {
                           actions.declineInvite(r.id)

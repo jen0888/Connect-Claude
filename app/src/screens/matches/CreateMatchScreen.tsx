@@ -10,6 +10,7 @@ import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
 import { writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
 import type { JoinMode, SkillLevel, Sport } from '@/lib/types'
 import { keyOf, labelFromKey } from '@/lib/datetime'
+import { sportEmoji } from '@/lib/sports'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
 import { InvitePicker } from './InvitePicker'
 import { WhenCard } from './WhenCard'
@@ -239,6 +240,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                     color: on ? 'var(--color-text-onbrand)' : 'var(--color-text)',
                   }}
                 >
+                  <span className="text-[16px] leading-none">{sportEmoji(s.id)}</span>
                   {s.label}
                 </button>
               )

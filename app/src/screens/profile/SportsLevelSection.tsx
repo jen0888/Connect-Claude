@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { Check, ChevronDown, Circle, CircleDot, Feather, Footprints, Plus, X } from 'lucide-react'
+import { Check, ChevronDown, Plus, X } from 'lucide-react'
 import { Eyebrow } from '@/components/Eyebrow'
 import type { Sport } from '@/lib/types'
+import { sportEmoji } from '@/lib/sports'
 import { SKILL_RATINGS, type SkillRating, type SportLevel } from '@/lib/profile'
 
 /** Sports & level — players manage which sports they play and self-rate a skill
@@ -10,11 +11,11 @@ import { SKILL_RATINGS, type SkillRating, type SportLevel } from '@/lib/profile'
  *  the list and is notified on every add / remove / level change so it can mark
  *  the form dirty. */
 
-const SPORTS: { id: Sport; label: string; icon: typeof Circle }[] = [
-  { id: 'padel', label: 'Padel', icon: CircleDot },
-  { id: 'tennis', label: 'Tennis', icon: Circle },
-  { id: 'badminton', label: 'Badminton', icon: Feather },
-  { id: 'running', label: 'Running', icon: Footprints },
+const SPORTS: { id: Sport; label: string }[] = [
+  { id: 'padel', label: 'Padel' },
+  { id: 'tennis', label: 'Tennis' },
+  { id: 'badminton', label: 'Badminton' },
+  { id: 'running', label: 'Running' },
 ]
 
 const SUBTITLE: Record<SkillRating, string> = {
@@ -24,7 +25,6 @@ const SUBTITLE: Record<SkillRating, string> = {
   Advanced: 'Competitive & consistent.',
 }
 
-const iconFor = (s: Sport) => SPORTS.find((x) => x.id === s)!.icon
 const labelFor = (s: Sport) => SPORTS.find((x) => x.id === s)!.label
 const hairline = 'rgba(26,26,26,0.10)'
 
@@ -99,7 +99,6 @@ export function SportsLevelSection({ value, onChange }: { value: SportLevel[]; o
       {/* sport rows */}
       <div className="mt-3 flex flex-col gap-2">
         {value.map((row) => {
-          const Icon = iconFor(row.sport)
           return (
             <div
               key={row.sport}
@@ -107,10 +106,10 @@ export function SportsLevelSection({ value, onChange }: { value: SportLevel[]; o
               style={{ borderColor: hairline }}
             >
               <span
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
-                style={{ background: 'rgba(26,26,26,0.05)', color: 'var(--color-text)' }}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] text-[26px] leading-none"
+                style={{ background: 'rgba(26,26,26,0.05)' }}
               >
-                <Icon size={18} strokeWidth={1.8} />
+                {sportEmoji(row.sport)}
               </span>
               <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{labelFor(row.sport)}</span>
               {/* level pill — opens the level picker in edit mode */}
@@ -170,7 +169,6 @@ export function SportsLevelSection({ value, onChange }: { value: SportLevel[]; o
           ) : (
             <div className="flex flex-col gap-2">
               {available.map((s) => {
-                const Icon = s.icon
                 return (
                   <button
                     key={s.id}
@@ -183,10 +181,10 @@ export function SportsLevelSection({ value, onChange }: { value: SportLevel[]; o
                     style={{ borderColor: hairline }}
                   >
                     <span
-                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
-                      style={{ background: 'rgba(26,26,26,0.05)', color: 'var(--color-text)' }}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] text-[26px] leading-none"
+                      style={{ background: 'rgba(26,26,26,0.05)' }}
                     >
-                      <Icon size={18} strokeWidth={1.8} />
+                      {sportEmoji(s.id)}
                     </span>
                     <span className="min-w-0 flex-1 text-[15px] font-semibold text-ink">{s.label}</span>
                     <Plus size={16} strokeWidth={2.2} className="shrink-0 text-brand" />

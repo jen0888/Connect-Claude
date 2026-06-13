@@ -20,7 +20,8 @@ import { Shell } from '@/components/Shell'
 import { Toggle } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
-import { actions, currentUserId, getUser, useDB } from '@/lib/store'
+import { useAuth } from '@/context/AuthContext'
+import { actions, clearClientState, currentUserId, getUser, useDB } from '@/lib/store'
 
 /** Settings (Settings.html) — hybrid: ~80% inline toggles that save in place
  *  (no Save button, no nav), drill-downs only for lists/forms. Language is an
@@ -92,10 +93,12 @@ export function SettingsScreen() {
   const navigate = useNavigate()
   const { showToast } = useToast()
   const { locale, setLocale } = useI18n()
+  const { signOut } = useAuth()
   const me = getUser(db, currentUserId)!
   const [push, setPush] = useState(true)
   const [biometric, setBiometric] = useState(true)
   const [safetyOpen, setSafetyOpen] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
   const [first, ...rest] = me.name.split(' ')
 
   // inline toggles save in place — confirmation is the switch itself
@@ -104,39 +107,89 @@ export function SettingsScreen() {
     showToast(v ? 'Push notifications on' : 'Push notifications off')
   }
 
+  // single-tap sign-out (no confirm dialog — cut from Stage 1 scope). End the
+  // Supabase session, then wipe all client draft/carry-forward state so the
+  // next session starts clean, and route to the unauthenticated entry. On
+  // failure stay put and report it — don't half-clear (Part 2 spec).
+  const handleSignOut = async () => {
+    if (signingOut) return
+    setSigningOut(true)
+    const { error } = await signOut()
+    if (error) {
+      setSigningOut(false)
+      showToast("Couldn't sign out — please try again")
+      return
+    }
+    clearClientState()
+    actions.restoreDemoAccount() // mock-mode parity (no-op when Supabase is configured)
+    showToast('Signed out')
+    navigate('/login', { replace: true })
+  }
+
   return (
     <Shell>
       <div className="scroll-area relative z-1 h-full overflow-y-auto px-6 pt-12 pb-[120px]">
-        {/* top bar */}
-        <div className="mb-4 flex items-center gap-3">
+        {/* top bar — back button (left) + centered display heading, sized to
+            match the other sub-screen headers (CLAUDE.md §3) */}
+        <div className="mb-6 flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
             aria-label="Back"
-            className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-none text-ink"
+            className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border-none text-ink"
             style={{ background: 'rgba(26,26,26,0.05)' }}
           >
             <ChevronLeft size={18} strokeWidth={2} className="rtl:rotate-180" />
           </button>
-          <div className="flex-1 text-center text-[13px] font-semibold tracking-[0.01em]">Settings</div>
-          <span className="h-10 w-10" />
+          <h1 className="m-0 flex-1 text-center font-display text-[32px] font-normal leading-none" style={{ letterSpacing: '-0.02em' }}>
+            Settings
+          </h1>
+          <span className="h-10 w-10 shrink-0" />
         </div>
 
         {/* profile hero */}
-        <div className="rounded-[22px] border bg-card p-4 shadow-card" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
-          <div className="flex items-center gap-3.5">
+        <div className="relative">
+          {/* signature soft-pink blob "C" (#e8c7d4) — 200×200, blur(50px), ~40%,
+              gently drifting on the 9s loop — placed behind the card so it shows
+              through the lightly frosted surface, reinforcing the pink palette.
+              Reduced-motion stills the drift (matches Blobs). */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 motion-reduce:[&_*]:animate-none">
+            <span
+              className="absolute -right-6 -top-9 h-[200px] w-[200px] rounded-full"
+              style={{
+                background: 'var(--blob-pink)',
+                opacity: 0.4,
+                filter: 'blur(50px)',
+                willChange: 'transform',
+                animation: 'blob-drift 9s ease-in-out infinite alternate',
+              }}
+            />
+          </div>
+          <div
+            className="relative overflow-hidden rounded-[22px] border p-4 shadow-card"
+            style={{ borderColor: 'rgba(26,26,26,0.08)', background: 'color-mix(in oklab, var(--surface-card) 86%, transparent)', backdropFilter: 'blur(7px)', WebkitBackdropFilter: 'blur(7px)' }}
+          >
+            {/* card's own decorative circle (.profile-hero::after) — 160×160,
+                top/right -40 so most of it bleeds off the edge, a 9% accent wash
+                clipped by the card's overflow-hidden + rounded corners. */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -right-10 -top-10 h-[160px] w-[160px] rounded-full"
+              style={{ background: 'color-mix(in oklab, var(--color-accent) 9%, transparent)' }}
+            />
+          <div className="relative z-1 flex items-center gap-3.5">
             <div className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent font-display text-[26px] italic text-page">
               {first[0]}
             </div>
             <div className="min-w-0 flex-1">
               <div className="font-display text-[24px] leading-[1.05]">
-                {first} <span className="italic text-accent">{rest.join(' ')}</span>
+                <span className="italic text-accent">{first}</span> {rest.join(' ')}
               </div>
               <div className="mt-1 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
                 Member · '{new Date(me.created_at).getFullYear().toString().slice(-2)}
               </div>
             </div>
           </div>
-          <div className="mt-3.5 grid grid-cols-2 gap-2.5">
+          <div className="relative z-1 mt-3.5 grid grid-cols-2 gap-2.5">
             <Link
               to="/profile"
               className="inline-flex h-[42px] items-center justify-center gap-2 rounded-pill bg-brand text-[13px] font-semibold text-onbrand no-underline shadow-cta"
@@ -150,6 +203,7 @@ export function SettingsScreen() {
             >
               <Pencil size={13} strokeWidth={1.9} /> Edit profile
             </Link>
+          </div>
           </div>
         </div>
 
@@ -249,15 +303,12 @@ export function SettingsScreen() {
         {/* sign out */}
         <button
           type="button"
-          onClick={() => {
-            // mock sign-out doubles as the demo reset — seeded returning-user data comes back
-            actions.restoreDemoAccount()
-            showToast('Signed out')
-          }}
-          className="mx-auto flex cursor-pointer items-center gap-2 border-none bg-transparent px-4 py-2 text-[13.5px] font-semibold"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="mx-auto flex cursor-pointer items-center gap-2 border-none bg-transparent px-4 py-2 text-[13.5px] font-semibold disabled:opacity-50"
           style={{ color: 'var(--color-danger)' }}
         >
-          <LogOut size={15} strokeWidth={2} /> Sign out
+          <LogOut size={15} strokeWidth={2} /> {signingOut ? 'Signing out…' : 'Sign out'}
         </button>
         <div className="mt-2 pb-2 text-center text-[11px]" style={{ color: 'var(--color-text-faint)' }}>
           Connect v 1.0.0 <span className="opacity-60">·</span> Made in Doha

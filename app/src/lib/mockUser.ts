@@ -24,7 +24,9 @@ export const mockUser: User = {
   no_show_count: 0,
   languages: ['English', 'Arabic'],
   area: 'Al Waab',
+  city: 'Doha',
   bio: 'Padel three times a week. Always up for a morning run.',
+  verified: true,
 }
 
 export default mockUser

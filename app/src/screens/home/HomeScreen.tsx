@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ChevronRight, Plus, Send } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Avatar } from '@/components/Avatar'
@@ -9,7 +9,7 @@ import { useToast } from '@/components/Toast'
 import { InviteApprovalSheet, type Invite } from '@/components/InviteApprovalSheet'
 import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, myInvites, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
-import { artType, dayLabel, greetingDate, hm, hoursUntil, initials, matchKind, skillLabel, sportLabel, timeRange, timeAgoLabel, whenLabel } from '@/lib/format'
+import { artType, countdownUntil, dayLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, timeAgoLabel, whenLabel } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
 import { useHostedMatch } from '@/lib/hostedMatch'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -73,6 +73,7 @@ function toInvite(m: Match, host: User): Invite {
  *  a 4th tab (CLAUDE.md §4). */
 export function HomeScreen() {
   const db = useDB()
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const [attended, setAttended] = useState(false)
   // invite-approval bottom sheet: `sheet` holds a snapshot of the tapped invite
@@ -161,7 +162,7 @@ export function HomeScreen() {
             >
               <Plus size={16} strokeWidth={2} />
             </Link>
-            <Link to="/profile" aria-label="Profile & settings" className="no-underline">
+            <Link to="/settings" aria-label="Settings" className="no-underline">
               <Avatar name={me.name} accent="var(--color-accent)" />
             </Link>
           </div>
@@ -178,7 +179,12 @@ export function HomeScreen() {
               }}
             >
               <span className={`h-1.5 w-1.5 rounded-full bg-onbrand ${nextUpLc.pulse ? 'conn-pulse' : ''}`} />
-              {nextUpIsPlain ? `Next up · in ${hoursUntil(data.nextUp.start_time)}h` : nextUpLc.label}
+              {nextUpIsPlain
+                ? (() => {
+                    const left = countdownUntil(data.nextUp.start_time)
+                    return left === 'soon' ? 'Next up · soon' : `Next up · in ${left}`
+                  })()
+                : nextUpLc.label}
             </div>
             <div className="mt-2.5 mb-[26px]">
               <MatchCard
@@ -360,8 +366,17 @@ export function HomeScreen() {
               actions.joinWaitlist(sheet.matchId)
               showToast("Added to the waitlist — you'll be auto-joined if a spot frees")
             } else {
-              actions.acceptInvite(sheet.reqId)
-              showToast("You're in")
+              // race-safe accept: if the last slot was taken between render and
+              // tap the invite expires; otherwise route straight into the match
+              // chat thread the accept just added us to (CLAUDE.md §5).
+              const res = actions.acceptInvite(sheet.reqId)
+              if (res === 'expired') {
+                setSheetOpen(false)
+                showToast('Match just filled')
+              } else {
+                showToast("You're in")
+                navigate(`/chat/match/${sheet.matchId}`)
+              }
             }
           }}
         />

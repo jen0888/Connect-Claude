@@ -44,6 +44,15 @@ export function hoursUntil(isoTime: string, now: Date = new Date()): number {
   return Math.max(0, Math.round((new Date(isoTime).getTime() - now.getTime()) / 3600000))
 }
 
+/** Countdown suffix for "Next up · in {…}": days when a day or more out,
+ *  otherwise hours (e.g. "3d", "5h"); "soon" inside the final hour. */
+export function countdownUntil(isoTime: string, now: Date = new Date()): string {
+  const hours = hoursUntil(isoTime, now)
+  if (hours >= 24) return `${Math.round(hours / 24)}d`
+  if (hours < 1) return 'soon'
+  return `${hours}h`
+}
+
 /** "Tuesday · May 21" — Home greeting date line */
 export function greetingDate(now: Date = new Date()): string {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']

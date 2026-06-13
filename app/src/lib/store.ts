@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from 'react'
 import type { ChatMessage, ChatThread, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, User } from './types'
 import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, MATCH_REQUESTS, MATCH_RESULTS, USERS } from './mock/data'
-import { onboarding } from './onboarding'
+import { onboarding, resetOnboarding } from './onboarding'
 import { computeStatus } from './status'
 import { clearHostedMatch } from './hostedMatch'
 import { clearProfileSports } from './profile'
+import { clearPersistedState } from './usePersistedState'
 import { supabase, isSupabaseConfigured } from './supabase'
 import { fetchSnapshot } from './repo'
 
@@ -193,24 +194,12 @@ const CANNED_REPLIES = [
   'Appreciate the message — let’s do it.',
 ]
 
-/** An invited dummy player accepts a beat later: they join the roster, and if
- *  the match has a group thread the join is announced there too. */
+/** An invited dummy player accepts a beat later: acceptInvite fills a spot,
+ *  adds them to the match thread, and announces the join inline. */
 function simulateInviteAccept(reqId: string) {
   const req = db.matchRequests.find((r) => r.id === reqId)
   if (!req || req.status !== 'invited') return
-  const name = getUser(db, req.player_id)?.name?.split(' ')[0] ?? 'A player'
-  actions.acceptInvite(reqId) // existing logic: fills a spot, expires others if it just filled
-  const joined = db.matchPlayers.some((mp) => mp.match_id === req.match_id && mp.player_id === req.player_id)
-  const thread = db.chatThreads.find((t) => t.match_id === req.match_id)
-  if (joined && thread) {
-    mutate((d) => ({
-      ...d,
-      chatMessages: [
-        ...d.chatMessages,
-        { id: newId('msg'), thread_id: thread.id, sender_id: req.player_id, body: `${name} joined`, created_at: new Date().toISOString(), system: true, tone: 'info', icon: 'userPlus' },
-      ],
-    }))
-  }
+  actions.acceptInvite(reqId)
 }
 
 /** A canned reply from the first other (non-blocked) participant of a thread —
@@ -302,6 +291,27 @@ export function disconnectLive() {
   currentUserId = CURRENT_USER_ID
   db = isSupabaseConfigured ? EMPTY_DB : SEEDED
   emit()
+}
+
+/** Sign-out cleanup: wipe every client-side draft / carry-forward / flag so the
+ *  next session starts clean — no leftover Create-a-Match draft, no previous
+ *  user's onboarding answers or cached profile, no stale invite state (mirrors
+ *  the dev-reset intent, §8). The in-memory `db` is reset separately by the
+ *  AuthProvider effect: disconnectLive() in live mode, restoreDemoAccount() in
+ *  mock mode. `connect.locale` is intentionally kept — it's a device UI
+ *  preference, not per-account data. */
+export function clearClientState() {
+  clearHostedMatch()      // connect:hostedMatch  — hosted-match / Create-a-Match draft
+  clearProfileSports()    // connect.profileSports — multi-sport list
+  resetOnboarding()       // connect.onboarding    — sign-up questionnaire carry-forward
+  clearPersistedState('') // connect:state:*       — every per-user persisted draft
+  try {
+    localStorage.removeItem(FRESH_KEY)        // connect.freshAccount
+    localStorage.removeItem(PROFILE_DONE_KEY) // connect.profileDone
+    localStorage.removeItem('connect:invitesSeen')
+  } catch {
+    /* storage unavailable — nothing to clear */
+  }
 }
 
 /** curated mock venues use slug ids ('padelin-aspire'); the DB venue_id is a
@@ -573,13 +583,23 @@ export const actions = {
    *  fresh account (CLAUDE.md §5). The sports list itself (multi-sport) is
    *  persisted separately via lib/profile; here we store the *primary* sport +
    *  level onto the single-sport schema fields. */
-  updateProfile(patch: { name?: string; bio?: string; area?: string; sport?: Sport; skill_level?: SkillLevel }) {
+  updateProfile(patch: { name?: string; bio?: string; area?: string; city?: string; sport?: Sport; skill_level?: SkillLevel }) {
     if (liveReady) {
-      // public.users has no bio/area columns — persist the identity/game fields it has
+      // every editable public field maps 1:1 to a users column (bio/area added
+      // by add_profile_bio_area_languages, city by add_profile_city_verified, §6)
+      // so the edit persists and propagates to other players via Realtime.
       const up: Record<string, unknown> = {}
       if (patch.name != null) up.name = patch.name
       if (patch.sport != null) up.sport = patch.sport
       if (patch.skill_level != null) up.skill_level = patch.skill_level
+      if (patch.bio != null) up.bio = patch.bio
+      if (patch.area != null) up.area = patch.area
+      if (patch.city != null) up.city = patch.city
+      // Optimistically reflect the edit across every screen that reads the
+      // current user (Profile, Settings, "Hosted by", cards…) so there's no
+      // stale value and no manual refresh (§4); the write + rehydrate (and
+      // Realtime to other clients) then confirm it.
+      mutate((d) => ({ ...d, users: d.users.map((u) => (u.id === currentUserId ? { ...u, ...patch } : u)) }))
       if (supabase && Object.keys(up).length) afterWrite(supabase.from('users').update(up).eq('id', currentUserId))
       return
     }
@@ -761,21 +781,44 @@ export const actions = {
     if (created) setTimeout(() => simulateInviteAccept(reqId), INVITE_ACCEPT_DELAY)
   },
 
-  /** invited player accepts: invited → accepted → joined (first to fill wins) */
-  acceptInvite(requestId: string) {
-    if (liveReady) { void rpc('accept_invite', { p_request: requestId }); return }
+  /** invited player accepts: invited → accepted → joined (first to fill wins).
+   *  On accept the player is added to the match group thread and the join is
+   *  announced inline — no chat access until then (CLAUDE.md §5). Returns
+   *  'joined' on success or 'expired' if the last slot was taken between render
+   *  and tap, so the caller can route into the thread or surface "Match just
+   *  filled" (race-safe accept). Returns null in live mode (RPC is async). */
+  acceptInvite(requestId: string): 'joined' | 'expired' | null {
+    if (liveReady) { void rpc('accept_invite', { p_request: requestId }); return null }
+    let result: 'joined' | 'expired' | null = null
     mutate((d) => {
       const r = d.matchRequests.find((x) => x.id === requestId)
       if (!r || r.status !== 'invited') return d
       const m = d.matches.find((x) => x.id === r.match_id)
       if (!m || m.spots_available <= 0) {
         // match filled before the player answered → the invite expired
+        result = 'expired'
         return {
           ...d,
           matchRequests: d.matchRequests.map((x) => (x.id === requestId ? { ...x, status: 'expired' as const } : x)),
         }
       }
+      result = 'joined'
       const spotsLeft = m.spots_available - 1
+      // add the accepting player to the match's group thread (create it if a
+      // legacy/seeded match has none), then announce the join inline.
+      const player = getUser(d, r.player_id)
+      let thread = threadForMatch(d, m.id)
+      let chatThreads = d.chatThreads
+      if (!thread) {
+        thread = { id: newId('t'), match_id: m.id, participant_ids: [m.host_id], created_at: new Date().toISOString() }
+        chatThreads = [...chatThreads, thread]
+      }
+      const threadId = thread.id
+      chatThreads = chatThreads.map((t) =>
+        t.id === threadId && !t.participant_ids.includes(r.player_id)
+          ? { ...t, participant_ids: [...t.participant_ids, r.player_id] }
+          : t,
+      )
       return {
         ...d,
         matches: d.matches.map((x) => (x.id === m.id ? { ...x, spots_available: spotsLeft } : x)),
@@ -789,8 +832,16 @@ export const actions = {
             return { ...x, status: 'expired' as const }
           return x
         }),
+        chatThreads,
+        chatMessages: player
+          ? [
+              ...d.chatMessages,
+              { id: newId('msg'), thread_id: threadId, sender_id: r.player_id, body: `${player.name.split(' ')[0]} joined`, created_at: new Date().toISOString(), system: true, tone: 'pos' as const, icon: 'userPlus' as const },
+            ]
+          : d.chatMessages,
       }
     })
+    return result
   },
 
   declineInvite(requestId: string) {
@@ -867,6 +918,13 @@ export const actions = {
       matchPlayers: [
         ...d.matchPlayers,
         { id: newId('mp'), match_id: id, player_id: input.host_id, joined_at: new Date().toISOString(), attended: null },
+      ],
+      // per-match group thread, auto-created with the host as sole member —
+      // invited/joining players are added only when they accept/join, so an
+      // invite holds no chat access while pending (CLAUDE.md §5).
+      chatThreads: [
+        ...d.chatThreads,
+        { id: newId('t'), match_id: id, participant_ids: [input.host_id], created_at: new Date().toISOString() },
       ],
     }))
     return id

@@ -14,49 +14,49 @@ export const USERS: User[] = [
     id: 'u-you', name: 'Jen S.', email: 'you@example.com', phone: null, avatar_url: null,
     sport: 'padel', skill_level: 'intermediate', language: 'en', dob: '1995-04-12',
     attendance_rate: 96, created_at: iso(-2000), matches_played: 23, no_show_count: 0,
-    languages: ['English', 'Arabic'], area: 'Al Waab', bio: 'Padel three times a week. Always up for a morning run.',
+    languages: ['English', 'Arabic'], area: 'Al Waab', bio: 'Padel three times a week. Always up for a morning run.', city: 'Doha', verified: true,
   },
   {
     id: 'u-marco', name: 'Marco D.', email: 'marco@example.com', phone: null, avatar_url: null,
     sport: 'padel', skill_level: 'intermediate', language: 'en', dob: '1992-09-03',
     attendance_rate: 98, created_at: iso(-3000), matches_played: 41, no_show_count: 0,
-    languages: ['English', 'Italian'], area: 'West Bay', bio: 'Weeknight padel host. Doubles preferred.',
+    languages: ['English', 'Italian'], area: 'West Bay', bio: 'Weeknight padel host. Doubles preferred.', city: 'Doha', verified: true,
   },
   {
     id: 'u-jk', name: 'Jana K.', email: 'jana@example.com', phone: null, avatar_url: null,
     sport: 'tennis', skill_level: 'advanced', language: 'en', dob: '1997-01-21',
     attendance_rate: 92, created_at: iso(-2500), matches_played: 35, no_show_count: 1,
-    languages: ['English', 'Czech'], area: 'The Pearl', bio: 'Tennis since juniors. Up for hits and drills.',
+    languages: ['English', 'Czech'], area: 'The Pearl', bio: 'Tennis since juniors. Up for hits and drills.', city: 'Doha', verified: true,
   },
   {
     id: 'u-rp', name: 'Rashid P.', email: 'rashid@example.com', phone: null, avatar_url: null,
     sport: 'badminton', skill_level: 'intermediate', language: 'ar', dob: '1994-06-30',
     attendance_rate: 89, created_at: iso(-1800), matches_played: 18, no_show_count: 1,
-    languages: ['Arabic', 'English'], area: 'Ain Khaled', bio: 'Badminton on weekdays, padel on weekends.',
+    languages: ['Arabic', 'English'], area: 'Ain Khaled', bio: 'Badminton on weekdays, padel on weekends.', city: 'Doha', verified: true,
   },
   {
     id: 'u-lb', name: 'Lina B.', email: 'lina@example.com', phone: null, avatar_url: null,
     sport: 'running', skill_level: 'any', language: 'en', dob: '1999-11-08',
     attendance_rate: 100, created_at: iso(-900), matches_played: 12, no_show_count: 0,
-    languages: ['English', 'French'], area: 'Lusail', bio: 'Easy-pace morning loops. All levels welcome.',
+    languages: ['English', 'French'], area: 'Lusail', bio: 'Easy-pace morning loops. All levels welcome.', city: 'Doha', verified: true,
   },
   {
     id: 'u-st', name: 'Sara T.', email: 'sara@example.com', phone: null, avatar_url: null,
     sport: 'padel', skill_level: 'beginner', language: 'en', dob: '2000-02-17',
     attendance_rate: 94, created_at: iso(-700), matches_played: 8, no_show_count: 0,
-    languages: ['English'], area: 'Al Sadd',
+    languages: ['English'], area: 'Al Sadd', city: 'Doha', verified: true,
   },
   {
     id: 'u-nv', name: 'Noor V.', email: 'noor@example.com', phone: null, avatar_url: null,
     sport: 'tennis', skill_level: 'intermediate', language: 'ar', dob: '1996-08-25',
     attendance_rate: 91, created_at: iso(-1200), matches_played: 27, no_show_count: 2,
-    languages: ['Arabic', 'English'], area: 'West Bay',
+    languages: ['Arabic', 'English'], area: 'West Bay', city: 'Doha', verified: true,
   },
   {
     id: 'u-hd', name: 'Hassan D.', email: 'hassan@example.com', phone: null, avatar_url: null,
     sport: 'padel', skill_level: 'advanced', language: 'ar', dob: '1990-12-02',
     attendance_rate: 97, created_at: iso(-2600), matches_played: 52, no_show_count: 0,
-    languages: ['Arabic', 'English', 'Urdu'], area: 'Msheireb',
+    languages: ['Arabic', 'English', 'Urdu'], area: 'Msheireb', city: 'Doha', verified: true,
   },
 ]
 
@@ -281,6 +281,10 @@ export const CHAT_THREADS: ChatThread[] = [
   { id: 't-sat', match_id: 'm-sat', participant_ids: ['u-hd', 'u-you'], created_at: iso(-30) },
   { id: 't-justplayed', match_id: 'm-justplayed', participant_ids: ['u-you', 'u-marco', 'u-st', 'u-hd'], created_at: iso(-96) },
   { id: 't-hosted', match_id: 'm-hosted', participant_ids: ['u-you'], created_at: iso(-24) },
+  // invite-only tennis — host + already-joined regulars; you're added only when
+  // you accept the invite (mr-5), never while it's pending (no chat before
+  // joining, §5)
+  { id: 't-invite-tennis', match_id: 'm-invite-tennis', participant_ids: ['u-nv', 'u-jk'], created_at: iso(-22) },
   { id: 't-dm-marco', match_id: null, participant_ids: ['u-you', 'u-marco'], created_at: iso(-200) },
   { id: 't-dm-sara', match_id: null, participant_ids: ['u-you', 'u-st'], created_at: iso(-150) },
 ]
@@ -312,6 +316,11 @@ export const CHAT_MESSAGES: ChatMessage[] = [
   // ── hosted thread (created, just you) ──
   { id: 'msg-h1', thread_id: 't-hosted', sender_id: 'u-you', body: 'You created this match', created_at: iso(-24), system: true, tone: 'info', icon: 'flag' },
   { id: 'msg-h2', thread_id: 't-hosted', sender_id: 'u-you', body: "Court 2's booked for Thursday — jump in and say hi.", created_at: iso(-23.9) },
+
+  // ── invite-only tennis thread (host + regulars, awaiting your reply) ──
+  { id: 'msg-iv1', thread_id: 't-invite-tennis', sender_id: 'u-nv', body: 'Noor created this match', created_at: iso(-22), system: true, tone: 'info', icon: 'flag' },
+  { id: 'msg-iv2', thread_id: 't-invite-tennis', sender_id: 'u-nv', body: 'Regulars night at Al Dana — invited a couple of you. Accept and hop in!', created_at: iso(-21.9) },
+  { id: 'msg-iv3', thread_id: 't-invite-tennis', sender_id: 'u-jk', body: 'Jana joined', created_at: iso(-16), system: true, tone: 'info', icon: 'userPlus' },
 
   // ── DMs ──
   { id: 'msg-d1', thread_id: 't-dm-marco', sender_id: 'u-marco', body: 'Good game yesterday. Up for a rematch Thursday?', created_at: iso(-7) },

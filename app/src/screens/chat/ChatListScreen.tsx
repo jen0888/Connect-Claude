@@ -1,9 +1,10 @@
-import { Link } from 'react-router-dom'
-import { ArrowRight, MailPlus, PenLine } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, Check, MailPlus, PenLine, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { SportArt } from '@/components/SportArt'
-import { currentUserId, getUser, inboxThreads, myInvites, threadMessages, unreadCount, useDB } from '@/lib/store'
+import { useToast } from '@/components/Toast'
+import { actions, currentUserId, getUser, inboxThreads, myInvites, threadMessages, unreadCount, useDB } from '@/lib/store'
 import { usePersistedState } from '@/lib/usePersistedState'
 import { artType, hm, initials, matchKind, courtLabel, whenLabel } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
@@ -25,6 +26,8 @@ function threadTime(iso: string): string {
 
 export function ChatListScreen() {
   const db = useDB()
+  const navigate = useNavigate()
+  const { showToast } = useToast()
   // persisted per-user so the chosen filter survives a refresh
   const [filter, setFilter] = usePersistedState<'all' | 'match' | 'dm'>('chat:filter', 'all')
 
@@ -177,7 +180,9 @@ export function ChatListScreen() {
 
         {/* scrollable list */}
         <div className="scroll-area relative z-1 flex flex-1 flex-col gap-2.5 overflow-y-auto px-6 pt-2 pb-[120px]">
-          {/* invitations — host→player invites awaiting your reply; tap to respond */}
+          {/* invitations — host→player invites awaiting your reply (incl. ones
+              you deferred with "Decide later", §4). Accept/Decline inline; the
+              card opens Match Details for the full picture. */}
           {invites.length > 0 && (
             <>
               <Eyebrow>Invitations</Eyebrow>
@@ -186,27 +191,58 @@ export function ChatListScreen() {
                 if (!m) return null
                 const host = getUser(db, m.host_id)
                 return (
-                  <Link
+                  <div
                     key={r.id}
-                    to={`/matches/${m.id}`}
-                    className="flex shrink-0 items-center gap-[13px] rounded-[16px] border px-3.5 py-3 text-inherit no-underline transition-all hover:-translate-y-px"
+                    className="flex shrink-0 flex-col gap-2.5 rounded-[16px] border px-3.5 py-3"
                     style={{ background: 'color-mix(in srgb, var(--color-brand) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-brand) 25%, transparent)' }}
                   >
-                    <div className="h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[14px]">
-                      <SportArt type={artType(m)} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <span className="truncate text-[14.5px] font-semibold text-ink">
-                        {matchKind(m)} · {courtLabel(m)}
-                      </span>
-                      <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                        {host?.name.split(' ')[0]} invited you · {whenLabel(m.start_time)}
+                    <Link to={`/matches/${m.id}`} className="flex items-center gap-[13px] text-inherit no-underline">
+                      <div className="h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[14px]">
+                        <SportArt type={artType(m)} />
                       </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-[14.5px] font-semibold text-ink">
+                          {matchKind(m)} · {courtLabel(m)}
+                        </span>
+                        <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                          {host?.name.split(' ')[0]} invited you · {whenLabel(m.start_time)}
+                        </div>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill bg-brand px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ boxShadow: '0 6px 14px -6px var(--color-brand)' }}>
+                        <MailPlus size={12} strokeWidth={2} /> Invite
+                      </span>
+                    </Link>
+                    <div className="flex gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          actions.declineInvite(r.id)
+                          showToast('Invite declined')
+                        }}
+                        className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill bg-transparent text-[13px] font-semibold"
+                        style={{ color: 'color-mix(in srgb, var(--color-danger) 78%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 24%, transparent)' }}
+                      >
+                        <X size={14} strokeWidth={2.2} /> Decline
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // race-safe accept → straight into the match chat (§5)
+                          const res = actions.acceptInvite(r.id)
+                          if (res === 'expired') {
+                            showToast('Match just filled')
+                          } else {
+                            showToast("You're in")
+                            navigate(`/chat/match/${m.id}`)
+                          }
+                        }}
+                        className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill border-none text-[13px] font-semibold text-onbrand"
+                        style={{ background: 'var(--color-brand)', boxShadow: '0 10px 20px -10px var(--color-brand)' }}
+                      >
+                        <Check size={14} strokeWidth={2.4} /> Accept
+                      </button>
                     </div>
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill bg-brand px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ boxShadow: '0 6px 14px -6px var(--color-brand)' }}>
-                      <MailPlus size={12} strokeWidth={2} /> Invite
-                    </span>
-                  </Link>
+                  </div>
                 )
               })}
             </>

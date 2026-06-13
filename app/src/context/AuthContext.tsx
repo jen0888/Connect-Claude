@@ -34,8 +34,11 @@ interface AuthValue {
   /** dev-only: sign in as a mock profile without Supabase (LoginScreen's
    *  VITE_DEV_PASSWORD path). Ignored when a real project is configured. */
   signInWithMock: (user: User) => void
-  /** supabase.auth.signOut() when configured; always clears local state */
-  signOut: () => Promise<void>
+  /** supabase.auth.signOut() when configured. Resolves `{ error }`; on success
+   *  the local session/user are cleared (the data layer follows via the
+   *  session→null effect). On failure nothing is cleared so the caller can stay
+   *  put and report it (no half-signed-out state). */
+  signOut: () => Promise<{ error: string | null }>
 }
 
 /** Map a Supabase auth user onto the app's `User` shape. Auth only carries
@@ -114,9 +117,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut: AuthValue['signOut'] = async () => {
-    if (supabase) await supabase.auth.signOut()
+    if (supabase) {
+      const { error } = await supabase.auth.signOut()
+      // keep the session intact on failure so the caller can stay put
+      if (error) return { error: error.message }
+    }
     setSession(null)
     setUser(null)
+    return { error: null }
   }
 
   return (

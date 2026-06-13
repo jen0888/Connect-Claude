@@ -43,6 +43,8 @@ export interface User {
   languages: string[]
   bio?: string
   area?: string
+  city?: string // Qatar city (defaults to Doha)
+  verified?: boolean // platform-verified — drives the hero badge
 }
 
 export interface Match {
