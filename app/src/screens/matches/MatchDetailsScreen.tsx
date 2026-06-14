@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { Bookmark, Check, ChevronLeft, ChevronRight, Hourglass, ListPlus, MapPin, MessageCircle, Pencil, Plus, Send, Share, Star } from 'lucide-react'
+import { Bookmark, Check, ChevronLeft, ChevronRight, Hourglass, ListPlus, LogOut, MapPin, MessageCircle, Pencil, Plus, Send, Share, Star } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
@@ -708,6 +708,29 @@ function MatchDetailsBody({
                 Leave waitlist
               </button>
             )}
+          </div>
+        )}
+
+        {/* sticky footer — joined player: leave the match (frees your slot; the
+            earliest waitlister is auto-promoted, §5). Host can't leave their own
+            match (they cancel it from Edit), so this is player-view only. */}
+        {!hostView && joined && (status === 'open' || status === 'full') && (
+          <div
+            className="absolute inset-x-0 bottom-0 z-5 flex flex-col items-center gap-2.5 px-[22px] pt-4 pb-[22px]"
+            style={{ background: 'linear-gradient(180deg, transparent, var(--surface-page) 30%)' }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                actions.leaveMatch(m.id)
+                showToast('You left the match')
+                navigate('/home')
+              }}
+              className="inline-flex h-14 w-full cursor-pointer items-center justify-center gap-2.5 rounded-pill bg-transparent text-[15px] font-semibold tracking-[0.01em]"
+              style={{ border: '1.5px solid color-mix(in srgb, var(--color-danger) 35%, transparent)', color: 'var(--color-danger)' }}
+            >
+              <LogOut size={16} strokeWidth={2} className="rtl:rotate-180" /> Leave match
+            </button>
           </div>
         )}
       </div>

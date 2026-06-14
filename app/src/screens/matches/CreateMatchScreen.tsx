@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MailPlus, MapPin, Plus, Sparkles, TriangleAlert, Trophy, UserRound, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MailPlus, MapPin, Plus, Sparkles, TriangleAlert, Trophy, UserRound, Users, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, matchInvites, useDB } from '@/lib/store'
 import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
 import { writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
 import type { JoinMode, SkillLevel, Sport } from '@/lib/types'
+import { initials, skillLabel } from '@/lib/format'
 import { keyOf, labelFromKey } from '@/lib/datetime'
 import { sportEmoji } from '@/lib/sports'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
@@ -100,7 +101,15 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const [description, setDescription] = usePersistedState(dk('description'), existing?.notes ?? '')
   const [venue, setVenue] = usePersistedState<VenueSelection | null>(dk('venue'), initialVenue)
 
-  const [invitedIds, setInvitedIds] = usePersistedState<string[]>(dk('invitedIds'), [])
+  // In edit mode, preload the players the host has already invited (any still-
+  // standing invite) so the form shows them under the Invite button instead of
+  // an empty picker. Create opens empty.
+  const initialInvited = existing
+    ? matchInvites(db, existing.id)
+        .filter((r) => r.status !== 'declined' && r.status !== 'expired' && r.status !== 'left')
+        .map((r) => r.player_id)
+    : []
+  const [invitedIds, setInvitedIds] = usePersistedState<string[]>(dk('invitedIds'), initialInvited)
 
   const [showVenue, setShowVenue] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
@@ -534,12 +543,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] font-medium text-ink">Invite players</div>
                       <div className="mt-0.5 truncate text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                        {invitedIds.length === 0
-                          ? 'Choose who can join this match.'
-                          : invitedIds
-                              .map((pid) => getUser(db, pid)?.name.split(' ')[0])
-                              .filter(Boolean)
-                              .join(', ')}
+                        {invitedIds.length === 0 ? 'Choose who can join this match.' : 'Tap to add or remove players.'}
                       </div>
                     </div>
                     {invitedIds.length > 0 ? (
@@ -552,6 +556,43 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                       </span>
                     )}
                   </button>
+                )}
+
+                {/* the invited players, listed under the button so the host can
+                    see (and remove) exactly who's been invited */}
+                {joinMode === 'invite' && invitedIds.length > 0 && (
+                  <div className="mt-2.5 flex flex-col gap-1.5">
+                    {invitedIds.map((pid) => {
+                      const u = getUser(db, pid)
+                      if (!u) return null
+                      return (
+                        <div
+                          key={pid}
+                          className="flex items-center gap-2.5 rounded-[14px] border bg-page px-3 py-2"
+                          style={{ borderColor: 'rgba(26,26,26,0.10)' }}
+                        >
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-[13px] italic text-onbrand" style={{ background: 'var(--color-accent)' }}>
+                            {initials(u)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[13px] font-medium text-ink">{u.name}</div>
+                            <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+                              {skillLabel(u.skill_level)}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${u.name}`}
+                            onClick={() => setInvitedIds(invitedIds.filter((x) => x !== pid))}
+                            className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent text-ink"
+                            style={{ border: '1.5px solid rgba(26,26,26,0.18)' }}
+                          >
+                            <X size={13} strokeWidth={2} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </FieldRow>
 

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, User } from './types'
+import type { ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, TimelineItem, User } from './types'
 import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, MATCH_REQUESTS, MATCH_RESULTS, USERS } from './mock/data'
 import { onboarding, resetOnboarding } from './onboarding'
 import { computeStatus } from './status'
@@ -57,7 +57,42 @@ interface DB {
   threadReadAt: Record<string, string>
   blockedUserIds: string[] // users the current user has blocked
   savedMatchIds: string[]
+  /** chat inbox prefs (device-local, persisted to localStorage): threads the
+   *  user archived, and the timestamp each was deleted (a newer message
+   *  resurfaces a deleted thread, iMessage-style). */
+  archivedThreadIds: string[]
+  deletedThreadAt: Record<string, string>
 }
+
+/** chat inbox prefs persist to localStorage so archive/delete survive reload
+ *  (no Supabase table — device-local, like block/save/read state). */
+const CHAT_PREFS_KEY = 'connect.chatPrefs'
+
+function loadChatPrefs(): { archivedThreadIds: string[]; deletedThreadAt: Record<string, string> } {
+  try {
+    const raw = localStorage.getItem(CHAT_PREFS_KEY)
+    if (raw) {
+      const p = JSON.parse(raw)
+      return {
+        archivedThreadIds: Array.isArray(p.archivedThreadIds) ? p.archivedThreadIds : [],
+        deletedThreadAt: p.deletedThreadAt && typeof p.deletedThreadAt === 'object' ? p.deletedThreadAt : {},
+      }
+    }
+  } catch {
+    /* storage unavailable / malformed — start clean */
+  }
+  return { archivedThreadIds: [], deletedThreadAt: {} }
+}
+
+function saveChatPrefs(d: DB) {
+  try {
+    localStorage.setItem(CHAT_PREFS_KEY, JSON.stringify({ archivedThreadIds: d.archivedThreadIds, deletedThreadAt: d.deletedThreadAt }))
+  } catch {
+    /* storage unavailable — prefs stay in-memory only */
+  }
+}
+
+const CHAT_PREFS = loadChatPrefs()
 
 /** seeded "returning user" dataset — the demo default */
 const SEEDED: DB = {
@@ -72,6 +107,8 @@ const SEEDED: DB = {
   threadReadAt: { 't-run': new Date().toISOString(), 't-dm-sara': new Date().toISOString(), 't-hosted': new Date().toISOString() },
   blockedUserIds: [],
   savedMatchIds: [],
+  archivedThreadIds: CHAT_PREFS.archivedThreadIds,
+  deletedThreadAt: CHAT_PREFS.deletedThreadAt,
 }
 
 /** post-onboarding "fresh account" flag — persists so a reload after the
@@ -130,6 +167,7 @@ const EMPTY_DB: DB = {
   users: [], matches: [], matchPlayers: [], matchRequests: [], matchResults: [],
   noShowReports: [], chatThreads: [], chatMessages: [], threadReadAt: {},
   blockedUserIds: [], savedMatchIds: [],
+  archivedThreadIds: CHAT_PREFS.archivedThreadIds, deletedThreadAt: CHAT_PREFS.deletedThreadAt,
 }
 
 // Live mode (Supabase configured): start empty, hydrate on connectLive(). Mock
@@ -177,23 +215,13 @@ export function useHydrated(): boolean {
 let idCounter = 0
 const newId = (prefix: string) => `${prefix}-${++idCounter}-${Math.random().toString(36).slice(2, 7)}`
 
-/* ── demo simulation: the seeded dummy accounts respond, so invite + chat
- *  flows run end-to-end with no backend. Pure setTimeout over the existing
- *  mutations — invited players auto-accept (and the match thread announces
- *  the join), DM'd / group-chat players send a canned reply. Delete this
+/* ── demo simulation: the seeded dummy accounts respond, so invite flows run
+ *  end-to-end with no backend. Pure setTimeout over the existing mutations —
+ *  invited players auto-accept (and the match thread announces the join).
+ *  (Chat auto-reply was removed so a message you send never produces an
+ *  incoming "new message" — only real replies from others count.) Delete this
  *  block when a real backend drives counterparty behaviour (CLAUDE.md §7). */
 const INVITE_ACCEPT_DELAY = 1600
-const REPLY_DELAY = 1500
-let replyTick = 0
-
-const CANNED_REPLIES = [
-  'Sounds good — count me in! 👍',
-  'Nice, see you on court.',
-  'Perfect, that works for me.',
-  'Great — looking forward to it!',
-  'On my way shortly.',
-  'Appreciate the message — let’s do it.',
-]
 
 /** An invited dummy player accepts a beat later: acceptInvite fills a spot,
  *  adds them to the match thread, and announces the join inline. */
@@ -201,30 +229,6 @@ function simulateInviteAccept(reqId: string) {
   const req = db.matchRequests.find((r) => r.id === reqId)
   if (!req || req.status !== 'invited') return
   actions.acceptInvite(reqId)
-}
-
-/** A canned reply from the first other (non-blocked) participant of a thread —
- *  works for both 1:1 DMs and match group threads. */
-function botReply(threadId: string, senderId: string, index: number) {
-  mutate((d) => {
-    const t = d.chatThreads.find((x) => x.id === threadId)
-    if (!t || !t.participant_ids.includes(senderId) || d.blockedUserIds.includes(senderId)) return d
-    return {
-      ...d,
-      chatMessages: [
-        ...d.chatMessages,
-        { id: newId('msg'), thread_id: threadId, sender_id: senderId, body: CANNED_REPLIES[index % CANNED_REPLIES.length], created_at: new Date().toISOString() },
-      ],
-    }
-  })
-}
-
-function scheduleReply(threadId: string) {
-  const thread = db.chatThreads.find((t) => t.id === threadId)
-  if (!thread) return
-  const responder = thread.participant_ids.find((p) => p !== CURRENT_USER_ID && !db.blockedUserIds.includes(p))
-  if (!responder) return // your own solo thread (e.g. hosted) — nobody to reply
-  setTimeout(() => botReply(threadId, responder, replyTick++), REPLY_DELAY)
 }
 
 /* ── selectors (future Supabase selects / views) ───────────────────── */
@@ -316,6 +320,7 @@ export function clearClientState() {
     localStorage.removeItem(FRESH_KEY)        // connect.freshAccount
     localStorage.removeItem(PROFILE_DONE_KEY) // connect.profileDone
     localStorage.removeItem('connect:invitesSeen')
+    localStorage.removeItem(CHAT_PREFS_KEY)   // connect.chatPrefs — archive/delete
   } catch {
     /* storage unavailable — nothing to clear */
   }
@@ -403,6 +408,31 @@ export function myInvites(d: DB, userId = currentUserId): MatchRequest[] {
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 
+/** join requests awaiting MY approval as host — the "request review" feed in
+ *  the Chat Alerts pill. Pending requests on my own non-cancelled matches,
+ *  newest first. */
+export function myHostRequests(d: DB, userId = currentUserId): MatchRequest[] {
+  return d.matchRequests
+    .filter((r) => r.kind === 'request' && r.status === 'requested')
+    .filter((r) => {
+      const m = d.matches.find((x) => x.id === r.match_id)
+      return !!m && m.host_id === userId && m.status !== 'cancelled'
+    })
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+/** my active waitlist entries — the "waitlist review" feed in the Chat Alerts
+ *  pill. Where I'm queued on a still-live match, FIFO by created_at. */
+export function myWaitlistEntries(d: DB, userId = currentUserId): MatchRequest[] {
+  return d.matchRequests
+    .filter((r) => r.player_id === userId && r.kind === 'waitlist' && r.status === 'waitlisted')
+    .filter((r) => {
+      const m = d.matches.find((x) => x.id === r.match_id)
+      return !!m && m.status !== 'cancelled'
+    })
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
 /** every invite a host has sent on a match (any status), newest first —
  *  host view of who's been invited and where each invite stands. */
 export function matchInvites(d: DB, matchId: string): MatchRequest[] {
@@ -483,14 +513,141 @@ export function unreadCount(d: DB, threadId: string): number {
   return threadMessages(d, threadId).filter((m) => !m.system && m.sender_id !== currentUserId && m.created_at > readAt).length
 }
 
-/** inbox threads — block kills DM threads both ways (removed from inbox) */
+export function isThreadArchived(d: DB, threadId: string): boolean {
+  return d.archivedThreadIds.includes(threadId)
+}
+
+/** A deleted thread stays hidden until a NEWER message arrives (iMessage-style
+ *  resurface), so "delete" clears it from the list without losing the thread
+ *  if the conversation continues. */
+export function isThreadDeleted(d: DB, t: ChatThread): boolean {
+  const at = d.deletedThreadAt[t.id]
+  if (!at) return false
+  const last = threadMessages(d, t.id).at(-1)
+  return !last || last.created_at <= at
+}
+
+/** inbox threads — block kills DM threads both ways (removed from inbox).
+ *  A CANCELLED match's group thread is auto-removed from the inbox too: once
+ *  the host (or system) cancels, `matches.status` flips to 'cancelled' and the
+ *  thread drops off the Chat page for everyone on the next render/rehydrate
+ *  (live: the status change propagates via Realtime). The thread row itself is
+ *  NOT deleted — the read-only `MatchChatScreen` stays reachable by deep-link as
+ *  a graceful fallback so history isn't lost. Archived + deleted threads are
+ *  also excluded (archived → the Archive pill; deleted → gone until a newer msg). */
 export function inboxThreads(d: DB): ChatThread[] {
   return d.chatThreads
     .filter((t) => t.participant_ids.includes(currentUserId))
     .filter((t) => t.match_id !== null || !t.participant_ids.some((p) => d.blockedUserIds.includes(p)))
+    .filter((t) => {
+      if (t.match_id === null) return true
+      const m = d.matches.find((x) => x.id === t.match_id)
+      return !m || m.status !== 'cancelled'
+    })
+    .filter((t) => !isThreadArchived(d, t.id) && !isThreadDeleted(d, t))
     .map((t) => ({ t, last: threadMessages(d, t.id).at(-1) }))
     .sort((a, b) => (b.last?.created_at ?? b.t.created_at).localeCompare(a.last?.created_at ?? a.t.created_at))
     .map(({ t }) => t)
+}
+
+/** the Archive pill feed — threads the user archived (any type), newest first.
+ *  Block/delete still apply; cancelled-match archived threads stay as history. */
+export function archivedThreads(d: DB): ChatThread[] {
+  return d.chatThreads
+    .filter((t) => t.participant_ids.includes(currentUserId))
+    .filter((t) => isThreadArchived(d, t.id) && !isThreadDeleted(d, t))
+    .filter((t) => t.match_id !== null || !t.participant_ids.some((p) => d.blockedUserIds.includes(p)))
+    .map((t) => ({ t, last: threadMessages(d, t.id).at(-1) }))
+    .sort((a, b) => (b.last?.created_at ?? b.t.created_at).localeCompare(a.last?.created_at ?? a.t.created_at))
+    .map(({ t }) => t)
+}
+
+export function threadById(d: DB, threadId: string): ChatThread | undefined {
+  return d.chatThreads.find((t) => t.id === threadId)
+}
+
+/** Is this a group chat (non-match thread with 3+ members)? §8 */
+export function isGroupThread(t: ChatThread): boolean {
+  return t.match_id === null && t.participant_ids.length > 2
+}
+
+/** other participants of a thread (everyone but me) */
+export function threadOthers(d: DB, t: ChatThread): User[] {
+  return t.participant_ids.filter((id) => id !== currentUserId).map((id) => getUser(d, id)).filter((u): u is User => !!u)
+}
+
+/** display title for a non-match thread: the other person (DM) or the members (group) */
+export function threadTitle(d: DB, t: ChatThread): string {
+  const others = threadOthers(d, t)
+  if (others.length === 0) return 'You'
+  if (others.length === 1) return others[0].name
+  const firsts = others.map((u) => u.name.split(' ')[0])
+  return firsts.length <= 3 ? firsts.join(', ') : `${firsts.slice(0, 2).join(', ')} +${firsts.length - 2}`
+}
+
+/**
+ * The unified thread timeline (chat-room §1) — one sorted stream of
+ * `TimelineItem`s the renderer dispatches on. Chat messages become text/system
+ * items; pending/resolved `match_requests` are DERIVED into invite/decision
+ * cards (no extra storage), scoped to the viewer by the same visibility the
+ * UI already trusts (host sees their match's requests; both sides of a DM see
+ * an invite between them — mirrors the `mr_read` RLS policy).
+ */
+export function threadTimeline(d: DB, threadId: string): TimelineItem[] {
+  const t = d.chatThreads.find((x) => x.id === threadId)
+  if (!t) return []
+
+  const items: TimelineItem[] = d.chatMessages
+    .filter((m) => m.thread_id === threadId)
+    .filter((m) => m.system || !d.blockedUserIds.includes(m.sender_id))
+    .map((m) => ({ kind: m.system ? 'system' : 'text', id: m.id, created_at: m.created_at, msg: m }) as TimelineItem)
+
+  if (t.match_id) {
+    // Match group thread — the HOST sees inbound join requests as decision
+    // cards (§7). Pending → actionable; declined → a host-only follow-up line.
+    // (Approvals append the trigger's "X joined" system line, so no card there.)
+    const m = d.matches.find((x) => x.id === t.match_id)
+    if (m && m.host_id === currentUserId && m.status !== 'cancelled') {
+      for (const r of d.matchRequests) {
+        if (r.match_id !== m.id || r.kind !== 'request') continue
+        if (r.status !== 'requested' && r.status !== 'declined') continue
+        const player = getUser(d, r.player_id)
+        if (!player) continue
+        items.push({ kind: 'decision', id: `dec-${r.id}`, created_at: r.created_at, request: r, match: m, player })
+      }
+    }
+  } else if (t.participant_ids.length === 2) {
+    // DM — render an invite-to-play card for any match invite between the pair
+    // (§5). Actionable for the invited player; status/follow-up for the host.
+    const [a, b] = t.participant_ids
+    for (const r of d.matchRequests) {
+      if (r.kind !== 'invite') continue
+      const m = d.matches.find((x) => x.id === r.match_id)
+      if (!m) continue
+      const playerInPair = r.player_id === a || r.player_id === b
+      const hostInPair = m.host_id === a || m.host_id === b
+      if (!playerInPair || !hostInPair || m.host_id === r.player_id) continue
+      const host = getUser(d, m.host_id)
+      const player = getUser(d, r.player_id)
+      if (!host || !player) continue
+      items.push({ kind: 'invite', id: `inv-${r.id}`, created_at: r.created_at, request: r, match: m, host, player })
+    }
+  }
+
+  return items.sort((x, y) => x.created_at.localeCompare(y.created_at) || x.id.localeCompare(y.id))
+}
+
+/** matches the current user hosts that `other` could still be invited to —
+ *  powers the DM "invite to play" picker (§5). Joinable (open/full) and the
+ *  other player isn't already in / pending. */
+export function invitableMatchesFor(d: DB, otherId: string): Match[] {
+  return hostedMatches(d)
+    .filter((m) => m.status !== 'cancelled')
+    .filter((m) => {
+      const s = computeStatus(m)
+      return s === 'open' || s === 'full'
+    })
+    .filter((m) => invitablePlayers(d, m.id).some((u) => u.id === otherId))
 }
 
 /** FIFO auto-promotion (CLAUDE.md §5) — executes as part of the cancel
@@ -656,10 +813,35 @@ export const actions = {
     if (liveReady) { void rpc('cancel_participation', { p_match: matchId }); return }
     mutate((d) => {
       if (!isJoined(d, matchId)) return d
+      const me = getUser(d, currentUserId)
+      const thread = threadForMatch(d, matchId)
       const freed: DB = {
         ...d,
         matches: d.matches.map((x) => (x.id === matchId ? { ...x, spots_available: x.spots_available + 1 } : x)),
         matchPlayers: d.matchPlayers.filter((mp) => !(mp.match_id === matchId && mp.player_id === currentUserId)),
+        // drop the leaver from the match group thread and announce it inline, so
+        // everyone still in the chat sees who left (mirrors the "X joined" line).
+        chatThreads: thread
+          ? d.chatThreads.map((t) =>
+              t.id === thread.id ? { ...t, participant_ids: t.participant_ids.filter((p) => p !== currentUserId) } : t,
+            )
+          : d.chatThreads,
+        chatMessages:
+          thread && me
+            ? [
+                ...d.chatMessages,
+                {
+                  id: newId('msg'),
+                  thread_id: thread.id,
+                  sender_id: currentUserId,
+                  body: `${me.name.split(' ')[0]} left the match`,
+                  created_at: new Date().toISOString(),
+                  system: true,
+                  tone: 'warm' as const,
+                  icon: 'userMinus' as const,
+                },
+              ]
+            : d.chatMessages,
       }
       // the freed slot auto-promotes the earliest waitlister — promotion
       // lives in the cancel action, not a cron/trigger (§5)
@@ -750,6 +932,10 @@ export const actions = {
       const m = d.matches.find((x) => x.id === r.match_id)
       if (!m || m.spots_available <= 0) return d
       const spotsLeft = m.spots_available - 1
+      // mirror the live `_sync_thread_on_join` trigger: add the approved player
+      // to the match's group thread and announce the join inline (§7 follow-up).
+      const player = getUser(d, r.player_id)
+      const thread = threadForMatch(d, m.id)
       return {
         ...d,
         matches: d.matches.map((x) => (x.id === m.id ? { ...x, spots_available: spotsLeft } : x)),
@@ -758,12 +944,21 @@ export const actions = {
           { id: newId('mp'), match_id: m.id, player_id: r.player_id, joined_at: new Date().toISOString(), attended: null },
         ],
         matchRequests: d.matchRequests.map((x) => {
-          if (x.id === requestId) return { ...x, status: 'approved' as const }
+          if (x.id === requestId) return { ...x, status: 'joined' as const }
           // match just filled → expire all other pending requests/invites
           if (spotsLeft === 0 && x.match_id === m.id && (x.status === 'requested' || x.status === 'invited'))
             return { ...x, status: 'expired' as const }
           return x
         }),
+        chatThreads: thread && !thread.participant_ids.includes(r.player_id)
+          ? d.chatThreads.map((t) => (t.id === thread.id ? { ...t, participant_ids: [...t.participant_ids, r.player_id] } : t))
+          : d.chatThreads,
+        chatMessages: thread && player
+          ? [
+              ...d.chatMessages,
+              { id: newId('msg'), thread_id: thread.id, sender_id: r.player_id, body: `${player.name.split(' ')[0]} joined`, created_at: new Date().toISOString(), system: true, tone: 'info' as const, icon: 'userPlus' as const },
+            ]
+          : d.chatMessages,
       }
     })
   },
@@ -946,6 +1141,15 @@ export const actions = {
   },
 
   updateMatch(matchId: string, patch: Partial<Match>) {
+    // Optimistically apply in both modes so Home (which navigates straight to
+    // /home after Save) reflects the edit — start/end time, spots, price… — on
+    // the next render; live mode then persists + rehydrates to confirm. Without
+    // this the async write returns after navigate('/home'), so the card keeps
+    // showing the old values until the snapshot round-trips. Mirrors cancelMatch.
+    mutate((d) => ({
+      ...d,
+      matches: d.matches.map((x) => (x.id === matchId ? { ...x, ...patch } : x)),
+    }))
     if (liveReady) {
       if (!supabase) return
       // map app fields → matches columns (drop route_*/round_trip/status — not
@@ -958,12 +1162,7 @@ export const actions = {
       if (dbPatch.fee_total == null && 'fee_total' in dbPatch) dbPatch.fee_total = 0
       if (dbPatch.fee_per_player == null && 'fee_per_player' in dbPatch) dbPatch.fee_per_player = 0
       afterWrite(supabase.from('matches').update(dbPatch).eq('id', matchId))
-      return
     }
-    mutate((d) => ({
-      ...d,
-      matches: d.matches.map((x) => (x.id === matchId ? { ...x, ...patch } : x)),
-    }))
   },
 
   /** post-match step 1: everyone defaults to Played; flag no-shows */
@@ -1027,6 +1226,11 @@ export const actions = {
   sendMessage(threadId: string, body: string) {
     const text = body.trim()
     if (!text) return
+    // Sending implies you've read this thread: advance your read marker so a
+    // message YOU send never surfaces as a "new messages" alert. Combined with
+    // unreadCount excluding your own messages (sender_id !== currentUserId),
+    // only messages RECEIVED from others ever contribute to the unread count.
+    actions.markThreadRead(threadId)
     if (liveReady) {
       if (supabase) afterWrite(supabase.from('chat_messages').insert({ thread_id: threadId, sender_id: currentUserId, body: text }))
       return
@@ -1038,7 +1242,6 @@ export const actions = {
         { id: newId('msg'), thread_id: threadId, sender_id: currentUserId, body: text, created_at: new Date().toISOString() },
       ],
     }))
-    scheduleReply(threadId) // demo: the other side replies shortly so chats run end-to-end
   },
 
   postSystemLine(threadId: string, body: string, tone: ChatMessage['tone'] = 'info', icon: ChatMessage['icon'] = 'flag') {
@@ -1053,7 +1256,52 @@ export const actions = {
   },
 
   markThreadRead(threadId: string) {
-    mutate((d) => ({ ...d, threadReadAt: { ...d.threadReadAt, [threadId]: new Date().toISOString() } }))
+    mutate((d) => {
+      // opening a thread you'd deleted brings it back (you're using it again)
+      const deleted = { ...d.deletedThreadAt }
+      let changed = false
+      if (threadId in deleted) {
+        delete deleted[threadId]
+        changed = true
+      }
+      const next = { ...d, threadReadAt: { ...d.threadReadAt, [threadId]: new Date().toISOString() }, deletedThreadAt: deleted }
+      if (changed) saveChatPrefs(next)
+      return next
+    })
+  },
+
+  /** swipe action: move a thread to the Archive pill (reversible) */
+  archiveThread(threadId: string) {
+    mutate((d) => {
+      if (d.archivedThreadIds.includes(threadId)) return d
+      const next = { ...d, archivedThreadIds: [...d.archivedThreadIds, threadId] }
+      saveChatPrefs(next)
+      return next
+    })
+  },
+
+  /** swipe action (in Archive): return a thread to the main inbox */
+  unarchiveThread(threadId: string) {
+    mutate((d) => {
+      const next = { ...d, archivedThreadIds: d.archivedThreadIds.filter((id) => id !== threadId) }
+      saveChatPrefs(next)
+      return next
+    })
+  },
+
+  /** swipe action: remove a thread from the inbox. Soft per-device delete (the
+   *  Supabase thread is untouched so other participants keep it) — it stays
+   *  hidden until a newer message arrives or you reopen it (markThreadRead). */
+  deleteThread(threadId: string) {
+    mutate((d) => {
+      const next = {
+        ...d,
+        archivedThreadIds: d.archivedThreadIds.filter((id) => id !== threadId),
+        deletedThreadAt: { ...d.deletedThreadAt, [threadId]: new Date().toISOString() },
+      }
+      saveChatPrefs(next)
+      return next
+    })
   },
 
   /** open DM (anyone → anyone) — returns the one canonical thread */
@@ -1074,6 +1322,41 @@ export const actions = {
     mutate((d) => ({
       ...d,
       chatThreads: [...d.chatThreads, { id, match_id: null, participant_ids: [currentUserId, userId], created_at: new Date().toISOString() }],
+    }))
+    return id
+  },
+
+  /** New Message multi-select (§8): 1 other → the canonical DM (never fork);
+   *  2+ others → a group chat thread. Returns the thread id to route into. */
+  async createGroupThread(otherIds: string[]): Promise<string> {
+    const others = [...new Set(otherIds.filter((id) => id && id !== currentUserId))]
+    if (others.length === 0) return ''
+    if (others.length === 1) return actions.getOrCreateDM(others[0])
+    if (liveReady) {
+      if (!supabase) return ''
+      const { data, error } = await supabase.rpc('create_group_thread', { p_others: others })
+      if (error) {
+        console.error('[rpc] create_group_thread failed:', error.message)
+        return ''
+      }
+      await rehydrate()
+      return (data as string) ?? ''
+    }
+    // mock: reuse an existing group with the exact same member set, else create
+    const members = [currentUserId, ...others]
+    const setEq = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+    const dup = db.chatThreads.find((t) => t.match_id === null && setEq(t.participant_ids, members))
+    if (dup) return dup.id
+    const id = newId('t-grp')
+    const me = getUser(db, currentUserId)
+    const now = new Date().toISOString()
+    mutate((d) => ({
+      ...d,
+      chatThreads: [...d.chatThreads, { id, match_id: null, participant_ids: members, created_at: now }],
+      chatMessages: [
+        ...d.chatMessages,
+        { id: newId('msg'), thread_id: id, sender_id: currentUserId, body: `${me?.name.split(' ')[0] ?? 'You'} started this group`, created_at: now, system: true, tone: 'info' as const, icon: 'userPlus' as const },
+      ],
     }))
     return id
   },

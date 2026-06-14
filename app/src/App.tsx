@@ -13,6 +13,7 @@ import { PostMatchScreen } from '@/screens/postmatch/PostMatchScreen'
 import { ChatListScreen } from '@/screens/chat/ChatListScreen'
 import { MatchChatScreen } from '@/screens/chat/MatchChatScreen'
 import { ConversationScreen } from '@/screens/chat/ConversationScreen'
+import { GroupChatScreen } from '@/screens/chat/GroupChatScreen'
 import { NewMessageScreen } from '@/screens/chat/NewMessageScreen'
 import { ProfileScreen } from '@/screens/profile/ProfileScreen'
 import { EditProfileScreen } from '@/screens/profile/EditProfileScreen'
@@ -71,6 +72,7 @@ function App() {
       <Route path="/chat/new" element={<NewMessageScreen />} />
       <Route path="/chat/match/:id" element={<MatchChatScreen />} />
       <Route path="/chat/dm/:userId" element={<ConversationScreen />} />
+      <Route path="/chat/group/:threadId" element={<GroupChatScreen />} />
       <Route path="/matches/all" element={<AllMatchesScreen />} />
       <Route path="/matches/create" element={<CreateMatchScreen />} />
       <Route path="/matches/edit-demo" element={<EditMatchScreen />} />

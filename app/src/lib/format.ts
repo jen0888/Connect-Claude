@@ -121,6 +121,24 @@ export function skillLabel(level: User['skill_level']): string {
   return labels[level]
 }
 
+/** A match's open-to skill as a readable BAND ("Beginner → Low int."), not a
+ *  single point. The store collapses the create form's min→max slider into one
+ *  coarse `skill_level` (levelRange in CreateMatchScreen), so we expand each
+ *  coarse value back to the band it represents for display on the MatchCard. */
+export function skillRangeLabel(level: Match['skill_level']): string {
+  const ranges: Record<Match['skill_level'], string> = {
+    any: 'All levels',
+    baby_beginner: 'Baby → Beginner',
+    beginner: 'Beginner → Low int.',
+    low_intermediate: 'Low → Intermediate',
+    intermediate: 'Low int. → High int.',
+    high_intermediate: 'Intermediate → Advanced',
+    advanced: 'Advanced → Pro',
+    pro: 'Pro level',
+  }
+  return ranges[level]
+}
+
 export function initials(user: Pick<User, 'name'>): string {
   const parts = user.name.split(/\s+/).filter(Boolean)
   return parts

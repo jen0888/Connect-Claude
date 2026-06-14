@@ -1,10 +1,12 @@
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, Check, MailPlus, PenLine, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowRight, Check, Layers, MailPlus, PenLine, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, inboxThreads, myInvites, threadMessages, unreadCount, useDB } from '@/lib/store'
+import { actions, archivedThreads, currentUserId, getUser, inboxThreads, isGroupThread, isThreadArchived, myHostRequests, myInvites, myWaitlistEntries, threadMessages, threadTitle, unreadCount, useDB, waitlistPosition } from '@/lib/store'
+import { SwipeRow, type SwipeAction } from '@/screens/chat/SwipeRow'
 import { usePersistedState } from '@/lib/usePersistedState'
 import { artType, hm, initials, matchKind, courtLabel, whenLabel } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
@@ -29,39 +31,88 @@ export function ChatListScreen() {
   const navigate = useNavigate()
   const { showToast } = useToast()
   // persisted per-user so the chosen filter survives a refresh
-  const [filter, setFilter] = usePersistedState<'all' | 'match' | 'dm'>('chat:filter', 'all')
+  const [filter, setFilter] = usePersistedState<'all' | 'match' | 'dm' | 'alerts' | 'archive'>('chat:filter', 'all')
 
-  const threads = inboxThreads(db).filter((t) => (filter === 'all' ? true : filter === 'match' ? t.match_id !== null : t.match_id === null))
+  const threads =
+    filter === 'archive'
+      ? archivedThreads(db)
+      : inboxThreads(db).filter((t) =>
+          filter === 'all' ? true : filter === 'match' ? t.match_id !== null : filter === 'dm' ? t.match_id === null : false,
+        )
   const totalUnread = inboxThreads(db).reduce((n, t) => n + unreadCount(db, t.id), 0)
 
-  // pinned card: a match thread for a match happening today (open/full/live)
-  const pinned = threads.find((t) => {
-    if (!t.match_id) return false
-    const m = db.matches.find((x) => x.id === t.match_id)
-    if (!m) return false
-    const s = computeStatus(m)
-    return (s === 'open' || s === 'full' || s === 'live') && whenLabel(m.start_time) === 'Today'
-  })
+  // Notifications feed (Alerts pill): everything awaiting your review — invites
+  // you've received (player), join requests on your matches (host), and your
+  // waitlist standing (player). Surfaced on All + the dedicated Alerts filter.
+  const invites = myInvites(db)
+  const hostReqs = myHostRequests(db)
+  const waitReviews = myWaitlistEntries(db)
+  const notifCount = invites.length + hostReqs.length + waitReviews.length
+  const showNotifications = filter === 'all' || filter === 'alerts'
+  const showThreads = filter !== 'alerts'
+
+  // Alerts badge: clears the moment the user opens the Alerts tab (they've now
+  // seen everything), and only re-appears when a genuinely NEW alert arrives.
+  // We persist the count last seen; opening Alerts marks the current count seen,
+  // and we never let "seen" exceed the live count (items get actioned/expire),
+  // so resolving an alert doesn't suppress a later, real one.
+  const [seenAlerts, setSeenAlerts] = usePersistedState<number>('chat:alertsSeen', 0)
+  useEffect(() => {
+    const target = filter === 'alerts' ? notifCount : Math.min(seenAlerts, notifCount)
+    if (target !== seenAlerts) setSeenAlerts(target)
+  }, [filter, notifCount, seenAlerts, setSeenAlerts])
+  const hasNewAlerts = notifCount > seenAlerts
+
+  // pinned card: prefer a match that's LIVE right now (§3); else fall back to a
+  // match thread happening later today (open/full).
+  const matchOf = (t: ChatThread) => (t.match_id ? db.matches.find((x) => x.id === t.match_id) : undefined)
+  const canPin = filter !== 'archive' // no pinned card in the Archive view
+  const livePinned = canPin
+    ? threads.find((t) => {
+        const m = matchOf(t)
+        return m ? computeStatus(m) === 'live' : false
+      })
+    : undefined
+  const todayPinned = canPin
+    ? threads.find((t) => {
+        const m = matchOf(t)
+        if (!m) return false
+        const s = computeStatus(m)
+        return (s === 'open' || s === 'full') && whenLabel(m.start_time) === 'Today'
+      })
+    : undefined
+  const pinned = livePinned ?? todayPinned
+  const pinnedIsLive = !!livePinned
   const rest = threads.filter((t) => t !== pinned)
-  // pending invites surface as notifications in Chat (CLAUDE.md §4) — hidden on the People filter
-  const invites = filter === 'dm' ? [] : myInvites(db)
 
   const rowFor = (t: ChatThread) => {
     const isMatch = t.match_id !== null
+    const isGroup = isGroupThread(t)
     const m = isMatch ? db.matches.find((x) => x.id === t.match_id) : undefined
-    const other = !isMatch ? getUser(db, t.participant_ids.find((p) => p !== currentUserId)!) : undefined
+    const other = !isMatch && !isGroup ? getUser(db, t.participant_ids.find((p) => p !== currentUserId)!) : undefined
     const msgs = threadMessages(db, t.id).filter((x) => !x.system)
     const last = msgs.at(-1)
     const unread = unreadCount(db, t.id)
-    const title = isMatch && m ? `${matchKind(m)} · ${courtLabel(m)}` : (other?.name ?? '')
+    const title = isMatch && m ? `${matchKind(m)} · ${courtLabel(m)}` : isGroup ? threadTitle(db, t) : (other?.name ?? '')
     const lastSender = last ? (last.sender_id === currentUserId ? 'You' : getUser(db, last.sender_id)?.name.split(' ')[0]) : null
     const players = isMatch ? t.participant_ids.length : 0
+    const to = isMatch ? `/chat/match/${t.match_id}` : isGroup ? `/chat/group/${t.id}` : `/chat/dm/${other?.id}`
+    const archived = isThreadArchived(db, t.id)
+
+    // swipe-left actions: Archive (or Unarchive, in the Archive view) + Delete.
+    // Transparent buttons — just the icon + word in the action's own colour.
+    const swipeActions: SwipeAction[] = [
+      archived
+        ? { key: 'unarchive', label: 'Unarchive', icon: ArchiveRestore, bg: 'transparent', fg: 'var(--color-accent)', onClick: () => { actions.unarchiveThread(t.id); showToast('Moved to inbox') } }
+        : { key: 'archive', label: 'Archive', icon: Archive, bg: 'transparent', fg: 'var(--color-accent)', onClick: () => { actions.archiveThread(t.id); showToast('Archived') } },
+      { key: 'delete', label: 'Delete', icon: Trash2, bg: 'transparent', fg: 'var(--color-danger)', onClick: () => { actions.deleteThread(t.id); showToast('Conversation deleted') } },
+    ]
 
     return (
+      <SwipeRow key={t.id} actions={swipeActions}>
       <Link
-        key={t.id}
-        to={isMatch ? `/chat/match/${t.match_id}` : `/chat/dm/${other?.id}`}
-        className="flex shrink-0 items-center gap-[13px] rounded-[16px] border px-3.5 py-3 text-inherit no-underline transition-all hover:-translate-y-px hover:bg-card"
+        to={to}
+        className="flex items-center gap-[13px] rounded-[16px] border px-3.5 py-3 text-inherit no-underline transition-all hover:bg-card"
         style={{
           background: unread ? 'var(--surface-card)' : 'rgba(255,255,255,0.55)',
           borderColor: 'rgba(26,26,26,0.07)',
@@ -78,6 +129,21 @@ export function ChatListScreen() {
               style={{ border: '1.5px solid var(--surface-page)', color: 'rgba(26,26,26,0.6)', boxShadow: '0 2px 6px -2px rgba(26,26,26,0.3)' }}
             >
               {players}
+            </span>
+          </div>
+        ) : isGroup ? (
+          <div className="relative h-[52px] w-[52px] shrink-0">
+            <div
+              className="inline-flex h-[52px] w-[52px] items-center justify-center rounded-full border bg-card text-accent"
+              style={{ borderColor: 'rgba(26,26,26,0.08)', boxShadow: '0 8px 18px -14px rgba(26,26,26,0.4)' }}
+            >
+              <Users size={22} strokeWidth={1.8} />
+            </div>
+            <span
+              className="absolute -bottom-1 -end-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-pill bg-card px-[5px] text-[9.5px] font-semibold nums-tabular"
+              style={{ border: '1.5px solid var(--surface-page)', color: 'rgba(26,26,26,0.6)', boxShadow: '0 2px 6px -2px rgba(26,26,26,0.3)' }}
+            >
+              {t.participant_ids.length}
             </span>
           </div>
         ) : (
@@ -119,6 +185,7 @@ export function ChatListScreen() {
           )}
         </div>
       </Link>
+      </SwipeRow>
     )
   }
 
@@ -149,21 +216,24 @@ export function ChatListScreen() {
             </Link>
           </div>
 
-          {/* filter pills */}
-          <div className="inline-flex items-center gap-1 rounded-pill p-1" style={{ background: 'rgba(26,26,26,0.06)', border: '1px solid rgba(26,26,26,0.06)' }}>
+          {/* filter pills — horizontally scrollable so the five fit any width */}
+          <div className="hscroll flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-pill p-1" style={{ background: 'rgba(26,26,26,0.06)', border: '1px solid rgba(26,26,26,0.06)' }}>
             {(
               [
                 { id: 'all', label: 'All' },
                 { id: 'match', label: 'Matches' },
                 { id: 'dm', label: 'People' },
+                { id: 'alerts', label: 'Alerts' },
+                { id: 'archive', label: 'Archive' },
               ] as const
             ).map((o) => {
               const on = o.id === filter
+              const badge = o.id === 'alerts' && hasNewAlerts
               return (
                 <button
                   key={o.id}
                   onClick={() => setFilter(o.id)}
-                  className="cursor-pointer rounded-pill border-none px-4 py-2 text-[13px] tracking-[0.01em] transition-colors"
+                  className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-pill border-none px-[15px] py-2 text-[13px] tracking-[0.01em] transition-colors"
                   style={{
                     background: on ? 'var(--color-brand)' : 'transparent',
                     color: on ? 'var(--color-text-onbrand)' : 'rgba(26,26,26,0.6)',
@@ -172,6 +242,17 @@ export function ChatListScreen() {
                   }}
                 >
                   {o.label}
+                  {badge && (
+                    <span
+                      className="inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-pill px-[5px] text-[10px] font-semibold nums-tabular"
+                      style={{
+                        background: on ? 'var(--color-text-onbrand)' : 'var(--color-brand)',
+                        color: on ? 'var(--color-brand)' : 'var(--color-text-onbrand)',
+                      }}
+                    >
+                      {notifCount}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -180,10 +261,11 @@ export function ChatListScreen() {
 
         {/* scrollable list */}
         <div className="scroll-area relative z-1 flex flex-1 flex-col gap-2.5 overflow-y-auto px-6 pt-2 pb-[120px]">
+          {/* ── Notifications (Alerts pill): invitation · request · waitlist review ── */}
           {/* invitations — host→player invites awaiting your reply (incl. ones
               you deferred with "Decide later", §4). Accept/Decline inline; the
               card opens Match Details for the full picture. */}
-          {invites.length > 0 && (
+          {showNotifications && invites.length > 0 && (
             <>
               <Eyebrow>Invitations</Eyebrow>
               {invites.map((r) => {
@@ -248,9 +330,141 @@ export function ChatListScreen() {
             </>
           )}
 
-          {pinned && pinnedMatch && (
+          {/* join requests — players asking to join a match you host (request
+              review). Approve/Decline here mirrors the inline decision card in
+              the match thread (§7). */}
+          {showNotifications && hostReqs.length > 0 && (
             <>
-              <Eyebrow>Active now · Today's match</Eyebrow>
+              <Eyebrow>Join requests</Eyebrow>
+              {hostReqs.map((r) => {
+                const m = db.matches.find((x) => x.id === r.match_id)
+                const player = getUser(db, r.player_id)
+                if (!m || !player) return null
+                const full = m.spots_available <= 0
+                return (
+                  <div
+                    key={r.id}
+                    className="flex shrink-0 flex-col gap-2.5 rounded-[16px] border px-3.5 py-3"
+                    style={{ background: 'color-mix(in srgb, var(--color-info) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-info) 25%, transparent)' }}
+                  >
+                    <Link to={`/matches/${m.id}`} className="flex items-center gap-[13px] text-inherit no-underline">
+                      <div className="inline-flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-accent font-display text-[21px] italic text-onbrand">
+                        {initials(player)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-[14.5px] font-semibold text-ink">{player.name}</span>
+                        <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                          Wants to join {matchKind(m)} · {courtLabel(m)}
+                        </div>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ background: 'var(--color-info)', boxShadow: '0 6px 14px -6px var(--color-info)' }}>
+                        <UserPlus size={12} strokeWidth={2} /> Request
+                      </span>
+                    </Link>
+                    {full ? (
+                      <div className="rounded-[12px] px-3 py-2 text-[11.5px] leading-[1.4]" style={{ background: 'rgba(26,26,26,0.05)', color: 'var(--color-text-muted)' }}>
+                        Match is full — free a spot before approving.
+                      </div>
+                    ) : (
+                      <div className="flex gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            actions.declineRequest(r.id)
+                            showToast('Request declined')
+                          }}
+                          className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill bg-transparent text-[13px] font-semibold"
+                          style={{ color: 'color-mix(in srgb, var(--color-danger) 78%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 24%, transparent)' }}
+                        >
+                          <X size={14} strokeWidth={2.2} /> Decline
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            actions.approveRequest(r.id)
+                            showToast(`${player.name.split(' ')[0]} approved`)
+                          }}
+                          className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill border-none text-[13px] font-semibold text-onbrand"
+                          style={{ background: 'var(--color-success)', boxShadow: '0 10px 20px -10px var(--color-success)' }}
+                        >
+                          <Check size={14} strokeWidth={2.4} /> Approve
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          )}
+
+          {/* waitlist — matches you're queued on (waitlist review). Auto-promote
+              is FIFO; review your position or leave the queue (§5). */}
+          {showNotifications && waitReviews.length > 0 && (
+            <>
+              <Eyebrow>Waitlist</Eyebrow>
+              {waitReviews.map((r) => {
+                const m = db.matches.find((x) => x.id === r.match_id)
+                if (!m) return null
+                const pos = waitlistPosition(db, m.id)
+                return (
+                  <div
+                    key={r.id}
+                    className="flex shrink-0 flex-col gap-2.5 rounded-[16px] border px-3.5 py-3"
+                    style={{ background: 'color-mix(in srgb, var(--color-info) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-info) 22%, transparent)' }}
+                  >
+                    <Link to={`/matches/${m.id}`} className="flex items-center gap-[13px] text-inherit no-underline">
+                      <div className="h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[14px]">
+                        <SportArt type={artType(m)} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-[14.5px] font-semibold text-ink">
+                          {matchKind(m)} · {courtLabel(m)}
+                        </span>
+                        <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                          {m.venue_name} · {whenLabel(m.start_time)}
+                        </div>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ background: 'color-mix(in srgb, var(--color-info) 12%, transparent)', color: 'var(--color-info)' }}>
+                        <Layers size={12} strokeWidth={2} /> <span className="ltr-nums">{pos ? `#${pos}` : 'Queued'}</span>
+                      </span>
+                    </Link>
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="text-[11.5px] leading-[1.4]" style={{ color: 'var(--color-text-muted)' }}>
+                        You'll join automatically if a spot opens.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          actions.leaveWaitlist(m.id)
+                          showToast('Left waitlist')
+                        }}
+                        className="inline-flex h-[34px] shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-pill bg-transparent px-3.5 text-[12.5px] font-semibold"
+                        style={{ color: 'color-mix(in srgb, var(--color-danger) 78%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 22%, transparent)' }}
+                      >
+                        <X size={13} strokeWidth={2.2} /> Leave
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )}
+
+          {/* Alerts filter with nothing pending → caught-up state */}
+          {filter === 'alerts' && notifCount === 0 && (
+            <div className="mt-1.5 rounded-[18px] px-5 py-7 text-center" style={{ background: 'rgba(255,255,255,0.5)', border: '1px dashed rgba(26,26,26,0.18)' }}>
+              <div className="mb-1.5 font-display text-[22px]" style={{ letterSpacing: '-0.012em' }}>
+                All <span className="italic text-accent">caught up</span>.
+              </div>
+              <div className="text-[12.5px] leading-normal" style={{ color: 'var(--color-text-muted)' }}>
+                No invites, join requests, or waitlist updates right now.
+              </div>
+            </div>
+          )}
+
+          {showThreads && pinned && pinnedMatch && (
+            <>
+              <Eyebrow>{pinnedIsLive ? 'Live now · on court' : "Active now · Today's match"}</Eyebrow>
               <Link
                 to={`/chat/match/${pinnedMatch.id}`}
                 className="mb-1 block shrink-0 overflow-hidden rounded-[22px] border bg-card text-inherit no-underline shadow-card transition-transform hover:-translate-y-px"
@@ -268,9 +482,15 @@ export function ChatListScreen() {
                       {pinnedMatch.venue_name} · {pinned.participant_ids.length} players
                     </div>
                   </div>
-                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-2.5 py-[5px] text-[10px] font-semibold uppercase tracking-[0.18em] text-accent" style={{ background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)' }}>
-                    <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                    Today
+                  <span
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-2.5 py-[5px] text-[10px] font-semibold uppercase tracking-[0.18em]"
+                    style={{
+                      color: pinnedIsLive ? 'var(--color-live)' : 'var(--color-accent)',
+                      background: pinnedIsLive ? 'color-mix(in srgb, var(--color-live) 10%, transparent)' : 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+                    }}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${pinnedIsLive ? 'conn-pulse' : ''}`} style={{ background: pinnedIsLive ? 'var(--color-live)' : 'var(--color-accent)' }} />
+                    {pinnedIsLive ? 'Live' : 'Today'}
                   </span>
                 </div>
                 {/* message preview bubbles */}
@@ -314,21 +534,34 @@ export function ChatListScreen() {
             </>
           )}
 
-          {rest.length > 0 && (
+          {showThreads && rest.length > 0 && (
             <>
-              <Eyebrow>{pinned ? 'Earlier' : 'Conversations'}</Eyebrow>
+              <Eyebrow>{filter === 'archive' ? 'Archived' : pinned ? 'Earlier' : 'Conversations'}</Eyebrow>
               {rest.map(rowFor)}
             </>
           )}
 
-          {threads.length === 0 && (
+          {showThreads && threads.length === 0 && (
             <div className="mt-1.5 rounded-[18px] px-5 py-7 text-center" style={{ background: 'rgba(255,255,255,0.5)', border: '1px dashed rgba(26,26,26,0.18)' }}>
-              <div className="mb-1.5 font-display text-[22px]" style={{ letterSpacing: '-0.012em' }}>
-                <span className="italic text-accent">Quiet</span> in here.
-              </div>
-              <div className="text-[12.5px] leading-normal" style={{ color: 'var(--color-text-muted)' }}>
-                No conversations yet. Join or host a match to start talking.
-              </div>
+              {filter === 'archive' ? (
+                <>
+                  <div className="mb-1.5 font-display text-[22px]" style={{ letterSpacing: '-0.012em' }}>
+                    Nothing <span className="italic text-accent">archived</span>.
+                  </div>
+                  <div className="text-[12.5px] leading-normal" style={{ color: 'var(--color-text-muted)' }}>
+                    Swipe left on a conversation to archive it.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-1.5 font-display text-[22px]" style={{ letterSpacing: '-0.012em' }}>
+                    <span className="italic text-accent">Quiet</span> in here.
+                  </div>
+                  <div className="text-[12.5px] leading-normal" style={{ color: 'var(--color-text-muted)' }}>
+                    No conversations yet. Join or host a match to start talking.
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

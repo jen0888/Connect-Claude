@@ -6,75 +6,30 @@ import {
   BellOff,
   ChevronLeft,
   ChevronRight,
-  CircleX,
   Clock,
-  Flag,
-  FlagTriangleRight,
   Lock,
   MapPin,
   Pin,
   Trophy,
-  UserMinus,
-  UserPlus,
   Check,
 } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { AvatarStack } from '@/components/Avatar'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, matchPlayers, threadForMatch, threadMessages, useDB } from '@/lib/store'
+import { actions, currentUserId, matchPlayers, threadForMatch, threadMessages, threadTimeline, useDB } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, courtLabel, hm, initials, matchKind, timeRange, whenLabel } from '@/lib/format'
-import type { ChatMessage, MatchStatus, SystemIcon } from '@/lib/types'
+import type { MatchStatus } from '@/lib/types'
+import { ChatTimeline } from '@/screens/chat/ChatTimeline'
 import { RecordResultForm } from '@/screens/postmatch/RecordResultForm'
 
 /** Match group chat (match-group-chat.jsx MatchThread) — auto thread with all
  *  joined players. Pinned match bar up top expands to details, or to the
  *  SHARED RecordResultForm once the match completes; a recorded result posts
- *  a system line inline (result is canonical on Match Details too). */
-
-const SYS_ICONS: Record<SystemIcon, typeof Flag> = {
-  flag: Flag,
-  userPlus: UserPlus,
-  userMinus: UserMinus,
-  lock: Lock,
-  check: Check,
-  bell: Bell,
-  xCircle: CircleX,
-  trophy: Trophy,
-  flagFinish: FlagTriangleRight,
-}
-
-function SystemLine({ item }: { item: ChatMessage }) {
-  const tones = {
-    info: { fg: 'rgba(26,26,26,0.5)', bg: 'transparent', dashed: false },
-    wait: { fg: 'var(--color-text-faint)', bg: 'transparent', dashed: true },
-    pos: { fg: 'var(--color-success)', bg: 'color-mix(in srgb, var(--color-success) 8%, transparent)', dashed: false },
-    warm: { fg: 'var(--color-brand)', bg: 'color-mix(in srgb, var(--color-brand) 9%, transparent)', dashed: false },
-    alert: { fg: 'var(--color-danger)', bg: 'color-mix(in srgb, var(--color-danger) 8%, transparent)', dashed: false },
-  }
-  const s = tones[item.tone ?? 'info']
-  const pill = s.bg !== 'transparent'
-  const Icon = SYS_ICONS[item.icon ?? 'flag']
-  return (
-    <div className="flex justify-center py-[3px]">
-      <div
-        className="inline-flex max-w-[88%] items-center gap-[7px] rounded-pill text-center text-[11.5px] leading-[1.3] tracking-[0.01em]"
-        style={{
-          padding: pill ? '6px 13px' : '2px 4px',
-          background: s.bg,
-          border: s.dashed ? '1px dashed rgba(26,26,26,0.18)' : 'none',
-          color: s.fg,
-          fontWeight: pill ? 600 : 500,
-        }}
-      >
-        <Icon size={13} strokeWidth={2} className="shrink-0" />
-        <span style={{ textWrap: 'pretty' }}>{item.body}</span>
-        <span className="shrink-0 font-medium opacity-60 nums-tabular ltr-nums">· {hm(item.created_at)}</span>
-      </div>
-    </div>
-  )
-}
+ *  a system line inline (result is canonical on Match Details too). The timeline
+ *  renders through the shared ChatTimeline (§1), so the host's inbound join
+ *  requests surface as inline decision cards (§7). */
 
 export function MatchChatScreen() {
   const { id } = useParams()
@@ -89,6 +44,7 @@ export function MatchChatScreen() {
   const match = db.matches.find((m) => m.id === id)
   const thread = match ? threadForMatch(db, match.id) : undefined
   const msgs = thread ? threadMessages(db, thread.id) : []
+  const timeline = thread ? threadTimeline(db, thread.id) : []
 
   useEffect(() => {
     if (thread) actions.markThreadRead(thread.id)
@@ -98,7 +54,7 @@ export function MatchChatScreen() {
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [msgs.length])
+  }, [timeline.length])
 
   if (!match || !thread) return null
 
@@ -303,48 +259,8 @@ export function MatchChatScreen() {
           </div>
         )}
 
-        {/* timeline */}
-        <div ref={scrollRef} className="scroll-area relative z-1 flex flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2.5 pb-3.5">
-          {msgs.map((msg, i) => {
-            if (msg.system) return <SystemLine key={msg.id} item={msg} />
-            const mine = msg.sender_id === currentUserId
-            const prev = msgs[i - 1]
-            const showName = !prev || prev.system || prev.sender_id !== msg.sender_id
-            const sender = getUser(db, msg.sender_id)
-            return (
-              <div key={msg.id} className="flex items-end gap-2" style={{ justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                {!mine && (
-                  <div className="w-[26px] shrink-0 self-end">
-                    {showName && sender && (
-                      <div className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-full bg-accent font-display text-[12px] italic text-onbrand">
-                        {initials(sender)}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="flex max-w-[74%] flex-col" style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                  <div
-                    className="px-[13px] py-[9px] text-[14px] leading-[1.4]"
-                    style={{
-                      background: mine ? 'var(--color-brand)' : 'rgba(26,26,26,0.06)',
-                      color: mine ? 'var(--color-text-onbrand)' : 'var(--color-text)',
-                      borderRadius: 18,
-                      borderEndEndRadius: mine ? 5 : 18,
-                      borderEndStartRadius: mine ? 18 : 5,
-                      boxShadow: mine ? '0 10px 22px -16px var(--color-brand)' : 'none',
-                    }}
-                  >
-                    {showName && !mine && sender && <div className="mb-[3px] text-[11px] font-semibold tracking-[0.01em] text-accent">{sender.name.split(' ')[0]}</div>}
-                    {msg.body}
-                  </div>
-                  <span className="mx-1 mt-1 text-[10px] tracking-[0.03em] nums-tabular ltr-nums" style={{ color: 'rgba(26,26,26,0.4)' }}>
-                    {hm(msg.created_at)}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        {/* timeline — one renderer, many message types (§1): text · system · decision (§7) */}
+        <ChatTimeline ref={scrollRef} items={timeline} />
 
         {/* composer / cancelled note */}
         {cancelled ? (

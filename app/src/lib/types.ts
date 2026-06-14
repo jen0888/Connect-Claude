@@ -169,8 +169,27 @@ export interface ChatMessage {
 
 export interface ChatThread {
   id: string
-  /** match group thread when set; 1:1 DM otherwise */
+  /** match group thread when set; 1:1 DM or group chat otherwise */
   match_id: string | null
   participant_ids: string[]
   created_at: string
 }
+
+/**
+ * One renderer, many message types (chat-room §1). A thread's timeline is a
+ * single sorted stream of these, dispatched by `kind`:
+ *  - text     · a chat bubble
+ *  - system   · a centred system line (created / joined / result / promoted…)
+ *  - invite   · a host→player match invite, rendered inline in a DM (§5);
+ *               actionable for the player, status-only for the host
+ *  - decision · a host's inbound join request on their match thread (§7);
+ *               approve/decline, then collapses to a follow-up line
+ *
+ * `invite` / `decision` are DERIVED from the persisted `match_requests` rows
+ * (no extra storage) so they stay live + RLS-correct in both modes.
+ */
+export type TimelineItem =
+  | { kind: 'text'; id: string; created_at: string; msg: ChatMessage }
+  | { kind: 'system'; id: string; created_at: string; msg: ChatMessage }
+  | { kind: 'invite'; id: string; created_at: string; request: MatchRequest; match: Match; host: User; player: User }
+  | { kind: 'decision'; id: string; created_at: string; request: MatchRequest; match: Match; player: User }

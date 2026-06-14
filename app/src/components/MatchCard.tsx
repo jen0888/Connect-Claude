@@ -1,8 +1,8 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bookmark, CalendarCheck, Check, Clock, Eye, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, X } from 'lucide-react'
+import { Bookmark, CalendarCheck, Check, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, X } from 'lucide-react'
 import type { Match, MatchStatus, User } from '@/lib/types'
-import { artType, courtLabel, courtNumberLabel, hm, matchKind, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
+import { artType, courtLabel, courtNumberLabel, hm, matchKind, skillRangeLabel, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
 import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
@@ -288,10 +288,16 @@ export function MatchCard({
             </>
           )}
         </h2>
-        <div className="mt-3 flex items-start gap-3.5 text-[12.5px] nums-tabular" style={{ color: 'rgba(26,26,26,0.62)' }}>
-          <span className="inline-flex items-center gap-[5px]">
-            <Clock size={12} strokeWidth={2} />
-            <span className="ltr-nums">{`${whenLabel(match.start_time)} · ${match.end_time ? timeRange(match) : hm(match.start_time)}`}</span>
+        <div className="mt-3 flex items-start gap-6 text-[12.5px] nums-tabular" style={{ color: 'rgba(26,26,26,0.62)' }}>
+          <span className="inline-flex flex-col gap-1">
+            <span className="inline-flex items-center gap-[5px]">
+              <Clock size={12} strokeWidth={2} />
+              <span className="ltr-nums">{`${whenLabel(match.start_time)} · ${match.end_time ? timeRange(match) : hm(match.start_time)}`}</span>
+            </span>
+            <span className="inline-flex items-center gap-[5px]">
+              <Gauge size={12} strokeWidth={2} />
+              {skillRangeLabel(match.skill_level)}
+            </span>
           </span>
           <span className="inline-flex flex-col gap-1">
             <span className="inline-flex items-center gap-[5px]">

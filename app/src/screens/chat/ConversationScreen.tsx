@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowUp, ChevronLeft, EllipsisVertical, Flag, ShieldAlert, UserRound } from 'lucide-react'
+import { ArrowUp, ChevronLeft, EllipsisVertical, Flag, Send, ShieldAlert, UserRound } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, dmThreadWith, getUser, threadMessages, useDB } from '@/lib/store'
-import { hm, initials, skillLabel } from '@/lib/format'
+import { actions, currentUserId, dmThreadWith, getUser, threadMessages, threadTimeline, useDB } from '@/lib/store'
+import { initials, skillLabel } from '@/lib/format'
+import { ChatTimeline } from '@/screens/chat/ChatTimeline'
+import { DmInvitePicker } from '@/screens/chat/DmInvitePicker'
 
 /** 1:1 DM (conversation.jsx) — open DMs (anyone → anyone) with guardrails:
  *  first-contact banner from strangers and in-thread report/block via the
- *  ⋯ menu. Block kills the thread both ways (CLAUDE.md §5). */
+ *  ⋯ menu. Block kills the thread both ways (CLAUDE.md §5). Renders through the
+ *  shared ChatTimeline (§1) so "invite to play" cards appear inline (§5). */
 export function ConversationScreen() {
   const { userId } = useParams()
   const db = useDB()
@@ -16,11 +19,13 @@ export function ConversationScreen() {
   const { showToast } = useToast()
   const [draft, setDraft] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const other = userId ? getUser(db, userId) : undefined
   const thread = userId ? dmThreadWith(db, userId) : undefined
   const msgs = thread ? threadMessages(db, thread.id) : []
+  const timeline = thread ? threadTimeline(db, thread.id) : []
 
   // first contact from a stranger: they messaged you, you've never replied,
   // and you've never shared a match with them
@@ -39,7 +44,7 @@ export function ConversationScreen() {
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [msgs.length])
+  }, [timeline.length])
 
   if (!other) return null
 
@@ -96,6 +101,7 @@ export function ConversationScreen() {
                   style={{ borderColor: 'rgba(26,26,26,0.10)', boxShadow: '0 18px 40px -14px rgba(26,26,26,0.45)' }}
                 >
                   {[
+                    { icon: Send, label: 'Invite to play', danger: false, fn: () => setInviteOpen(true) },
                     { icon: UserRound, label: 'View profile', danger: false, fn: () => navigate(`/players/${other.id}`) },
                     { icon: Flag, label: 'Report', danger: true, fn: () => navigate(`/safety/report/${other.id}`) },
                     {
@@ -142,45 +148,10 @@ export function ConversationScreen() {
           </div>
         )}
 
-        {/* messages */}
-        <div ref={scrollRef} className="scroll-area relative z-1 flex flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2.5 pb-3.5">
-          {msgs.map((msg, i) => {
-            const mine = msg.sender_id === currentUserId
-            const prev = msgs[i - 1]
-            const showAvatar = !mine && (!prev || prev.sender_id !== msg.sender_id)
-            return (
-              <div key={msg.id} className="flex items-end gap-2" style={{ justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-                {!mine && (
-                  <div className="w-[26px] shrink-0 self-end">
-                    {showAvatar && (
-                      <div className="inline-flex h-[26px] w-[26px] items-center justify-center rounded-full bg-accent font-display text-[12px] italic text-onbrand">
-                        {initials(other)}
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div className="flex max-w-[74%] flex-col" style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                  <div
-                    className="px-[13px] py-[9px] text-[14px] leading-[1.4]"
-                    style={{
-                      background: mine ? 'var(--color-brand)' : 'rgba(26,26,26,0.06)',
-                      color: mine ? 'var(--color-text-onbrand)' : 'var(--color-text)',
-                      borderRadius: 18,
-                      borderEndEndRadius: mine ? 5 : 18,
-                      borderEndStartRadius: mine ? 18 : 5,
-                      boxShadow: mine ? '0 10px 22px -16px var(--color-brand)' : 'none',
-                    }}
-                  >
-                    {msg.body}
-                  </div>
-                  <span className="mx-1 mt-1 text-[10px] tracking-[0.03em] nums-tabular ltr-nums" style={{ color: 'rgba(26,26,26,0.4)' }}>
-                    {hm(msg.created_at)}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        {/* messages — shared renderer (§1); invite-to-play cards appear inline (§5) */}
+        <ChatTimeline ref={scrollRef} items={timeline} showSenderNames={false} />
+
+        {inviteOpen && <DmInvitePicker other={other} onClose={() => setInviteOpen(false)} />}
 
         {/* composer */}
         <div

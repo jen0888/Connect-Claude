@@ -7,7 +7,7 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
 import { InviteApprovalSheet, type Invite } from '@/components/InviteApprovalSheet'
-import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, myInvites, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, myInvites, useDB, useHydrated, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, countdownUntil, courtNumberLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, timeAgoLabel, whenLabel } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
@@ -73,6 +73,7 @@ function toInvite(m: Match, host: User): Invite {
  *  a 4th tab (CLAUDE.md §4). */
 export function HomeScreen() {
   const db = useDB()
+  const hydrated = useHydrated()
   const navigate = useNavigate()
   const { showToast } = useToast()
   const [attended, setAttended] = useState(false)
@@ -129,6 +130,24 @@ export function HomeScreen() {
     }, 350)
     return () => clearTimeout(t)
   }, [data.invited, db, sheet])
+
+  // Live mode: until the first Supabase snapshot lands the store is empty, so
+  // the empty-state test below would be (wrongly) true and FirstTimerHome would
+  // flash for a frame before the real data arrives. Show a neutral loading frame
+  // instead until hydrated. `liveHydrated` flips true even on a FAILED hydrate
+  // (store.rehydrate catch), so this can't hang — a genuinely empty account
+  // still reaches FirstTimerHome once hydrated.
+  if (!hydrated) {
+    return (
+      <Shell>
+        <div className="px-6 pt-[60px]">
+          <div className="mb-2.5 h-3 w-28 animate-pulse rounded-pill" style={{ background: 'rgba(26,26,26,0.08)' }} />
+          <div className="h-9 w-48 animate-pulse rounded-[12px]" style={{ background: 'rgba(26,26,26,0.08)' }} />
+          <div className="mt-7 h-[260px] w-full animate-pulse rounded-[22px]" style={{ background: 'rgba(26,26,26,0.06)' }} />
+        </div>
+      </Shell>
+    )
+  }
 
   // empty personal state = no joined (match_players) + no hosted (host_id = me)
   // + no pending invites. Purely data-derived — never a "new user" flag (§4).
