@@ -9,9 +9,9 @@ import { useToast } from '@/components/Toast'
 import { InviteApprovalSheet, type Invite } from '@/components/InviteApprovalSheet'
 import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, myInvites, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
-import { artType, countdownUntil, dayLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, timeAgoLabel, whenLabel } from '@/lib/format'
+import { artType, countdownUntil, courtNumberLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, timeAgoLabel, whenLabel } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
-import { useHostedMatch } from '@/lib/hostedMatch'
+import { HOST_CREATE_ROUTE, useHostedMatch } from '@/lib/hostedMatch'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { LIFECYCLE } from '@/components/lifecycle'
 import { WeekMatchCard } from './WeekMatchCard'
@@ -56,7 +56,7 @@ function toInvite(m: Match, host: User): Invite {
       sport: m.sport,
       type: artType(m),
       kind: matchKind(m),
-      court: m.court_number ? `Court ${m.court_number}` : sportLabel(m.sport),
+      court: courtNumberLabel(m.court_number) ?? sportLabel(m.sport),
       venue: m.venue_name,
       when: `${whenLabel(m.start_time)} · ${hm(m.start_time)}`,
       span: timeRange(m),
@@ -82,7 +82,7 @@ export function HomeScreen() {
   const [sheet, setSheet] = useState<{ reqId: string; matchId: string; invite: Invite } | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const seenInvites = useRef(loadSeenInvites())
-  const me = getUser(db, currentUserId)!
+  const me = getUser(db, currentUserId)
   // the host's own match (localStorage source of truth) — written by the
   // Create/Edit form; preferred over seeded hosted matches when present.
   // It is a demo/mock artifact: `connect:hostedMatch` is a single browser-global
@@ -132,7 +132,9 @@ export function HomeScreen() {
 
   // empty personal state = no joined (match_players) + no hosted (host_id = me)
   // + no pending invites. Purely data-derived — never a "new user" flag (§4).
-  if (data.joined.length === 0 && data.hosted.length === 0 && !hosted && data.invited.length === 0) {
+  // Also fall here if the profile row is missing (`!me`) — a user with no row
+  // can't own matches anyway, and FirstTimerHome renders safely without it.
+  if (!me || (data.joined.length === 0 && data.hosted.length === 0 && !hosted && data.invited.length === 0)) {
     return <FirstTimerHome />
   }
 
@@ -155,7 +157,7 @@ export function HomeScreen() {
           </div>
           <div className="flex items-center gap-2.5">
             <Link
-              to="/matches/create"
+              to={HOST_CREATE_ROUTE}
               aria-label="Create a match"
               className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full bg-transparent text-brand transition-colors"
               style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
@@ -231,8 +233,9 @@ export function HomeScreen() {
           )
         })}
 
-        {/* you're hosting — the host's own match from the source of truth wins;
-            otherwise fall back to seeded hosted matches */}
+        {/* you're hosting — the host's own match from the localStorage source of
+            truth wins (mock mode); otherwise ALL the user's hosted matches are
+            grouped under one header (live/seeded store) */}
         {hosted ? (
           <div>
             <div className="mb-2.5">
@@ -243,10 +246,10 @@ export function HomeScreen() {
             </div>
           </div>
         ) : (
-          data.hosted.map((m) => (
-            <div key={m.id}>
-              <div className="flex items-center justify-between">
-                <Eyebrow>You're hosting · {dayLabel(m.start_time)}</Eyebrow>
+          data.hosted.length > 0 && (
+            <div className="mb-[26px]">
+              <div className="mb-2.5 flex items-center justify-between">
+                <Eyebrow>You're hosting</Eyebrow>
                 <Link
                   to="/matches/all?filter=hosting"
                   className="inline-flex items-center gap-1 text-[11.5px] font-medium no-underline transition-colors hover:text-accent"
@@ -255,11 +258,13 @@ export function HomeScreen() {
                   See all <ChevronRight size={10} strokeWidth={2.2} className="rtl:rotate-180" />
                 </Link>
               </div>
-              <div className="mt-2.5 mb-[26px]">
-                <MatchCard match={m} players={matchPlayers(db, m.id)} action="edit" showStatusBadge={false} />
+              <div className="flex flex-col gap-3.5">
+                {data.hosted.map((m) => (
+                  <MatchCard key={m.id} match={m} host={getUser(db, m.host_id)} players={matchPlayers(db, m.id)} action="edit" showStatusBadge={false} />
+                ))}
               </div>
             </div>
-          ))
+          )
         )}
 
         {/* requested to join — awaiting host approval */}

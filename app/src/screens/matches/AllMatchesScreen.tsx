@@ -3,8 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { MatchCard } from '@/components/MatchCard'
-import { currentUserId, hostedMatches, matchPlayers, useDB } from '@/lib/store'
+import { currentUserId, getUser, hostedMatches, matchPlayers, useDB } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
+import { HOST_CREATE_ROUTE } from '@/lib/hostedMatch'
 import type { Match } from '@/lib/types'
 
 /** All Matches — hosting-only archive reached from Home's "See all"
@@ -171,7 +172,7 @@ export function AllMatchesScreen() {
               <ChevronLeft size={16} strokeWidth={2} />
             </Link>
             <Link
-              to="/matches/create"
+              to={HOST_CREATE_ROUTE}
               aria-label="Create a match"
               className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full bg-transparent text-brand no-underline"
               style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
@@ -255,7 +256,7 @@ export function AllMatchesScreen() {
               </div>
             </div>
           ) : tab === 'upcoming' ? (
-            activeFiltered.map((m) => <MatchCard key={m.id} match={m} players={matchPlayers(db, m.id)} action="view" />)
+            activeFiltered.map((m) => <MatchCard key={m.id} match={m} host={getUser(db, m.host_id)} players={matchPlayers(db, m.id)} action="view" />)
           ) : (
             activeFiltered.map((m) => {
               const result = resultFor(m)
@@ -274,6 +275,7 @@ export function AllMatchesScreen() {
                 <MatchCard
                   key={m.id}
                   match={m}
+                  host={getUser(db, m.host_id)}
                   players={matchPlayers(db, m.id)}
                   action="view"
                   badge={badge}

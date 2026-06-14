@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { MapPin, Pencil } from 'lucide-react'
 import { SportArt } from '@/components/SportArt'
 import { PlayerDots } from '@/components/controls'
-import { to24h } from '@/lib/format'
+import { courtNumberLabel, to24h } from '@/lib/format'
 import type { HostedMatch } from '@/lib/hostedMatch'
 
 /** The "You're hosting" card on Home — renders the host's own match straight
@@ -69,7 +69,7 @@ export function HostedMatchCard({ match }: { match: HostedMatch }) {
           ) : (
             <span className="min-w-0">
               <span className="text-ink">{match.venueName}</span>
-              {match.court && <span className="italic text-brand"> · Court {match.court}</span>}
+              {match.court && <span className="italic text-brand"> · {courtNumberLabel(match.court)}</span>}
               {(match.area || match.setting) && (
                 <span>
                   {' · '}

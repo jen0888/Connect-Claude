@@ -97,7 +97,7 @@ export function EditProfileScreen() {
         <div className="scroll-area relative z-1 flex-1 overflow-y-auto px-[22px] pt-14 pb-[120px]">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/settings')}
             aria-label="Back"
             className="mb-2 inline-flex h-[38px] w-[38px] cursor-pointer items-center justify-center rounded-full border-none text-ink"
             style={{ background: 'rgba(26,26,26,0.05)' }}

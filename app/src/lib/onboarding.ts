@@ -12,6 +12,12 @@ export type OnboardingSkill = Exclude<SkillLevel, 'any'>
 export interface OnboardingAnswers {
   /** display name captured on the Sign Up screen (Create account) */
   name: string | null
+  /** credentials captured on the Sign Up screen; carried across the
+   *  questionnaire so the real `supabase.auth.signUp` can run on the final
+   *  "Creating account" step (gender, required by signUp metadata, is only
+   *  known after Q2). `password` is cleared the instant signUp succeeds. */
+  email: string | null
+  password: string | null
   /** month is 0-based (JS Date convention) */
   dob: { year: number; month: number; day: number } | null
   /** required questionnaire step (after DOB, before sport) */
@@ -28,6 +34,8 @@ const STORAGE_KEY = 'connect.onboarding'
 
 const DEFAULTS: OnboardingAnswers = {
   name: null,
+  email: null,
+  password: null,
   dob: null,
   gender: null,
   sport: null,
@@ -65,6 +73,8 @@ export const onboarding: OnboardingAnswers = new Proxy(load(), {
  *  resets it (CLAUDE.md §3). */
 export function resetOnboarding() {
   onboarding.name = null
+  onboarding.email = null
+  onboarding.password = null
   onboarding.dob = null
   onboarding.gender = null
   onboarding.sport = null

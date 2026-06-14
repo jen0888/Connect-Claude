@@ -31,6 +31,16 @@ interface AuthValue {
    *  `onAuthStateChange` listener sets `user`. Returns an error when
    *  unconfigured. */
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  /** email/password registration (the sign-up questionnaire's final step).
+   *  Calls `supabase.auth.signUp`; `data` is stored as auth user_metadata so the
+   *  `handle_new_user` trigger can seed name/gender on the public.users row.
+   *  Resolves the new `session` (null when email-confirmation is ON, in which
+   *  case `needsConfirmation` is true) or an `error` string. */
+  signUp: (
+    email: string,
+    password: string,
+    data: { name?: string; gender?: string },
+  ) => Promise<{ error: string | null; session: Session | null; needsConfirmation: boolean }>
   /** dev-only: sign in as a mock profile without Supabase (LoginScreen's
    *  VITE_DEV_PASSWORD path). Ignored when a real project is configured. */
   signInWithMock: (user: User) => void
@@ -111,6 +121,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }
 
+  const signUp: AuthValue['signUp'] = async (email, password, data) => {
+    if (!supabase) return { error: 'Auth is not configured', session: null, needsConfirmation: false }
+    // pass name/gender through user_metadata → the `handle_new_user` trigger
+    // reads `raw_user_meta_data->>'gender'` (else it defaults to 'male').
+    const { data: res, error } = await supabase.auth.signUp({ email, password, options: { data } })
+    if (error) return { error: error.message, session: null, needsConfirmation: false }
+    // session present → confirmation OFF, proceed; absent → "check your email".
+    return { error: null, session: res.session, needsConfirmation: !res.session }
+  }
+
   const signInWithMock: AuthValue['signInWithMock'] = (u) => {
     if (isSupabaseConfigured) return // real auth owns sign-in
     setUser(u)
@@ -128,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signInWithMock, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signInWithMock, signOut }}>
       {children}
     </AuthContext.Provider>
   )

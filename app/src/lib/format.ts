@@ -79,9 +79,20 @@ export function matchKind(m: Match): string {
   return 'Open match'
 }
 
+/** Render a court value as "Court N". The stored value may be a bare number
+ *  ("4", typed in the picker) or already contain a word ("Court 4", "Hall 2",
+ *  "Court A" from seed data) — only prefix "Court " when it's a bare number so
+ *  we never produce "Court Court 4". */
+export function courtNumberLabel(court: string | null | undefined): string | null {
+  if (!court) return null
+  const v = court.trim()
+  if (!v) return null
+  return /^\d+$/.test(v) ? `Court ${v}` : v
+}
+
 /** The "at {x}" part of the card title: court # for court sports, route for runs */
 export function courtLabel(m: Match): string {
-  return m.court_number ?? m.route_end ?? m.venue_name
+  return courtNumberLabel(m.court_number) ?? m.route_end ?? m.venue_name
 }
 
 /** Art variant for the card header illustration */

@@ -1,5 +1,17 @@
 import { useSyncExternalStore } from 'react'
 import type { JoinMode, Sport } from './types'
+import { isSupabaseConfigured } from './supabase'
+
+/** Where any "host a match" button should route, by mode.
+ *  - **Live** (Supabase): the STORE flow (`/matches/create` → `actions.createMatch`
+ *    RPC) so the match persists and surfaces under Home's "You're hosting" via
+ *    `hostedMatches(db)`.
+ *  - **Mock**: the localStorage demo flow (`/matches/create-demo` → `writeHostedMatch`),
+ *    which mock Home reads via `useHostedMatch()`.
+ *  Live Home deliberately IGNORES `connect:hostedMatch` (single browser-global key,
+ *  not per-user → would bleed across accounts), so a demo-created match would never
+ *  show for a live user — every host entry point must use this constant (CLAUDE.md §5/§7). */
+export const HOST_CREATE_ROUTE = isSupabaseConfigured ? '/matches/create' : '/matches/create-demo'
 
 /** Single source of truth for the host's own match.
  *

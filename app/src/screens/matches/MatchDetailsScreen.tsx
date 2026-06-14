@@ -7,7 +7,7 @@ import { MiniMap, PlayerDots } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, getUser, invitablePlayers, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
-import { dayLabel, hm, initials, skillLabel, sportLabel, whenLabel } from '@/lib/format'
+import { courtNumberLabel, dayLabel, hm, initials, skillLabel, sportLabel, whenLabel } from '@/lib/format'
 import type { Match, SkillLevel } from '@/lib/types'
 import { DecisionButtons, ProfilePeek, ResolvedNote } from './ApprovalCard'
 
@@ -318,7 +318,7 @@ function MatchDetailsBody({
                     <>
                       <div className="font-display text-[20px] leading-[1.1]">
                         {m.venue_name}
-                        {m.court_number && <span className="italic text-brand"> · {m.court_number}</span>}
+                        {m.court_number && <span className="italic text-brand"> at {courtNumberLabel(m.court_number)}</span>}
                       </div>
                       {m.venue_location && (
                         <div className="mt-1 flex items-center gap-2 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>

@@ -2,7 +2,7 @@ import type { MouseEvent, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bookmark, CalendarCheck, Check, Clock, Eye, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, X } from 'lucide-react'
 import type { Match, MatchStatus, User } from '@/lib/types'
-import { artType, courtLabel, hm, matchKind, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
+import { artType, courtLabel, courtNumberLabel, hm, matchKind, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
 import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
@@ -67,6 +67,9 @@ export function MatchCard({
   const st = status ?? computeStatus(match)
   const dim = st === 'cancelled' || st === 'closed'
   const filled = match.total_spots - match.spots_available
+  // The host always occupies a spot, so they should head the avatar stack even
+  // if the joined-players list hasn't hydrated yet (e.g. a freshly created match).
+  const roster = host && !players.some((p) => p.id === host.id) ? [host, ...players] : players
   const imgH = featured ? 140 : 118
   const detailHref = `/matches/${match.id}`
 
@@ -76,7 +79,9 @@ export function MatchCard({
   const setting = match.venue_id ? VENUES.find((v) => v.id === match.venue_id)?.setting ?? null : null
   const locationLine = match.sport === 'running'
     ? [match.venue_name, match.route_end].filter(Boolean).join(' · ')
-    : [match.venue_name, match.court_number, setting].filter(Boolean).join(' · ')
+    : [match.venue_name, setting].filter(Boolean).join(' · ')
+  // court no. renders on its own line under the location (court sports only)
+  const courtText = match.sport === 'running' ? null : courtNumberLabel(match.court_number)
 
   const done = joinStatus === 'joined' || joinStatus === 'requested'
   const joinLabel = joinStatus === 'joined' ? 'Joined' : joinStatus === 'requested' ? 'Requested' : match.join_mode === 'approval' ? 'Request' : 'Join'
@@ -232,9 +237,6 @@ export function MatchCard({
           className="pointer-events-none absolute inset-0"
           style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 20%, transparent) 0%, transparent 50%)' }}
         />
-        <div className="absolute start-3.5 top-3 text-[10.5px] font-medium uppercase tracking-[0.18em]" style={{ color: 'rgba(244,240,232,0.92)' }}>
-          {locationLine}
-        </div>
         {onToggleSave && (
           <button
             aria-label={saved ? 'Remove from saved' : 'Save'}
@@ -277,17 +279,26 @@ export function MatchCard({
             color: dim ? 'var(--color-text-faint)' : 'var(--color-text)',
           }}
         >
-          {matchKind(match)} <span className="italic" style={{ color: dim ? 'var(--color-text-faint)' : 'var(--color-brand)' }}>at</span>{' '}
-          {courtLabel(match)}
+          {match.name ? (
+            match.name
+          ) : (
+            <>
+              {matchKind(match)} <span className="italic" style={{ color: dim ? 'var(--color-text-faint)' : 'var(--color-brand)' }}>at</span>{' '}
+              {courtLabel(match)}
+            </>
+          )}
         </h2>
-        <div className="mt-3 flex items-center gap-3.5 text-[12.5px] nums-tabular" style={{ color: 'rgba(26,26,26,0.62)' }}>
+        <div className="mt-3 flex items-start gap-3.5 text-[12.5px] nums-tabular" style={{ color: 'rgba(26,26,26,0.62)' }}>
           <span className="inline-flex items-center gap-[5px]">
             <Clock size={12} strokeWidth={2} />
             <span className="ltr-nums">{`${whenLabel(match.start_time)} · ${match.end_time ? timeRange(match) : hm(match.start_time)}`}</span>
           </span>
-          <span className="inline-flex items-center gap-[5px]">
-            <MapPin size={12} strokeWidth={2} />
-            {match.venue_name.split(' ')[0]}
+          <span className="inline-flex flex-col gap-1">
+            <span className="inline-flex items-center gap-[5px]">
+              <MapPin size={12} strokeWidth={2} />
+              {locationLine}
+            </span>
+            {courtText && <span className="ps-[17px]">{courtText}</span>}
           </span>
         </div>
         {host && (
@@ -299,7 +310,7 @@ export function MatchCard({
         <LifecycleNote status={st} />
         <div className="mt-3.5 flex items-center justify-between gap-2.5">
           <div className="flex min-w-0 items-center gap-2.5">
-            <AvatarStack initials={players.map(userInitials)} filled={filled} max={match.total_spots} />
+            <AvatarStack initials={roster.map(userInitials)} filled={filled} max={match.total_spots} />
             <span className="whitespace-nowrap text-[11.5px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
               {metaText ?? lifecycleSpots(st, match)}
             </span>

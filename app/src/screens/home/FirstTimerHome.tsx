@@ -21,6 +21,7 @@ import {
 import { computeStatus } from '@/lib/status'
 import { onboarding } from '@/lib/onboarding'
 import { skillLabel, sportLabel } from '@/lib/format'
+import { HOST_CREATE_ROUTE } from '@/lib/hostedMatch'
 
 /** Home — empty personal state. Rendered whenever the signed-in user has no
  *  joined matches (match_players) and no hosted matches (host_id = me) —
@@ -42,11 +43,13 @@ const CHECKLIST = [
 export function FirstTimerHome() {
   const db = useDB()
   const { showToast } = useToast()
-  const me = getUser(db, currentUserId)!
-  // identity + preferences echo the sign-up questionnaire; mock-user profile is the fallback
-  const name = onboarding.name ?? me.name
-  const sport = onboarding.sport ?? me.sport
-  const skill = onboarding.skill ?? me.skill_level
+  // `me` can be missing right after sign-up before the profile row exists (or if
+  // the snapshot hasn't seated it yet) — never crash on it. Identity + prefs echo
+  // the sign-up questionnaire first, then the profile row, then safe defaults.
+  const me = getUser(db, currentUserId)
+  const name = onboarding.name ?? me?.name ?? 'there'
+  const sport = onboarding.sport ?? me?.sport ?? 'padel'
+  const skill = onboarding.skill ?? me?.skill_level ?? 'any'
   // Home shows the top slice of the SAME list Discover renders, filtered by the
   // saved answers: sport is an exact match, level passes when the match suits the
   // user's level or is open to any ('any'). If that leaves nothing, fall back to
@@ -85,7 +88,7 @@ export function FirstTimerHome() {
               <span>{skillLabel(skill)}</span>
             </div>
           </div>
-          <Link to="/profile" aria-label="Profile & settings" className="no-underline">
+          <Link to="/settings" aria-label="Settings" className="no-underline">
             <Avatar name={name} accent="var(--color-accent)" />
           </Link>
         </div>
@@ -100,7 +103,7 @@ export function FirstTimerHome() {
             <ArrowRight size={15} strokeWidth={2.2} className="rtl:rotate-180" />
           </Link>
           <Link
-            to="/matches/create-demo"
+            to={HOST_CREATE_ROUTE}
             className="flex flex-1 items-center justify-center gap-2 rounded-[12px] bg-transparent px-4 py-3.5 text-[14px] font-semibold text-ink no-underline transition-colors"
             style={{ border: '1.5px solid rgba(26,26,26,0.16)' }}
           >

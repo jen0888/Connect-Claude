@@ -133,7 +133,7 @@ export function SettingsScreen() {
             match the other sub-screen headers (CLAUDE.md §3) */}
         <div className="mb-6 flex items-center gap-3">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/home')}
             aria-label="Back"
             className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border-none text-ink"
             style={{ background: 'rgba(26,26,26,0.05)' }}

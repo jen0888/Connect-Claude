@@ -153,7 +153,11 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
   const [endTime, setEndTime] = usePersistedState(dk('endTime'), stored?.endTime ?? fallback.endTime)
   const [matchType, setMatchType] = usePersistedState(dk('matchType'), stored?.matchType ?? fallback.matchType)
   const [gender, setGender] = usePersistedState(dk('gender'), stored?.gender ?? fallback.gender)
-  const [players, setPlayers] = usePersistedState(dk('players'), stored?.players ?? fallback.players)
+  // Host picks how many players they NEED (others); they hold one more spot, so
+  // total roster = needed + 1 and the card reads "{needed} spots left". Stored
+  // HostedMatch.players stays the total; map it back to needed on load.
+  const [needed, setNeeded] = usePersistedState(dk('players'), (stored?.players ?? fallback.players) - 1)
+  const totalSpots = needed + 1
   const [minLevel, setMinLevel] = usePersistedState(dk('minLevel'), stored?.minLevel ?? fallback.minLevel)
   const [maxLevel, setMaxLevel] = usePersistedState(dk('maxLevel'), stored?.maxLevel ?? fallback.maxLevel)
   const [isFree, setIsFree] = usePersistedState(dk('isFree'), stored?.isFree ?? fallback.isFree)
@@ -190,7 +194,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
       invitedPlayerIds: joinMode === 'invite' ? invitedPlayerIds : [],
       isFree,
       pricePerPlayer: isFree ? '' : pricePerPlayer,
-      players,
+      players: totalSpots,
       filled: 1, // host always holds the first spot
       minLevel,
       maxLevel,
@@ -424,22 +428,23 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
             <Eyebrow accent="var(--color-brand)">Players</Eyebrow>
             <div className={`mt-3 flex flex-col gap-[18px] p-[18px] ${cardCls}`} style={cardStyle}>
               <FieldRow
-                label="How many?"
+                label="Players needed"
+                hint="Not counting you — you're already in."
                 rightLabel={
                   <span className="font-display text-[28px] leading-none nums-tabular">
-                    {players}
+                    {needed}
                     <span className="text-[14px] italic" style={{ color: 'var(--color-text-muted)' }}>
                       {' '}
-                      spots
+                      {needed === 1 ? 'player' : 'players'}
                     </span>
                   </span>
                 }
               >
                 <div className="mt-2 flex items-center gap-3.5">
-                  <PlayerDots filled={1} total={players} size={28} />
+                  <PlayerDots filled={1} total={totalSpots} size={28} />
                 </div>
                 <div className="mt-3">
-                  <Slider value={players} min={2} max={8} onChange={setPlayers} ticks={['2', '3', '4', '5', '6', '7', '8']} />
+                  <Slider value={needed} min={1} max={7} onChange={setNeeded} ticks={['1', '2', '3', '4', '5', '6', '7']} />
                 </div>
               </FieldRow>
 
@@ -488,7 +493,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
                       <div className="flex-1">
                         <div className="text-[13.5px] font-medium">Price per player</div>
                         <div className="mt-0.5 text-[11.5px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
-                          Total court fee · QAR {((parseFloat(pricePerPlayer) || 0) * players).toFixed(0)}
+                          Total court fee · QAR {((parseFloat(pricePerPlayer) || 0) * totalSpots).toFixed(0)}
                         </div>
                       </div>
                       <div className="inline-flex items-center gap-2 rounded-md bg-page px-3.5 py-2" style={{ border: '1px solid rgba(26,26,26,0.10)' }}>
@@ -496,17 +501,10 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
                           QAR
                         </span>
                         <input
-                          type="number"
+                          type="text"
                           inputMode="numeric"
-                          pattern="[0-9]*"
-                          min={0}
-                          step={1}
                           placeholder="0"
                           value={pricePerPlayer}
-                          onKeyDown={(e) => {
-                            // block the symbols type=number otherwise allows (e, E, +, -, .)
-                            if (['e', 'E', '+', '-', '.'].includes(e.key)) e.preventDefault()
-                          }}
                           onChange={(e) => setPricePerPlayer(e.target.value.replace(/[^0-9]/g, ''))}
                           className="num w-16 border-none bg-transparent py-0.5 text-end font-display text-[24px] leading-none text-ink outline-none"
                         />

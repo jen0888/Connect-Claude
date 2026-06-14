@@ -45,16 +45,16 @@ const PUBLIC_PATHS = new Set([
  *  is a no-op — the dev user is always "signed in". */
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
-  const hydrated = useHydrated()
+  useHydrated() // keep subscribed so screens re-render when the snapshot lands
   const { pathname } = useLocation()
   if (!isSupabaseConfigured) return <>{children}</>
   if (loading) return null // brief: waiting on getSession()
   if (!session && !PUBLIC_PATHS.has(pathname)) return <Navigate to="/login" replace />
-  // session is ready but the live store hasn't loaded its first snapshot yet —
-  // hold protected screens so they never render against an empty `db` (which
-  // would make `getUser(db, currentUserId)` undefined and crash, e.g. Home's
-  // greeting). Public auth/onboarding routes don't read the store, so let them through.
-  if (session && !hydrated && !PUBLIC_PATHS.has(pathname)) return null
+  // NOTE: we deliberately DO NOT block on `hydrated` anymore. Holding the screen
+  // until the first snapshot lands meant a hung/failed hydrate left the app on a
+  // permanent blank page. Screens are now crash-safe against an empty `db`
+  // (Home falls back to FirstTimerHome when `getUser` is undefined), so we render
+  // immediately and let the live data fill in on the next snapshot/emit.
   return <>{children}</>
 }
 

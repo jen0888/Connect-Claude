@@ -69,7 +69,9 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
         {/* top bar */}
         <div className="mb-4 flex items-center justify-between">
           <button
-            onClick={() => navigate(-1)}
+            // own profile (reached from Settings) backs out to Settings; another
+            // player's profile returns to wherever it was opened from (roster/chat).
+            onClick={() => (own ? navigate('/settings') : navigate(-1))}
             aria-label="Back"
             className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border-none text-ink"
             style={{ background: 'rgba(26,26,26,0.05)' }}

@@ -68,6 +68,7 @@ function mapMatch(row: any): Match {
     id: row.id,
     host_id: row.host_id,
     sport: asSport(row.sport),
+    name: row.name ?? null, // optional host-given title (store flow)
     venue_id: row.venue_id ?? null,
     venue_name: row.venue_name ?? '',
     venue_location: row.venue_location ?? null,

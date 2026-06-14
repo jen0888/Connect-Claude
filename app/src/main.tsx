@@ -6,17 +6,20 @@ import App from './App.tsx'
 import { LocaleProvider } from './i18n'
 import { ToastProvider } from './components/Toast'
 import { AuthProvider } from './context/AuthContext'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <LocaleProvider>
-        <BrowserRouter>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
-        </BrowserRouter>
-      </LocaleProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <LocaleProvider>
+          <BrowserRouter>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </BrowserRouter>
+        </LocaleProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

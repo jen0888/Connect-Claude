@@ -316,7 +316,7 @@ export function VenuePicker({
               </div>
               <div className="inline-flex items-center gap-2 rounded-md border bg-card px-3.5 py-1.5" style={{ borderColor: 'rgba(26,26,26,0.10)' }}>
                 <span className="text-[11.5px] font-semibold tracking-[0.04em]" style={{ color: 'var(--color-text-muted)' }}>
-                  No.
+                  Court
                 </span>
                 <input
                   value={court}

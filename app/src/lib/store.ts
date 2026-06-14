@@ -253,6 +253,12 @@ async function rehydrate() {
     emit()
   } catch (e) {
     console.error('[store] hydrate failed', e)
+    // Release the route guard even on failure so the app never hangs on a blank
+    // screen (AuthGate holds protected routes until `liveHydrated`). Screens are
+    // crash-safe against an empty `db` (e.g. Home falls back to FirstTimerHome),
+    // so the user sees the empty state + can retry / re-auth instead of nothing.
+    liveHydrated = true
+    emit()
   }
 }
 
@@ -865,10 +871,11 @@ export const actions = {
   },
 
   cancelMatch(matchId: string) {
-    if (liveReady) {
-      if (supabase) afterWrite(supabase.from('matches').update({ status: 'cancelled' }).eq('id', matchId))
-      return
-    }
+    // Optimistically mark the match cancelled in both modes so Home (which
+    // navigates immediately after cancel) drops it on the next render; in live
+    // mode afterWrite then persists + rehydrates to confirm. Without this the
+    // async write returns before navigate('/home'), so the cancelled match
+    // still shows under "You're hosting" until the snapshot round-trips.
     mutate((d) => ({
       ...d,
       matches: d.matches.map((x) => (x.id === matchId ? { ...x, status: 'cancelled' as const } : x)),
@@ -877,6 +884,9 @@ export const actions = {
         r.match_id === matchId && r.kind === 'waitlist' && r.status === 'waitlisted' ? { ...r, status: 'expired' as const } : r,
       ),
     }))
+    if (liveReady && supabase) {
+      afterWrite(supabase.from('matches').update({ status: 'cancelled' }).eq('id', matchId))
+    }
   },
 
   async createMatch(
@@ -886,6 +896,7 @@ export const actions = {
       if (!supabase) return ''
       const { data, error } = await supabase.rpc('create_match', {
         p_sport: input.sport,
+        p_name: input.name ?? null,
         p_venue_id: asUuidOrNull(input.venue_id),
         p_venue_name: input.venue_name,
         p_venue_location: input.venue_location ?? null,
@@ -939,7 +950,7 @@ export const actions = {
       if (!supabase) return
       // map app fields → matches columns (drop route_*/round_trip/status — not
       // in the Stage-1 schema; cancel goes through cancelMatch)
-      const cols = ['sport', 'venue_id', 'venue_name', 'venue_location', 'court_number', 'start_time', 'end_time', 'skill_level', 'total_spots', 'spots_available', 'fee_total', 'fee_per_player', 'join_mode', 'notes']
+      const cols = ['sport', 'name', 'venue_id', 'venue_name', 'venue_location', 'court_number', 'start_time', 'end_time', 'skill_level', 'total_spots', 'spots_available', 'fee_total', 'fee_per_player', 'join_mode', 'notes']
       const src = patch as Record<string, unknown>
       const dbPatch: Record<string, unknown> = {}
       for (const k of cols) if (k in src) dbPatch[k] = src[k] ?? null

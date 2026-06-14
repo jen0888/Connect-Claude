@@ -82,7 +82,12 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const [dateKey, setDateKey] = usePersistedState(dk('dateKey'), existing ? existing.start_time.slice(0, 10) : keyOf(new Date()))
   const [startTime, setStartTime] = usePersistedState(dk('startTime'), existing ? existing.start_time.slice(11, 16) : '18:30')
   const [endTime, setEndTime] = usePersistedState(dk('endTime'), existing ? existing.end_time.slice(11, 16) : '20:00')
-  const [players, setPlayers] = usePersistedState(dk('players'), existing?.total_spots ?? 4)
+  // The host chooses how many players they still NEED (spots for others); the
+  // host occupies one more spot, so total roster = needed + 1. The card then
+  // reads "{needed} spots left" right after create. (Stored draft key kept as
+  // 'players' for back-compat; existing matches map back via total_spots - 1.)
+  const [needed, setNeeded] = usePersistedState(dk('players'), existing ? existing.total_spots - 1 : 3)
+  const totalSpots = needed + 1
   const [minLevel, setMinLevel] = usePersistedState(dk('minLevel'), 2)
   const [maxLevel, setMaxLevel] = usePersistedState(dk('maxLevel'), 4)
   const [matchType, setMatchType] = usePersistedState<'casual' | 'competition'>(dk('matchType'), 'casual')
@@ -127,16 +132,20 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       start_time: new Date(start).toISOString(),
       end_time: new Date(end).toISOString(),
       skill_level: levelRange(minLevel, maxLevel),
-      total_spots: players,
+      total_spots: totalSpots,
       fee_per_player: price,
-      fee_total: price ? price * players : null,
+      fee_total: price ? price * totalSpots : null,
       join_mode: (joinMode ?? 'open') as JoinMode,
       waitlist_open: waitlistOpen,
       waitlist_size: waitlistOpen ? waitlistSize : undefined,
       notes: description.trim() || null,
     }
     if (isEdit && existing) {
-      actions.updateMatch(existing.id, base)
+      // Editing the player count changes total_spots, so spots_available must be
+      // recomputed or "spots left" / the avatar fill would drift from the new
+      // total. Preserve however many players have already joined (host included).
+      const joined = existing.total_spots - existing.spots_available
+      actions.updateMatch(existing.id, { ...base, spots_available: Math.max(totalSpots - joined, 0) })
       showToast('Changes saved')
     } else {
       const newId = await actions.createMatch({ ...base, host_id: currentUserId })
@@ -163,7 +172,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       invitedPlayerIds: joinMode === 'invite' ? invitedIds : [],
       isFree: isFree === true,
       pricePerPlayer: isFree === true ? '' : pricePerPlayer,
-      players,
+      players: totalSpots,
       filled: 1, // host always holds the first spot
       minLevel,
       maxLevel,
@@ -389,22 +398,23 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
             <Eyebrow accent="var(--color-brand)">Players</Eyebrow>
             <div className={`mt-3 flex flex-col gap-[18px] p-[18px] ${cardCls}`} style={cardStyle}>
               <FieldRow
-                label="How many?"
+                label="Players needed"
+                hint="Not counting you — you're already in."
                 rightLabel={
                   <span className="font-display text-[28px] leading-none nums-tabular">
-                    {players}
+                    {needed}
                     <span className="text-[14px] italic" style={{ color: 'var(--color-text-muted)' }}>
                       {' '}
-                      spots
+                      {needed === 1 ? 'player' : 'players'}
                     </span>
                   </span>
                 }
               >
                 <div className="mt-2 flex items-center gap-3.5">
-                  <PlayerDots filled={1} total={players} size={28} />
+                  <PlayerDots filled={1} total={totalSpots} size={28} />
                 </div>
                 <div className="mt-3">
-                  <Slider value={players} min={2} max={8} onChange={setPlayers} ticks={['2', '3', '4', '5', '6', '7', '8']} />
+                  <Slider value={needed} min={1} max={7} onChange={setNeeded} ticks={['1', '2', '3', '4', '5', '6', '7']} />
                 </div>
               </FieldRow>
 
@@ -456,7 +466,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                       <div className="flex-1">
                         <div className="text-[13.5px] font-medium">Price per player</div>
                         <div className="mt-0.5 text-[11.5px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
-                          Total court fee · QAR {((parseFloat(pricePerPlayer) || 0) * players).toFixed(0)}
+                          Total court fee · QAR {((parseFloat(pricePerPlayer) || 0) * totalSpots).toFixed(0)}
                         </div>
                       </div>
                       <div className="inline-flex items-center gap-2 rounded-md bg-page px-3.5 py-2" style={{ border: '1px solid rgba(26,26,26,0.10)' }}>
@@ -464,11 +474,12 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                           QAR
                         </span>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           placeholder="0"
                           value={pricePerPlayer}
-                          onChange={(e) => setPricePerPlayer(e.target.value)}
-                          className="w-16 border-none bg-transparent py-0.5 text-end font-display text-[24px] leading-none text-ink outline-none"
+                          onChange={(e) => setPricePerPlayer(e.target.value.replace(/[^0-9]/g, ''))}
+                          className="num w-16 border-none bg-transparent py-0.5 text-end font-display text-[24px] leading-none text-ink outline-none"
                         />
                       </div>
                     </div>

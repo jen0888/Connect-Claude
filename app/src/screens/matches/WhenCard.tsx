@@ -13,37 +13,54 @@ const cardStyle = { borderColor: 'rgba(26,26,26,0.10)' }
 const hairline = 'rgba(26,26,26,0.10)'
 const PRESET_DUR = [30, 60, 90, 120]
 
-/** Typeable 24h time cell — big serif look, but the user types "HH:MM"
- *  directly; commits a normalised value on blur / Enter. */
+/** Typeable 24h time cell — big serif look with separate hour/minute inputs and
+ *  a fixed ":" between them; commits a normalised value on blur / Enter. */
 function TimeField({ label, value, onCommit }: { label: string; value: string; onCommit: (v: string) => void }) {
-  const [draft, setDraft] = useState<string | null>(null)
+  const [hh, mm] = value.split(':')
+  const [hDraft, setHDraft] = useState<string | null>(null)
+  const [mDraft, setMDraft] = useState<string | null>(null)
   const commit = () => {
-    if (draft === null) return
-    onCommit(normalizeTime(draft, value))
-    setDraft(null)
+    if (hDraft === null && mDraft === null) return
+    onCommit(normalizeTime(`${hDraft ?? hh}:${mDraft ?? mm}`, value))
+    setHDraft(null)
+    setMDraft(null)
   }
+  const cell = 'num w-[2ch] border-none bg-transparent p-0 text-center font-display text-[30px] leading-[1.05] text-ink outline-none ltr-nums placeholder:opacity-30'
   return (
-    <label className="flex flex-col gap-1 px-4 py-3">
+    <div className="flex flex-col gap-1 px-4 py-3">
       <span className="text-[11px] font-medium uppercase tracking-[0.1em]" style={{ color: 'var(--color-text-muted)' }}>
         {label}
       </span>
-      <input
-        type="text"
-        inputMode="numeric"
-        aria-label={label}
-        value={draft ?? value}
-        maxLength={5}
-        placeholder="--:--"
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={(e) => e.currentTarget.select()}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur()
-        }}
-        className="num w-full border-none bg-transparent p-0 font-display text-[30px] leading-[1.05] text-ink outline-none ltr-nums placeholder:opacity-30"
-        style={{ letterSpacing: '-0.01em' }}
-      />
-    </label>
+      <div className="inline-flex items-baseline font-display text-[30px] leading-[1.05] text-ink" style={{ letterSpacing: '-0.01em' }}>
+        <input
+          type="text"
+          inputMode="numeric"
+          aria-label={`${label} hour`}
+          value={hDraft ?? hh}
+          maxLength={2}
+          placeholder="--"
+          onChange={(e) => setHDraft(e.target.value.replace(/[^0-9]/g, ''))}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+          className={cell}
+        />
+        <span aria-hidden className="px-0.5 opacity-40">:</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          aria-label={`${label} minute`}
+          value={mDraft ?? mm}
+          maxLength={2}
+          placeholder="--"
+          onChange={(e) => setMDraft(e.target.value.replace(/[^0-9]/g, ''))}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+          className={cell}
+        />
+      </div>
+    </div>
   )
 }
 

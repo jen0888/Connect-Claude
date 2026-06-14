@@ -10,8 +10,9 @@ import { onboarding, resetOnboarding, type OnboardingSkill } from '@/lib/onboard
 // `onboarding` is the questionnaire's localStorage store; the name joins sport/skill there.
 import { mockUser } from '@/lib/mockUser'
 import { useAuth } from '@/context/AuthContext'
-import { isSupabaseConfigured } from '@/lib/supabase'
-import { actions } from '@/lib/store'
+import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { actions, connectLive } from '@/lib/store'
+import { clearHostedMatch } from '@/lib/hostedMatch'
 import { USERS } from '@/lib/mock/data'
 import type { Gender, Sport } from '@/lib/types'
 
@@ -357,22 +358,34 @@ export function SignUpScreen() {
   const pwError = touched.pw && pw && !isStrongPassword(pw) ? t('auth.err.weakPassword') : null
   const canGo = !!firstName.trim() && isValidEmail(email) && isStrongPassword(pw)
 
+  const start = () => {
+    // new account → start the questionnaire blank, nothing pre-selected (§3)
+    resetOnboarding()
+    // keep the entered name + credentials (after the reset). The actual
+    // supabase.auth.signUp runs on the final "Creating account" step, since it
+    // needs the gender answer (Q2) too; carry email/password there via the
+    // onboarding draft. Empty name falls back gracefully.
+    const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ')
+    if (fullName) onboarding.name = fullName
+    onboarding.email = email.trim()
+    onboarding.password = pw
+    navigate('/onboarding/age')
+  }
+
   const submit = () => {
     if (!canGo || busy) return
     setBusy(true)
-    // mock latency; becomes supabase.auth.signUp — in-use check is server-side
+    // Live mode: let supabase.auth.signUp own the email-in-use check (it runs at
+    // account creation). Mock mode: keep the seeded-USERS pre-check for the demo.
+    if (isSupabaseConfigured) {
+      setBusy(false)
+      start()
+      return
+    }
     setTimeout(() => {
       setBusy(false)
       if (isRegistered(email)) setEmailInUse(true)
-      else {
-        // new account → start the questionnaire blank, nothing pre-selected (§3)
-        resetOnboarding()
-        // keep the entered name (after the reset) — Home reads it back for the
-        // greeting, avatar initial and host identity. Empty falls back gracefully.
-        const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ')
-        if (fullName) onboarding.name = fullName
-        navigate('/onboarding/age')
-      }
+      else start()
     }, FAKE_LATENCY)
   }
 
@@ -1085,19 +1098,123 @@ export function OnboardingSkillScreen() {
 /* ── Community Guidelines review lives in CommunityStandardsScreen.tsx ── */
 
 /* ── Creating account — full-screen hold between agree and All Set ───── */
+
+/** onboarding DOB ({year, 0-based month, day}) → a Postgres `date` string */
+function dobToDateStr(dob: { year: number; month: number; day: number }): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${dob.year}-${pad(dob.month + 1)}-${pad(dob.day)}`
+}
+
 export function CreatingAccountScreen() {
   const navigate = useNavigate()
   const { t } = useI18n()
+  const { signUp } = useAuth()
+  const [error, setError] = useState<string | null>(null)
+  const [checkEmail, setCheckEmail] = useState(false)
 
   useEffect(() => {
-    // becomes the Supabase signUp call; replace so Back never returns here.
-    // New account = clean slate — Home renders the first-timer variant.
-    const id = window.setTimeout(() => {
-      actions.startFreshAccount()
+    let cancelled = false
+
+    const run = async () => {
+      // Mock mode (no Supabase project wired) → keep the demo clean-slate path:
+      // reset seeded data so Home renders the first-timer variant. No real auth.
+      if (!isSupabaseConfigured) {
+        await new Promise((r) => window.setTimeout(r, 1800))
+        if (cancelled) return
+        actions.startFreshAccount()
+        navigate('/onboarding/done', { replace: true })
+        return
+      }
+
+      // Live mode → actually register the user. gender (Q2) is required so the
+      // trigger stores the real value instead of defaulting to 'male'.
+      const email = onboarding.email?.trim() ?? ''
+      const password = onboarding.password ?? ''
+      const gender = onboarding.gender ?? 'male'
+      const name = onboarding.name ?? undefined
+
+      const { error: signUpErr, session, needsConfirmation } = await signUp(email, password, { name, gender })
+      if (cancelled) return
+      if (signUpErr) {
+        setError(signUpErr) // surface it — don't silently route to /home
+        return
+      }
+      if (needsConfirmation || !session) {
+        setCheckEmail(true) // email-confirmation is ON — can't proceed yet
+        return
+      }
+
+      // Persist the remaining questionnaire answers onto the row the trigger
+      // already inserted. Runs while authenticated so RLS (id = auth.uid())
+      // passes; gender is re-sent in case metadata didn't reach the trigger.
+      const row: Record<string, unknown> = { gender }
+      if (onboarding.dob) row.dob = dobToDateStr(onboarding.dob)
+      if (onboarding.sport) row.sport = onboarding.sport
+      if (onboarding.skill) row.skill_level = onboarding.skill
+      const { error: profileErr } = await supabase!.from('users').update(row).eq('id', session.user.id)
+      if (cancelled) return
+      if (profileErr) {
+        setError(profileErr.message)
+        return
+      }
+
+      // registered + profile written → drop the password and land on a clean
+      // first-timer Home (clear any stale hosted-match from prior testing).
+      onboarding.password = null
+      clearHostedMatch()
+      // Re-hydrate the store from a POST-WRITE snapshot so Profile/Home reflect
+      // the captured sport/skill_level/gender immediately. Without this the
+      // auto-connectLive (from the auth-state change) can snapshot the row
+      // BEFORE this update commits, leaving the store on the trigger defaults
+      // until some later Realtime change. connectLive is idempotent (binds
+      // Realtime once), so calling it here just guarantees a fresh read.
+      await connectLive(session.user.id)
+      if (cancelled) return
       navigate('/onboarding/done', { replace: true })
-    }, 1800)
-    return () => window.clearTimeout(id)
-  }, [navigate])
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [navigate, signUp])
+
+  // signUp failed (e.g. email already registered, weak password) — let the
+  // player go back and fix their credentials rather than dead-ending.
+  if (error) {
+    return (
+      <Shell nav={false}>
+        <div role="alert" className="relative z-1 flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+          <AlertCircle size={28} strokeWidth={2} style={{ color: 'var(--color-danger)' }} />
+          <h1 className="m-0 font-display text-[30px] font-normal leading-[1.1]">Couldn’t create your account</h1>
+          <p className="m-0 max-w-[280px] text-[13.5px] leading-[1.5]" style={{ color: 'var(--color-text-muted)' }}>
+            {error}
+          </p>
+          <div className="mt-2 w-full max-w-[280px]">
+            <CTA onClick={() => navigate('/signup')}>Back to sign up</CTA>
+          </div>
+        </div>
+      </Shell>
+    )
+  }
+
+  // email-confirmation is ON → no session yet; the player must confirm by email.
+  if (checkEmail) {
+    return (
+      <Shell nav={false}>
+        <div role="status" className="relative z-1 flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+          <MailCheck size={28} strokeWidth={2} style={{ color: 'var(--color-brand)' }} />
+          <h1 className="m-0 font-display text-[30px] font-normal leading-[1.1]">Check your email</h1>
+          <p className="m-0 max-w-[280px] text-[13.5px] leading-[1.5]" style={{ color: 'var(--color-text-muted)' }}>
+            We sent a confirmation link to {onboarding.email}. Confirm it, then log in to finish setting up your profile.
+          </p>
+          <div className="mt-2 w-full max-w-[280px]">
+            <CTA onClick={() => navigate('/login')}>Go to log in</CTA>
+          </div>
+        </div>
+      </Shell>
+    )
+  }
 
   return (
     <Shell nav={false}>
