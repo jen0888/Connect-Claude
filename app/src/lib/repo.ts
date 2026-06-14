@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
-  ChatMessage, ChatThread, Match, MatchPlayer, MatchRequest, MatchResult,
+  ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult,
   NoShowReport, SkillLevel, Sport, User,
 } from './types'
 
@@ -34,6 +34,9 @@ const asSkill = (s: unknown): SkillLevel => {
   return ok.includes(s as SkillLevel) ? (s as SkillLevel) : 'any'
 }
 
+// gender is NOT NULL in the schema, but stay defensive against legacy/partial rows
+const asGender = (g: unknown): Gender => (g === 'female' ? 'female' : 'male')
+
 /** trust signals not stored on `users` are derived from the fetched relations */
 function mapUser(row: any, playedById: Map<string, number>): User {
   return {
@@ -44,6 +47,7 @@ function mapUser(row: any, playedById: Map<string, number>): User {
     avatar_url: row.avatar_url ?? null,
     sport: asSport(row.sport),
     skill_level: asSkill(row.skill_level),
+    gender: asGender(row.gender),
     language: row.language === 'ar' ? 'ar' : 'en',
     dob: row.dob ?? '1990-01-01',
     attendance_rate: Number(row.attendance_rate ?? 100),

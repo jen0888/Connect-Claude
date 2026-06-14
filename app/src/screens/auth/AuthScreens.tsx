@@ -1,11 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlertCircle, ArrowRight, Check, ChevronDown, ChevronLeft, Eye, EyeOff, MailCheck } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, ChevronLeft, Eye, EyeOff, MailCheck } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Logo } from '@/components/Logo'
 import { CTA } from '@/components/controls'
 import { useToast } from '@/components/Toast'
-import { useI18n } from '@/i18n'
+import { useI18n, type Locale } from '@/i18n'
 import { onboarding, resetOnboarding, type OnboardingSkill } from '@/lib/onboarding'
 // `onboarding` is the questionnaire's localStorage store; the name joins sport/skill there.
 import { mockUser } from '@/lib/mockUser'
@@ -13,12 +13,15 @@ import { useAuth } from '@/context/AuthContext'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { actions } from '@/lib/store'
 import { USERS } from '@/lib/mock/data'
-import type { Sport } from '@/lib/types'
+import type { Gender, Sport } from '@/lib/types'
 
-/** Auth + onboarding — Splash → Sign Up → Q1 Age (DOB hard gate) → Q2 Sport →
- *  Q3 Skill → Community Guidelines (explicit agree) → Creating account →
- *  All Set (confetti celebration) → Home. Single-choice questions (Q2/Q3)
- *  auto-advance ~700ms after a tap — no Next button.
+/** Auth + onboarding — Splash → Sign Up → Q1 Age (DOB hard gate) → Q2 Gender →
+ *  Q3 Sport → Q4 Skill → Community Guidelines (explicit agree) → Creating account →
+ *  All Set (confetti celebration) → Home. Order is DOB → gender → sport → skill;
+ *  DOB is first and hard-gates under-18; gender is required. Language is chosen on
+ *  /splash (not a step); country/city are deferred (not collected in Stage 1).
+ *  Single-choice questions (Q2 gender, Q3 sport, Q4 skill) auto-advance ~700ms
+ *  after a tap — no Next button; only Q1 DOB uses a Next CTA (it has 3 dropdowns).
  *  Returning login → straight to Home, never the questionnaire (CLAUDE.md §4).
  *  UI only — no Supabase yet. Mock conventions until auth lands:
  *  an email from mock USERS (e.g. you@example.com) is "registered", so it
@@ -63,14 +66,6 @@ function useAutoAdvance() {
 /* ── small shared pieces (auth-local; consume tokens only) ───────────── */
 const fieldCls = 'w-full rounded-md border bg-card px-3.5 py-3 text-[14.5px] text-ink outline-none placeholder:text-ink-faint focus-visible:ring-2'
 const fieldBorder = (error?: boolean) => ({ borderColor: error ? 'var(--color-danger)' : 'rgba(26,26,26,0.16)' })
-
-function Wordmark({ size = 44 }: { size?: number }) {
-  return (
-    <h1 className="m-0 text-center font-display font-normal leading-none" style={{ fontSize: size, letterSpacing: '-0.02em' }}>
-      Connect<span className="italic text-brand">!</span>
-    </h1>
-  )
-}
 
 /** third-party brand marks — official assets, fixed brand colors (not tokens),
  *  never flipped in RTL (CLAUDE.md §7: logos don't mirror) */
@@ -276,13 +271,47 @@ function FormError({ children }: { children: ReactNode }) {
   )
 }
 
+/** EN / عربي language switcher — drives the shared i18n locale (persists to
+ *  localStorage + flips document dir/lang, so AR puts the whole app in RTL).
+ *  Brand-fill selected pill; consumes tokens only. */
+function LanguageToggle() {
+  const { locale, setLocale } = useI18n()
+  const langs: { code: Locale; label: string }[] = [
+    { code: 'en', label: 'EN' },
+    { code: 'ar', label: 'عربي' },
+  ]
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-pill p-0.5" style={{ background: 'rgba(26,26,26,0.06)' }}>
+      {langs.map((l) => {
+        const on = locale === l.code
+        return (
+          <button
+            key={l.code}
+            type="button"
+            onClick={() => setLocale(l.code)}
+            aria-pressed={on}
+            className="cursor-pointer rounded-pill border-none px-3 py-1.5 text-[12.5px] font-semibold transition-all"
+            style={{ background: on ? 'var(--color-brand)' : 'transparent', color: on ? 'var(--color-text-onbrand)' : 'var(--color-text-muted)' }}
+          >
+            {l.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 /* ── Splash / Welcome — big central logo, footer-level actions ──────── */
 export function SplashScreen() {
   const { t } = useI18n()
   return (
     <Shell nav={false}>
       <div className="relative z-1 flex h-full flex-col px-7 pt-8 pb-9">
-        {/* TODO: language switching lives in Settings, not onboarding */}
+        {/* language is chosen here, before sign-up (spec §4). Pinned to the
+            trailing corner: top-right in EN, mirrors to top-left in RTL (end-7). */}
+        <div className="absolute end-7 top-8 z-10">
+          <LanguageToggle />
+        </div>
         {/* logo (transparent PNG, bakes in wordmark + tagline) is the sole focus */}
         <div className="flex flex-1 items-center justify-center">
           <Logo className="w-[82vw] max-w-[360px]" />
@@ -312,7 +341,11 @@ export function SplashScreen() {
 export function SignUpScreen() {
   const navigate = useNavigate()
   const { t } = useI18n()
-  const [name, setName] = useState('')
+  // schema stores a single `name`; the UI splits it into first + last and
+  // recombines on submit (mirrors Edit Profile), so every `name.split(' ')`
+  // surface keeps working. First name required; last name optional.
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [touched, setTouched] = useState<Record<string, boolean>>({})
@@ -322,7 +355,7 @@ export function SignUpScreen() {
   const touch = (k: string) => setTouched((s) => ({ ...s, [k]: true }))
   const emailError = emailInUse ? t('auth.err.emailInUse') : touched.email && email && !isValidEmail(email) ? t('auth.err.invalidEmail') : null
   const pwError = touched.pw && pw && !isStrongPassword(pw) ? t('auth.err.weakPassword') : null
-  const canGo = !!name.trim() && isValidEmail(email) && isStrongPassword(pw)
+  const canGo = !!firstName.trim() && isValidEmail(email) && isStrongPassword(pw)
 
   const submit = () => {
     if (!canGo || busy) return
@@ -336,7 +369,8 @@ export function SignUpScreen() {
         resetOnboarding()
         // keep the entered name (after the reset) — Home reads it back for the
         // greeting, avatar initial and host identity. Empty falls back gracefully.
-        if (name.trim()) onboarding.name = name.trim()
+        const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ')
+        if (fullName) onboarding.name = fullName
         navigate('/onboarding/age')
       }
     }, FAKE_LATENCY)
@@ -346,13 +380,17 @@ export function SignUpScreen() {
     <Shell nav={false}>
       <div className="scroll-area relative z-1 h-full overflow-y-auto px-7 pt-8 pb-10">
         {/* TODO: language switching lives in Settings, not onboarding */}
-        <div className="pt-5 pb-6">
-          <Wordmark />
+        {/* same brand logo as the Splash screen (transparent PNG wordmark + tagline) */}
+        <div className="flex justify-center pt-5 pb-6">
+          <Logo className="w-[62vw] max-w-[260px]" />
         </div>
         <SocialButtons />
         <OrDivider />
         <div className="flex flex-col gap-3.5">
-          <TextField label={t('auth.field.name')} value={name} onChange={setName} placeholder={t('auth.ph.name')} autoComplete="name" />
+          <div className="grid grid-cols-2 gap-3">
+            <TextField label={t('auth.field.firstName')} value={firstName} onChange={setFirstName} placeholder={t('auth.ph.firstName')} autoComplete="given-name" />
+            <TextField label={t('auth.field.lastName')} value={lastName} onChange={setLastName} placeholder={t('auth.ph.lastName')} autoComplete="family-name" />
+          </div>
           <TextField
             label={t('auth.field.email')}
             type="email"
@@ -660,10 +698,10 @@ export function ResetPasswordScreen() {
   )
 }
 
-/* ── Onboarding chrome — back + Step X of 3 progress ────────────────── */
-const TOTAL_STEPS = 3
+/* ── Onboarding chrome — back + Step X of 4 progress ────────────────── */
+const TOTAL_STEPS = 4
 
-function StepHeader({ step }: { step: 1 | 2 | 3 }) {
+function StepHeader({ step }: { step: 1 | 2 | 3 | 4 }) {
   const { t } = useI18n()
   return (
     <div className="mb-6 flex items-center gap-3.5">
@@ -851,7 +889,7 @@ export function AgeCheckScreen() {
       return
     }
     onboarding.dob = { year: year!, month: month!, day: day! }
-    navigate('/onboarding/sport')
+    navigate('/onboarding/gender')
   }
 
   return (
@@ -940,7 +978,43 @@ export function AgeCheckScreen() {
   )
 }
 
-/* ── Q2 — Sport ─────────────────────────────────────────────────────── */
+/* ── Q2 — Gender (required; Male/Female only — single-choice, auto-advances) ── */
+const GENDERS: Gender[] = ['male', 'female']
+
+export function OnboardingGenderScreen() {
+  const { t } = useI18n()
+  const advance = useAutoAdvance()
+  // carry-forward: hydrate from the shared draft (Back/forward keeps the pick)
+  const [selected, setSelected] = useState<Gender | null>(onboarding.gender)
+
+  return (
+    <Shell nav={false}>
+      <div className="relative z-1 flex h-full flex-col px-7 pt-12">
+        <StepHeader step={2} />
+        <StepTitle a={t('onb.gender.titleA')} b={t('onb.gender.titleB')} c={t('onb.gender.titleC')} sub={t('onb.gender.sub')} />
+        {/* same single-select rows as Sport/Skill — required: tapping a choice
+            both saves it and auto-advances, so there's no Next button */}
+        <div role="radiogroup" className="flex flex-col gap-2.5">
+          {GENDERS.map((g) => (
+            <OptionCard
+              key={g}
+              name={t(`gender.${g}`)}
+              on={selected === g}
+              onSelect={() => {
+                setSelected(g)
+                onboarding.gender = g
+                advance('/onboarding/sport')
+              }}
+            />
+          ))}
+        </div>
+        <SavedFooter saved={selected ? t(`gender.${selected}`) : null} />
+      </div>
+    </Shell>
+  )
+}
+
+/* ── Q3 — Sport ─────────────────────────────────────────────────────── */
 const SPORTS: Sport[] = ['padel', 'tennis', 'badminton', 'running']
 
 export function OnboardingSportScreen() {
@@ -951,7 +1025,7 @@ export function OnboardingSportScreen() {
   return (
     <Shell nav={false}>
       <div className="relative z-1 flex h-full flex-col px-7 pt-12">
-        <StepHeader step={2} />
+        <StepHeader step={3} />
         <StepTitle a={t('onb.sport.titleA')} b={t('onb.sport.titleB')} c={t('onb.sport.titleC')} sub={t('onb.sport.sub')} />
         <div role="radiogroup" className="flex flex-col gap-2.5">
           {SPORTS.map((s) => (
@@ -973,7 +1047,7 @@ export function OnboardingSportScreen() {
   )
 }
 
-/* ── Q3 — Skill level (Baby Beginner → Pro, 7 steps) ────────────────── */
+/* ── Q4 — Skill level (Baby Beginner → Pro, 7 steps) ────────────────── */
 const SKILLS: OnboardingSkill[] = ['baby_beginner', 'beginner', 'low_intermediate', 'intermediate', 'high_intermediate', 'advanced', 'pro']
 
 export function OnboardingSkillScreen() {
@@ -985,7 +1059,7 @@ export function OnboardingSkillScreen() {
     <Shell nav={false}>
       {/* min-h-full: 7 options outgrow small viewports — page scrolls */}
       <div className="relative z-1 flex min-h-full flex-col px-7 pt-12">
-        <StepHeader step={3} />
+        <StepHeader step={4} />
         <StepTitle a={t('onb.skill.titleA')} b={t('onb.skill.titleB')} c={t('onb.skill.titleC')} sub={t('onb.skill.sub')} />
         <div role="radiogroup" className="flex flex-col gap-2.5">
           {SKILLS.map((s) => (
@@ -1177,8 +1251,6 @@ export function AllSetScreen() {
         <div className="relative w-full" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 28px)' }}>
           <CTA onClick={() => navigate('/home')}>
             {t('onb.done.cta')}
-            {/* directional icon — flips in RTL */}
-            <ArrowRight size={18} strokeWidth={2.2} className="rtl:rotate-180" />
           </CTA>
         </div>
       </div>

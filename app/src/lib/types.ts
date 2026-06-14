@@ -5,6 +5,11 @@
 
 export type Sport = 'padel' | 'tennis' | 'badminton' | 'running'
 
+/** Player gender — Stage 1 is Male/Female only (no third option). Required,
+ *  public, display + storage only (no match filtering). Mirrors the `users.gender`
+ *  CHECK constraint (CLAUDE.md §6). */
+export type Gender = 'male' | 'female'
+
 /** 7-step player ladder. Matches keep using the coarse levels
  *  (beginner/intermediate/advanced via the 1–5 slider) plus 'any'. */
 export type SkillLevel =
@@ -33,6 +38,7 @@ export interface User {
   avatar_url: string | null
   sport: Sport
   skill_level: SkillLevel
+  gender: Gender // required + public; collected at sign-up (questionnaire)
   language: 'en' | 'ar'
   dob: string // ISO date; 18+ enforced at sign-up
   attendance_rate: number // 0–100

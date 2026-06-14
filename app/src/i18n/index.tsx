@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { en, type MessageKey } from './en'
+import { ar } from './ar'
 
 /**
  * Minimal locale layer — EN now, AR slots in later (CLAUDE.md §7).
@@ -11,10 +12,11 @@ export type Locale = 'en' | 'ar'
 
 type Messages = Record<MessageKey, string>
 
-// AR dictionary lands in the Arabic pass; falls back to EN until then.
+// AR dictionary is partial during the Arabic pass; `t()` falls back to EN for
+// any key not yet translated (gender keys are translated, see ./ar).
 const dictionaries: Record<Locale, Partial<Messages>> = {
   en,
-  ar: {},
+  ar,
 }
 
 interface I18nContextValue {

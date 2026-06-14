@@ -31,13 +31,15 @@ where u.email like '%@connect.test'
   and not exists (select 1 from auth.identities i where i.user_id = u.id and i.provider='email');
 
 -- ---------- profiles ----------
-insert into public.users (id, name, email, sport, skill_level, language, dob, attendance_rate) values
- ('11111111-1111-1111-1111-111111111111','Alice','alice@connect.test','padel','intermediate','en','1992-03-04',100),
- ('22222222-2222-2222-2222-222222222222','Bob',  'bob@connect.test',  'padel','beginner',   'en','1990-07-15',100),
- ('33333333-3333-3333-3333-333333333333','Carol','carol@connect.test','padel','intermediate','en','1995-11-02',100),
- ('44444444-4444-4444-4444-444444444444','Dave', 'dave@connect.test', 'tennis','advanced',   'en','1988-01-20',100),
- ('55555555-5555-5555-5555-555555555555','Erin', 'erin@connect.test', 'padel','beginner',    'en','1998-05-09',100),
- ('66666666-6666-6666-6666-666666666666','Frank','frank@connect.test','padel','intermediate','ar','1993-09-30',100)
+-- gender is NOT NULL on public.users (CHECK male/female, no default) — every
+-- explicit profile insert must supply it.
+insert into public.users (id, name, email, sport, skill_level, gender, language, dob, attendance_rate) values
+ ('11111111-1111-1111-1111-111111111111','Alice','alice@connect.test','padel','intermediate','female','en','1992-03-04',100),
+ ('22222222-2222-2222-2222-222222222222','Bob',  'bob@connect.test',  'padel','beginner',   'male',  'en','1990-07-15',100),
+ ('33333333-3333-3333-3333-333333333333','Carol','carol@connect.test','padel','intermediate','female','en','1995-11-02',100),
+ ('44444444-4444-4444-4444-444444444444','Dave', 'dave@connect.test', 'tennis','advanced',   'male',  'en','1988-01-20',100),
+ ('55555555-5555-5555-5555-555555555555','Erin', 'erin@connect.test', 'padel','beginner',    'female','en','1998-05-09',100),
+ ('66666666-6666-6666-6666-666666666666','Frank','frank@connect.test','padel','intermediate','male',  'ar','1993-09-30',100)
 on conflict (id) do nothing;
 
 -- ---------- venues ----------

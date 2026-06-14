@@ -1,4 +1,4 @@
-import type { SkillLevel, Sport } from './types'
+import type { Gender, SkillLevel, Sport } from './types'
 
 /**
  * Sign-up questionnaire answers — persisted to localStorage on every write
@@ -14,6 +14,8 @@ export interface OnboardingAnswers {
   name: string | null
   /** month is 0-based (JS Date convention) */
   dob: { year: number; month: number; day: number } | null
+  /** required questionnaire step (after DOB, before sport) */
+  gender: Gender | null
   sport: Sport | null
   skill: OnboardingSkill | null
   /** Community Guidelines agreement — required to reach "All set" */
@@ -27,6 +29,7 @@ const STORAGE_KEY = 'connect.onboarding'
 const DEFAULTS: OnboardingAnswers = {
   name: null,
   dob: null,
+  gender: null,
   sport: null,
   skill: null,
   agreedGuidelines: false,
@@ -63,6 +66,7 @@ export const onboarding: OnboardingAnswers = new Proxy(load(), {
 export function resetOnboarding() {
   onboarding.name = null
   onboarding.dob = null
+  onboarding.gender = null
   onboarding.sport = null
   onboarding.skill = null
   onboarding.agreedGuidelines = false

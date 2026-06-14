@@ -150,8 +150,9 @@ order by m.notes;
 -- CLIENT-SIDE RESET  (§8 requirement 3 — clear drafts / carry-forward)
 -- ---------------------------------------------------------------------
 -- SQL can't touch the browser. To wipe Create-a-Match drafts, sign-up
--- questionnaire carry-forward, and any cached session, run this in the
--- browser DevTools console on your dev origin (or wire it to a dev-only
+-- questionnaire carry-forward (DOB, gender, sport, skill in connect.onboarding),
+-- and any cached session, run this in the browser DevTools console on your dev
+-- origin (or wire it to a dev-only
 -- "Reset" button that only renders when import.meta.env.DEV):
 --
 --   (() => {
@@ -172,10 +173,15 @@ order by m.notes;
 -- the standalone script never deletes a user by default.
 -- ---------------------------------------------------------------------
 -- (a) Re-test the /signup questionnaire WITHOUT deleting accounts —
---     blank the test profiles back to defaults (still does NOT delete users):
+--     blank the test profiles back to questionnaire defaults (still does NOT
+--     delete users). sport/skill/dob are nullable, so they go to null; `gender`
+--     is NOT NULL (CHECK male/female, no default), so it can't be nulled — reset
+--     it to the fresh-signup stub ('male', what handle_new_user uses before the
+--     questionnaire runs); the REQUIRED gender step then overwrites it on re-run.
+--     language goes back to 'en' (the /splash default).
 --
 --   update public.users
---      set sport=null, skill_level=null, dob=null, language='en'
+--      set sport=null, skill_level=null, dob=null, language='en', gender='male'
 --    where id = any (array[
 --      '11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222',
 --      '33333333-3333-3333-3333-333333333333','44444444-4444-4444-4444-444444444444',

@@ -24,6 +24,7 @@ import {
   CreatingAccountScreen,
   ForgotPasswordScreen,
   LoginScreen,
+  OnboardingGenderScreen,
   OnboardingSkillScreen,
   OnboardingSportScreen,
   ResetPasswordScreen,
@@ -35,7 +36,7 @@ import { CommunityStandardsScreen } from '@/screens/auth/CommunityStandardsScree
 /** public routes reachable without a session (auth + onboarding flow) */
 const PUBLIC_PATHS = new Set([
   '/login', '/signup', '/forgot-password', '/reset-password', '/welcome',
-  '/onboarding/age', '/onboarding/sport', '/onboarding/skill',
+  '/onboarding/age', '/onboarding/gender', '/onboarding/sport', '/onboarding/skill',
   '/onboarding/guidelines', '/onboarding/creating', '/onboarding/done',
 ])
 
@@ -93,6 +94,7 @@ function App() {
       <Route path="/reset-password" element={<ResetPasswordScreen />} />
       {/* sign-up questionnaire — Q1 age (hard gate) → Q2 sport → Q3 skill */}
       <Route path="/onboarding/age" element={<AgeCheckScreen />} />
+      <Route path="/onboarding/gender" element={<OnboardingGenderScreen />} />
       <Route path="/onboarding/sport" element={<OnboardingSportScreen />} />
       <Route path="/onboarding/skill" element={<OnboardingSkillScreen />} />
       <Route path="/onboarding/guidelines" element={<CommunityStandardsScreen />} />

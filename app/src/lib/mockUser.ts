@@ -16,6 +16,7 @@ export const mockUser: User = {
   avatar_url: null,
   sport: 'padel',
   skill_level: 'intermediate',
+  gender: 'female',
   language: 'en',
   dob: '1995-04-12', // 18+ enforced at sign-up
   attendance_rate: 96,

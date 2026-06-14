@@ -35,6 +35,11 @@ export const en = {
   'sport.badminton': 'Badminton',
   'sport.running': 'Running',
 
+  // Gender — sign-up Q2, Profile, Edit Profile (Male/Female only, required, public)
+  'gender.label': 'Gender',
+  'gender.male': 'Male',
+  'gender.female': 'Female',
+
   // Skill levels — 7-step player ladder (sign-up Q3, Edit Profile)
   'skill.baby_beginner': 'Baby Beginner',
   'skill.baby_beginner.desc': 'Never played — total fresh start',
@@ -60,11 +65,15 @@ export const en = {
   'auth.showPassword': 'Show password',
   'auth.hidePassword': 'Hide password',
   'auth.field.name': 'Name',
+  'auth.field.firstName': 'First name',
+  'auth.field.lastName': 'Last name',
   'auth.field.email': 'Email',
   'auth.field.password': 'Password',
   'auth.field.newPassword': 'New password',
   'auth.field.confirmPassword': 'Confirm password',
   'auth.ph.name': 'Your name',
+  'auth.ph.firstName': 'e.g. Jen',
+  'auth.ph.lastName': 'e.g. S.',
   'auth.ph.email': 'you@example.com',
   'auth.ph.password': '8+ characters',
   'auth.ph.confirmPassword': 'Repeat it',
@@ -129,13 +138,19 @@ export const en = {
   'onb.age.blockBody': "Connect! is for adults only right now. We'd love to have you when you're older.",
   'onb.age.blockCta': 'Got it',
 
-  // Q2 — sport
+  // Q2 — gender (required, after DOB / before sport)
+  'onb.gender.titleA': "What's your ",
+  'onb.gender.titleB': 'gender',
+  'onb.gender.titleC': '?',
+  'onb.gender.sub': 'Shown on your profile so players know who they’re meeting.',
+
+  // Q3 — sport
   'onb.sport.titleA': 'Pick your ',
   'onb.sport.titleB': 'sport',
   'onb.sport.titleC': '.',
   'onb.sport.sub': 'Your main one — you can play them all.',
 
-  // Q3 — skill level
+  // Q4 — skill level
   'onb.skill.titleA': "What's your ",
   'onb.skill.titleB': 'level',
   'onb.skill.titleC': '?',

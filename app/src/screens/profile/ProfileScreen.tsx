@@ -6,6 +6,7 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
+import { useI18n } from '@/i18n'
 import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, courtLabel, dayLabel, matchKind, skillLabel, sportLabel, initials as userInitials } from '@/lib/format'
@@ -30,6 +31,7 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
   const db = useDB()
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const { t } = useI18n()
   const [menuOpen, setMenuOpen] = useState(false)
 
   const user: User | undefined = own ? getUser(db, currentUserId) : id ? getUser(db, id) : undefined
@@ -154,6 +156,9 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
             </div>
           )}
           <div className="mt-2 flex items-center gap-2 text-[11.5px] font-medium uppercase tracking-[0.14em]" style={{ color: 'var(--color-text-muted)' }}>
+            {/* gender — public identity field, rendered like skill level (§5) */}
+            <span>{t(`gender.${user.gender}`)}</span>
+            <span className="h-[3px] w-[3px] rounded-full" style={{ background: 'var(--color-text-faint)' }} />
             <span>{skillLabel(user.skill_level)} player</span>
             <span className="h-[3px] w-[3px] rounded-full" style={{ background: 'var(--color-text-faint)' }} />
             <span>Member · <span className="ltr-nums">'{joinedYear}</span></span>

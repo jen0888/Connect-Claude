@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, ChatThread, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, User } from './types'
+import type { ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, User } from './types'
 import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, MATCH_REQUESTS, MATCH_RESULTS, USERS } from './mock/data'
 import { onboarding, resetOnboarding } from './onboarding'
 import { computeStatus } from './status'
@@ -30,6 +30,7 @@ function withSignedIn(users: User[]): User[] {
           id: CURRENT_USER_ID,
           ...(fresh && {
             name: onboarding.name ?? signedInProfile!.name,
+            gender: onboarding.gender ?? signedInProfile!.gender,
             sport: onboarding.sport ?? signedInProfile!.sport,
             skill_level: onboarding.skill ?? signedInProfile!.skill_level,
           }),
@@ -109,7 +110,7 @@ function freshDB(): DB {
     ...SEEDED,
     users: withSignedIn(SEEDED.users).map((u) =>
       u.id === CURRENT_USER_ID
-        ? { ...u, name: onboarding.name ?? u.name, sport: onboarding.sport ?? u.sport, skill_level: onboarding.skill ?? u.skill_level }
+        ? { ...u, name: onboarding.name ?? u.name, gender: onboarding.gender ?? u.gender, sport: onboarding.sport ?? u.sport, skill_level: onboarding.skill ?? u.skill_level }
         : u,
     ),
     matches: SEEDED.matches
@@ -583,15 +584,17 @@ export const actions = {
    *  fresh account (CLAUDE.md §5). The sports list itself (multi-sport) is
    *  persisted separately via lib/profile; here we store the *primary* sport +
    *  level onto the single-sport schema fields. */
-  updateProfile(patch: { name?: string; bio?: string; area?: string; city?: string; sport?: Sport; skill_level?: SkillLevel }) {
+  updateProfile(patch: { name?: string; bio?: string; area?: string; city?: string; sport?: Sport; skill_level?: SkillLevel; gender?: Gender }) {
     if (liveReady) {
       // every editable public field maps 1:1 to a users column (bio/area added
-      // by add_profile_bio_area_languages, city by add_profile_city_verified, §6)
-      // so the edit persists and propagates to other players via Realtime.
+      // by add_profile_bio_area_languages, city by add_profile_city_verified,
+      // gender by add_users_gender, §6) so the edit persists and propagates to
+      // other players via Realtime.
       const up: Record<string, unknown> = {}
       if (patch.name != null) up.name = patch.name
       if (patch.sport != null) up.sport = patch.sport
       if (patch.skill_level != null) up.skill_level = patch.skill_level
+      if (patch.gender != null) up.gender = patch.gender
       if (patch.bio != null) up.bio = patch.bio
       if (patch.area != null) up.area = patch.area
       if (patch.city != null) up.city = patch.city
@@ -605,6 +608,7 @@ export const actions = {
     }
     if (signedInProfile) signedInProfile = { ...signedInProfile, ...patch }
     if (patch.name != null) onboarding.name = patch.name
+    if (patch.gender != null) onboarding.gender = patch.gender
     if (patch.sport != null) onboarding.sport = patch.sport
     if (patch.skill_level != null && patch.skill_level !== 'any') onboarding.skill = patch.skill_level
     mutate((d) => ({

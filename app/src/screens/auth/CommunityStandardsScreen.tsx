@@ -280,8 +280,6 @@ export function CommunityStandardsScreen() {
             style={agreed ? undefined : { background: 'rgba(26,26,26,0.15)', color: 'rgba(26,26,26,0.4)' }}
           >
             {t('onb.rules.cta')}
-            {/* directional icon — flips in RTL */}
-            <ArrowRight size={18} strokeWidth={2} className="rtl:rotate-180" />
           </button>
         </div>
       </div>

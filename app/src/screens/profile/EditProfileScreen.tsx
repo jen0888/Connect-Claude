@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronLeft } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
-import { CTA } from '@/components/controls'
+import { CTA, Segmented } from '@/components/controls'
 import { useToast } from '@/components/Toast'
+import { useI18n } from '@/i18n'
 import { actions, currentUserId, getUser, useDB } from '@/lib/store'
 import { ratingToSkillLevel, readProfileSports, skillLevelToRating, writeProfileSports, type SportLevel } from '@/lib/profile'
 import { QATAR_CITIES, areasFor } from '@/lib/locations'
+import type { Gender } from '@/lib/types'
 import { SportsLevelSection } from './SportsLevelSection'
 
 /** Edit Player Profile (form version) — save-then-route: Save → Settings + toast
@@ -24,6 +26,7 @@ export function EditProfileScreen() {
   const db = useDB()
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const { t } = useI18n()
   const me = getUser(db, currentUserId)!
 
   // The schema stores a single `name`; the UI splits it into first + last
@@ -33,6 +36,8 @@ export function EditProfileScreen() {
   const [firstName, setFirstName] = useState(firstWord ?? '')
   const [lastName, setLastName] = useState(restWords.join(' '))
   const [bio, setBio] = useState(me.bio ?? '')
+  // gender is required + pre-filled from the current value (carry-forward, §4)
+  const [gender, setGender] = useState<Gender>(me.gender)
   const [city, setCity] = useState(me.city ?? 'Doha')
   const [area, setArea] = useState(me.area ?? '')
   // Carry-forward (§4): rehydrate the full sports list the player last saved
@@ -74,6 +79,7 @@ export function EditProfileScreen() {
       bio: bio.trim(),
       area: area.trim(),
       city: city.trim(),
+      gender,
       sport: primary.sport,
       skill_level: ratingToSkillLevel(primary.level),
     })
@@ -132,6 +138,17 @@ export function EditProfileScreen() {
                   style={fieldStyle}
                 />
               </div>
+            </div>
+            <div>
+              <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
+                {t('gender.label')}
+              </label>
+              {/* required + pre-filled; segmented control (radius md, brand-fill selected), tokens only */}
+              <Segmented
+                value={gender}
+                onChange={(v) => { setGender(v); setDirty(true) }}
+                options={(['male', 'female'] as Gender[]).map((g) => ({ value: g, label: t(`gender.${g}`) }))}
+              />
             </div>
             <div>
               <label className="mb-[7px] block text-[11px] font-semibold uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-muted)' }}>
