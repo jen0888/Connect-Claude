@@ -29,7 +29,7 @@ Define these as global tokens before anything else so every component inherits t
 
 Build these as reusable components **before** any page. Start with the match card — it is the source of the earlier "looks different on every page" problem.
 
-1. **Canonical match card** (THE priority) — one component, every list reuses it: sport, venue + court #, date/time, host, players joined/needed, state badge.
+1. **Canonical match card** (THE priority) — one component, every list reuses it: sport, venue + court #, date/time, host, players joined/needed, state badge. **Two variants via a `variant` prop (never a separate card):** `full` (tall image-header card) and `brief` (condensed horizontal row — 96px art panel with weekday/date + start time on the left, compact content on the right). Brief is used on Home "My Matches"/"Saved" and the archive lists. **Past-archive brief cards** are read-only: art top-left shows **weekday + date + month** ("Thu 23 May"), the **lifecycle status** (Just played / Closed / Cancelled) sits as a chip in the **bottom-right corner**, no result chip / no caption, cancelled rows dim the art.
 2. **Buttons** — primary, secondary, destructive; default / pressed / disabled / loading.
 3. **Inputs & form fields** — text, select/picker, date (DOB), with right-aligned Arabic variant.
 4. **Toasts** — match created, match cancelled, changes saved.

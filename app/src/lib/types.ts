@@ -34,8 +34,11 @@ export type JoinMode = 'open' | 'approval' | 'invite'
  *  CHECK (in ('mixed','ladies'), NOT NULL default 'mixed'); absent ⇒ 'mixed'. */
 export type GenderRestriction = 'mixed' | 'ladies'
 
-/** Stored status — time-based states are computed at read time, never stored. */
-export type StoredMatchStatus = 'active' | 'cancelled'
+/** Stored status — time-based states are computed at read time, never stored.
+ *  `closed` is the one *early* terminal state we DO store: a finished match is
+ *  closed the moment 2+ players record a corroborating result (CLAUDE.md §5),
+ *  rather than waiting out the 24h post-match window. */
+export type StoredMatchStatus = 'active' | 'cancelled' | 'closed'
 
 /** Read-time status (CLAUDE.md §5): open → full → live → completed → closed (+ cancelled). */
 export type MatchStatus = 'open' | 'full' | 'live' | 'completed' | 'closed' | 'cancelled'

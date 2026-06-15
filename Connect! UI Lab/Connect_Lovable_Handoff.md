@@ -50,7 +50,11 @@ Stack: Lovable (frontend + basic logic) → Supabase (auth + DB) → GitHub. Hea
 
 ## 3. Component inventory (build before pages)
 
-- **Match card — THE canonical one.** Used on Discover, Home, My Matches everywhere. Build once, reuse everywhere (this prevents cards looking different per page). Shows: sport icon, date/time, venue, spots left, host name + avatar, skill level, fee (display only / "Free"), status.
+- **Match card — THE canonical one.** Used on Discover, Home, My Matches everywhere. Build once, reuse everywhere (this prevents cards looking different per page). Shows: sport icon, date/time, venue, spots left, host name + avatar, skill level, fee (display only / "Free"), status. **One component, two variants via a `variant` prop — never a separate card:**
+  - **`full`** — the tall card with an image/sport-art header (status badge on the art), serif title, time + skill + location lines, "Hosted by" row, avatar stack + spots, and the action slot (Join / Request / Edit / Attend / View / waitlist…). Used on Discover, Match Details-adjacent surfaces, Home "You're hosting", and the **Upcoming** tab of the **hosting** archive.
+  - **`brief`** — a condensed horizontal row: a left **96px art panel** (weekday/date top-left, start time in big serif bottom-left) + right content (sport · venue overline, compact title, optional Ladies-only badge, bookmark toggle, avatar stack + caption, and a chevron or the same action slot). Used on Home "My Matches" + "Matches you saved", and on **both** archive lists' **My Matches** Upcoming + **every Past** list.
+  - **Past-archive treatment (brief).** Read-only history. The art top-left shows **weekday + date + month** ("Thu 23 May"); the **lifecycle status** (Just played / Closed / Cancelled) renders as a small token-tinted **chip in the card's bottom-right corner** (the `statusCorner` prop, which also drops the left meta caption). A cancelled row dims/desaturates the art. **No Won/Lost/Played result chip and no "Match completed/cancelled" caption** — the corner chip is the only status indicator. (No numeric score is ever shown — only win/loss/draw is modelled.)
+  - Shared extras on both variants: a **save/bookmark** toggle, an optional dark **badge** pill (e.g. "Invite", "Live"), and a host-only pending-**request count** pill.
 - **Buttons** — primary / secondary / text, with disabled + loading states.
 - **Inputs** — text, selector/segmented (sport, skill level), date/time picker, stepper (spots).
 - **Player avatar** — initials fallback.

@@ -1,16 +1,40 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { MatchCard } from '@/components/MatchCard'
-import { currentUserId, getUser, hostedMatches, matchPlayers, useDB } from '@/lib/store'
+import { getUser, hostedMatches, joinedNotHostedMatches, matchPlayers, useDB } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { HOST_CREATE_ROUTE } from '@/lib/hostedMatch'
 import type { Match } from '@/lib/types'
 
-/** All Matches — hosting-only archive reached from Home's "See all"
- *  (all-matches.jsx AllMatchesScreen). Upcoming / Past tabs; Past keeps
- *  Won / Lost / Cancelled result badges on the canonical card. */
+/** Two distinct match archives, ONE layout (CLAUDE.md §4):
+ *   • bucket='hosted' (/hosting)    → matches you CREATED, FULL card (Edit /
+ *     record-results where still valid).
+ *   • bucket='joined' (/my-matches) → matches you JOINED but did NOT create,
+ *     BRIEF card. Gives join-only users an upcoming+past history that never
+ *     depends on hosting.
+ *  Both get [ Upcoming ] [ Past ] pills (Upcoming default); buckets never merge.
+ *  Past is read-only; the lifecycle status (Just played / Closed / Cancelled)
+ *  shows as a chip in the card's bottom-right corner (no art-panel result chip). */
+type Bucket = 'hosted' | 'joined'
+
+const COPY: Record<Bucket, { eyebrow: string; upcomingTitle: ReactNode; pastTitle: ReactNode; upcomingEmpty: string; pastEmpty: string }> = {
+  hosted: {
+    eyebrow: 'Your hosting matches',
+    upcomingTitle: (<>On the <span className="italic text-accent">horizon</span>.</>),
+    pastTitle: (<>Looking <span className="italic text-accent">back</span>.</>),
+    upcomingEmpty: 'No matches scheduled. Try another month or create a new match.',
+    pastEmpty: "You didn't host any matches this month.",
+  },
+  joined: {
+    eyebrow: 'Matches you joined',
+    upcomingTitle: (<>Coming <span className="italic text-accent">up</span>.</>),
+    pastTitle: (<>Looking <span className="italic text-accent">back</span>.</>),
+    upcomingEmpty: 'No upcoming matches you joined. Find one in Discover.',
+    pastEmpty: "You didn't play any matches this month.",
+  },
+}
 
 const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTH_NAMES_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -115,23 +139,29 @@ function MonthYearPicker({ value, onChange, available }: { value: MonthKey; onCh
   )
 }
 
+/** Back-compat alias — `/matches/all` was the original hosting archive route. */
 export function AllMatchesScreen() {
+  return <MatchArchiveScreen bucket="hosted" />
+}
+
+export function MatchArchiveScreen({ bucket }: { bucket: Bucket }) {
   const db = useDB()
   const [params] = useSearchParams()
   const [tab, setTab] = useState<'upcoming' | 'past'>(params.get('tab') === 'past' ? 'past' : 'upcoming')
+  const copy = COPY[bucket]
 
   const { upcoming, past } = useMemo(() => {
-    const hosted = hostedMatches(db)
+    const source = bucket === 'hosted' ? hostedMatches(db) : joinedNotHostedMatches(db)
     const up: Match[] = []
     const pa: Match[] = []
-    for (const m of hosted) {
+    for (const m of source) {
       const s = computeStatus(m)
       if (s === 'open' || s === 'full' || s === 'live') up.push(m)
       else pa.push(m)
     }
     pa.sort((a, b) => b.start_time.localeCompare(a.start_time)) // newest first
     return { upcoming: up, past: pa }
-  }, [db])
+  }, [db, bucket])
 
   const upcomingMonths = useMemo(() => {
     const map = new Map(upcoming.map((m) => [`${keyOf(m).year}-${keyOf(m).month}`, keyOf(m)]))
@@ -151,12 +181,11 @@ export function AllMatchesScreen() {
   const activeAvailable = tab === 'upcoming' ? upcomingMonths : pastMonths
   const activeFiltered = (tab === 'upcoming' ? upcoming : past).filter((m) => sameKey(keyOf(m), activeSel))
 
-  const resultFor = (m: Match): 'won' | 'lost' | 'draw' | 'cancelled' | null => {
-    if (m.status === 'cancelled') return 'cancelled'
-    const r = db.matchResults.find((x) => x.match_id === m.id && x.player_id === currentUserId)
-    if (!r) return null
-    return r.result === 'win' ? 'won' : r.result === 'loss' ? 'lost' : 'draw'
-  }
+  // Upcoming variant: brief on the joined archive, full on the hosting archive —
+  // the SAME canonical card, never a per-page variant (CLAUDE.md §4). Past is
+  // always the brief card in BOTH buckets (read-only history; the lifecycle chip
+  // in the card's bottom-right corner carries the state — no art-panel chip).
+  const variant = bucket === 'hosted' ? 'full' : 'brief'
 
   return (
     <Shell>
@@ -171,30 +200,26 @@ export function AllMatchesScreen() {
             >
               <ChevronLeft size={16} strokeWidth={2} />
             </Link>
-            <Link
-              to={HOST_CREATE_ROUTE}
-              aria-label="Create a match"
-              className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full bg-transparent text-brand no-underline"
-              style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
-            >
-              <Plus size={16} strokeWidth={2} />
-            </Link>
+            {/* Create lives on the hosting archive only — the joined archive is
+                a history of matches you didn't create. */}
+            {bucket === 'hosted' && (
+              <Link
+                to={HOST_CREATE_ROUTE}
+                aria-label="Create a match"
+                className="inline-flex h-[42px] w-[42px] items-center justify-center rounded-full bg-transparent text-brand no-underline"
+                style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
+              >
+                <Plus size={16} strokeWidth={2} />
+              </Link>
+            )}
           </div>
 
           <div className="mb-[18px]">
             <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em]" style={{ color: 'rgba(26,26,26,0.5)' }}>
-              Your hosting matches
+              {copy.eyebrow}
             </div>
             <h1 className="m-0 font-display text-[38px] font-normal leading-none" style={{ letterSpacing: '-0.02em' }}>
-              {tab === 'upcoming' ? (
-                <>
-                  On the <span className="italic text-accent">horizon</span>.
-                </>
-              ) : (
-                <>
-                  Looking <span className="italic text-accent">back</span>.
-                </>
-              )}
+              {tab === 'upcoming' ? copy.upcomingTitle : copy.pastTitle}
             </h1>
           </div>
 
@@ -252,39 +277,35 @@ export function AllMatchesScreen() {
                 <span className="italic text-accent">Nothing</span> in {MONTH_NAMES_FULL[activeSel.month - 1]}.
               </div>
               <div className="text-[12.5px] leading-normal" style={{ color: 'var(--color-text-muted)' }}>
-                {tab === 'past' ? "You didn't host any matches this month." : 'No matches scheduled. Try another month or create a new match.'}
+                {tab === 'past' ? copy.pastEmpty : copy.upcomingEmpty}
               </div>
             </div>
           ) : tab === 'upcoming' ? (
-            activeFiltered.map((m) => <MatchCard key={m.id} match={m} host={getUser(db, m.host_id)} players={matchPlayers(db, m.id)} action="view" />)
+            // Upcoming: hosting → per-card Edit; joined → read-only view (§4).
+            activeFiltered.map((m) => (
+              <MatchCard
+                key={m.id}
+                variant={variant}
+                match={m}
+                host={getUser(db, m.host_id)}
+                players={matchPlayers(db, m.id)}
+                action={bucket === 'hosted' ? 'edit' : 'view'}
+              />
+            ))
           ) : (
-            activeFiltered.map((m) => {
-              const result = resultFor(m)
-              const badge =
-                result === 'won'
-                  ? { text: 'Won', bg: '#5a8c5a' }
-                  : result === 'lost'
-                    ? { text: 'Lost', bg: 'rgba(26,26,26,0.62)' }
-                    : result === 'draw'
-                      ? { text: 'Draw', bg: 'rgba(26,26,26,0.62)' }
-                      : result === 'cancelled'
-                        ? { text: 'Cancelled', bg: '#b85a3a' }
-                        : { text: 'Played', bg: 'rgba(26,26,26,0.62)' }
-              const meta = result === 'cancelled' ? 'Match cancelled' : 'Match played'
-              return (
-                <MatchCard
-                  key={m.id}
-                  match={m}
-                  host={getUser(db, m.host_id)}
-                  players={matchPlayers(db, m.id)}
-                  action="view"
-                  badge={badge}
-                  metaText={meta}
-                  dimImage={result === 'cancelled'}
-                  showStatusBadge={false}
-                />
-              )
-            })
+            activeFiltered.map((m) => (
+              <MatchCard
+                key={m.id}
+                variant="brief"
+                match={m}
+                host={getUser(db, m.host_id)}
+                players={matchPlayers(db, m.id)}
+                action="view"
+                dimImage={m.status === 'cancelled'}
+                statusCorner
+                showStatusBadge={false}
+              />
+            ))
           )}
         </div>
       </div>

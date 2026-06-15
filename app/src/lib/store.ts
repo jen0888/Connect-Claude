@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, TimelineItem, User } from './types'
 import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, MATCH_REQUESTS, MATCH_RESULTS, USERS } from './mock/data'
 import { onboarding, resetOnboarding } from './onboarding'
-import { computeStatus } from './status'
+import { computeStatus, noShowReportThreshold, resultsCorroborated } from './status'
 import { clearHostedMatch } from './hostedMatch'
 import { clearProfileSports } from './profile'
 import { clearPersistedState } from './usePersistedState'
@@ -383,8 +383,56 @@ function afterWrite(p: PromiseLike<{ error: unknown }>) {
   })
 }
 
+/** Auto-close a FINISHED match once 2+ players record a corroborating result
+ *  (CLAUDE.md §5). `closed` is stored (optimistic in both modes); win rate +
+ *  no-show count then derive from the closed match via confirmedWinRate /
+ *  confirmedNoShowCount. Idempotent — a no-op once closed/cancelled or while the
+ *  match is still in progress. The live DB trigger is the durable path; the
+ *  afterWrite here just confirms the optimistic close for the recording client. */
+function finalizeMatchIfConfirmed(matchId: string) {
+  const m = db.matches.find((x) => x.id === matchId)
+  if (!m || m.status === 'closed' || m.status === 'cancelled') return
+  if (Date.now() < new Date(m.end_time).getTime()) return // hasn't finished yet
+  const results = db.matchResults.filter((r) => r.match_id === matchId)
+  if (!resultsCorroborated(results)) return
+  mutate((d) => ({
+    ...d,
+    matches: d.matches.map((x) => (x.id === matchId ? { ...x, status: 'closed' as const } : x)),
+  }))
+  if (liveReady && supabase) {
+    afterWrite(supabase.from('matches').update({ status: 'closed' }).eq('id', matchId))
+  }
+}
+
 export function getUser(d: DB, id: string): User | undefined {
   return d.users.find((u) => u.id === id)
+}
+
+/** Win rate over CONFIRMED (closed) matches only — an unconfirmed solo entry
+ *  doesn't move the number until 2+ players corroborate and the match closes.
+ *  Draws are excluded from the denominator. null when nothing's decided yet. */
+export function confirmedWinRate(d: DB, userId: string): number | null {
+  const closed = new Set(d.matches.filter((m) => computeStatus(m) === 'closed').map((m) => m.id))
+  const decided = d.matchResults.filter((r) => r.player_id === userId && closed.has(r.match_id) && r.result !== 'draw')
+  if (!decided.length) return null
+  return Math.round((decided.filter((r) => r.result === 'win').length / decided.length) * 100)
+}
+
+/** No-shows corroborated against the player on CONFIRMED (closed) matches, added
+ *  to any seeded baseline. A no-show only counts once enough co-players report it
+ *  (noShowReportThreshold) — the same corroboration gate that confirms the match. */
+export function confirmedNoShowCount(d: DB, userId: string): number {
+  const base = getUser(d, userId)?.no_show_count ?? 0
+  let extra = 0
+  for (const m of d.matches) {
+    if (computeStatus(m) !== 'closed') continue
+    const reports = d.noShowReports.filter((r) => r.match_id === m.id && r.reported_player === userId)
+    if (!reports.length) continue
+    const roster = d.matchPlayers.filter((mp) => mp.match_id === m.id)
+    const showedUp = roster.filter((mp) => mp.attended !== false).length
+    if (reports.length >= noShowReportThreshold(roster.length, showedUp)) extra += 1
+  }
+  return base + extra
 }
 
 export function matchPlayers(d: DB, matchId: string): User[] {
@@ -589,6 +637,14 @@ export function hostedMatches(d: DB, userId = currentUserId): Match[] {
   return d.matches.filter((m) => m.host_id === userId).sort(byStartThenCreated)
 }
 
+/** "My Matches" archive — matches you JOINED but did NOT create. The host's own
+ *  matches live under "You're hosting" (`hostedMatches`); this is its mirror for
+ *  joiners, so a player who only ever joins still has a full upcoming+past
+ *  history that never depends on hosting (CLAUDE.md §4). Chronological. */
+export function joinedNotHostedMatches(d: DB, userId = currentUserId): Match[] {
+  return joinedMatches(d, userId).filter((m) => m.host_id !== userId)
+}
+
 /** matches you've joined that are still ahead (open/full), soonest first. The
  *  first is NEXT UP; the rest (minus ones you host) are "This week" (§4). */
 export function upcomingJoinedMatches(d: DB, userId = currentUserId): Match[] {
@@ -612,14 +668,29 @@ export function requestedMatches(d: DB, userId = currentUserId): Match[] {
     .sort(byStartThenCreated)
 }
 
+/** Matches you're queued on (FIFO waitlist) — still open/full, not joined, not
+ *  hosted. They fold into "My Matches" with a waitlisted state (no separate Home
+ *  section) until a slot frees (→ auto-promoted to a joined match) or you leave
+ *  (→ off the list). Chronological like the rest (CLAUDE.md §4/§5). */
+export function waitlistedMatches(d: DB, userId = currentUserId): Match[] {
+  return myWaitlistEntries(d, userId)
+    .map((r) => d.matches.find((m) => m.id === r.match_id))
+    .filter((m): m is Match => !!m && m.host_id !== userId && !isJoined(d, m.id, userId))
+    .filter((m) => {
+      const s = computeStatus(m)
+      return s === 'open' || s === 'full'
+    })
+    .sort(byStartThenCreated)
+}
+
 /** Home "This week" — upcoming joined matches after NEXT UP (excluding ones you
- *  host — those live under "You're hosting") PLUS your pending-request matches,
- *  all sorted by start_time. Pending requests render with a "Requested" state
- *  (CLAUDE.md §4/§5). */
+ *  host — those live under "You're hosting") PLUS your pending-request and
+ *  waitlisted matches, all sorted by start_time. Pending requests render with a
+ *  "Requested" state, waitlist entries with an "On waitlist" state (CLAUDE.md §4/§5). */
 export function thisWeekMatches(d: DB, userId = currentUserId): Match[] {
   const hostedIds = new Set(hostedMatches(d, userId).map((m) => m.id))
   const joinedWeek = upcomingJoinedMatches(d, userId).slice(1).filter((m) => !hostedIds.has(m.id))
-  return [...joinedWeek, ...requestedMatches(d, userId)].sort(byStartThenCreated)
+  return [...joinedWeek, ...requestedMatches(d, userId), ...waitlistedMatches(d, userId)].sort(byStartThenCreated)
 }
 
 /** Home "Matches you saved" — bookmarked, NOT joined, and still joinable
@@ -1337,13 +1408,11 @@ export const actions = {
     }))
   },
 
-  /** post-match step 2: optional result, feeds win rate */
+  /** post-match step 2: record YOUR result, feeds win rate. Optimistic in BOTH
+   *  modes (mirrors cancelMatch/updateMatch) so the consensus check sees this
+   *  submission immediately; once 2+ players corroborate, finalizeMatchIfConfirmed
+   *  closes the match and the stats follow (CLAUDE.md §5). */
   recordResult(matchId: string, playerId: string, result: MatchResult['result']) {
-    if (liveReady) {
-      // RLS results_insert_self → only your own result persists
-      if (supabase) afterWrite(supabase.from('match_results').insert({ match_id: matchId, player_id: playerId, result }))
-      return
-    }
     mutate((d) => ({
       ...d,
       matchResults: [
@@ -1351,6 +1420,12 @@ export const actions = {
         { id: newId('res'), match_id: matchId, player_id: playerId, result },
       ],
     }))
+    if (liveReady && supabase) {
+      // RLS results_insert_self → only your own result persists. Upsert so editing
+      // a result you already recorded can't trip unique(match_id, player_id).
+      afterWrite(supabase.from('match_results').upsert({ match_id: matchId, player_id: playerId, result }, { onConflict: 'match_id,player_id' }))
+    }
+    finalizeMatchIfConfirmed(matchId)
   },
 
   reportNoShow(matchId: string, reportedPlayer: string) {

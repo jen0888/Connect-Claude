@@ -7,7 +7,7 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
 import { InviteApprovalSheet, type Invite } from '@/components/InviteApprovalSheet'
-import { actions, currentUserId, getUser, hasPendingRequest, hostedMatches, joinedMatches, matchPlayers, myInvites, pendingRequestCount, requestedMatches, savedMatches, thisWeekMatches, upcomingJoinedMatches, useDB, useHydrated } from '@/lib/store'
+import { actions, currentUserId, getUser, hasPendingRequest, hostedMatches, joinedMatches, matchPlayers, myInvites, pendingRequestCount, requestedMatches, savedMatches, thisWeekMatches, upcomingJoinedMatches, useDB, useHydrated, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, countdownUntil, courtNumberLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, whenLabel } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
@@ -17,13 +17,15 @@ import { LIFECYCLE } from '@/components/lifecycle'
 import { HostedMatchCard } from './HostedMatchCard'
 import { FirstTimerHome } from './FirstTimerHome'
 
-/** Per-section cap on Home: You're hosting / This week / Matches you saved each
- *  show at most 3; a "See all" appears only when the full list exceeds it (§4). */
+/** Per-section cap on Home: You're hosting / My Matches / Matches you saved each
+ *  show at most 3 cards (§4). "You're hosting" and "My Matches" ALWAYS show a
+ *  "See all" (it's the only path to their Upcoming/Past archive — esp. Past, which
+ *  Home never lists); "Matches you saved" shows it only when the list exceeds 3. */
 const SECTION_CAP = 3
 
 /** "See all" — sits at the section header's inline-end (top-right in LTR,
- *  mirrors to top-left in RTL via `justify-between`). Only rendered when a
- *  section holds more than SECTION_CAP. */
+ *  mirrors to top-left in RTL via `justify-between`). Always rendered for the
+ *  hosting / My Matches archives; gated by SECTION_CAP for Saved. */
 function SeeAll({ to }: { to: string }) {
   return (
     <Link
@@ -86,9 +88,10 @@ function toInvite(m: Match, host: User): Invite {
 
 /** Home — default landing tab. Data-driven sections cover every design
  *  variant (First Timer / 2P No Hosting / 2P With Hosting):
- *  greeting → NEXT UP → You're hosting →
- *  Requested to join → This week → Saved. My Matches lives here, not in
- *  a 4th tab (CLAUDE.md §4). */
+ *  greeting → NEXT UP → You're hosting → My Matches (joined, not hosted) →
+ *  Saved. The two buckets never merge: "You're hosting" = matches you created
+ *  (See all → /hosting); "My Matches" = matches you joined but did not create
+ *  (See all → /my-matches). Both archives live under Home, not a 4th tab (§4). */
 export function HomeScreen() {
   const db = useDB()
   const hydrated = useHydrated()
@@ -118,8 +121,9 @@ export function HomeScreen() {
       return s === 'open' || s === 'full'
     })
     const nextUp = upcomingJoinedMatches(db)[0]
-    // This week now folds in pending-request matches (sorted by start_time),
-    // shown with a "Requested" state — no separate Home section (CLAUDE.md §4/§5).
+    // My Matches = joined-but-not-hosted upcoming matches, folding in pending-
+    // request matches (sorted by start_time) shown with a "Requested" state —
+    // no separate Home section (CLAUDE.md §4/§5). See-all → /my-matches.
     const week = thisWeekMatches(db)
     const requested = requestedMatches(db) // for the empty-state guard below
     const invited = myInvites(db)
@@ -191,6 +195,9 @@ export function HomeScreen() {
             </h1>
           </div>
           <div className="flex items-center gap-2.5">
+            {/* Header actions: + (create match) and the avatar/gear (Profile +
+                Settings). No separate "My Matches" link — the My Matches section
+                + its See-all is the canonical entry, incl. join-only users (§4). */}
             <Link
               to={HOST_CREATE_ROUTE}
               aria-label="Create a match"
@@ -268,6 +275,37 @@ export function HomeScreen() {
           )
         })}
 
+        {/* my matches — matches you JOINED but did not host, full card, sorted
+            by timing; pending requests carry a "Requested" state (CLAUDE.md §4/§5).
+            See-all → /my-matches (the joined archive's Upcoming/Past pills). */}
+        {data.week.length > 0 && (
+          <>
+            <div className="flex items-center justify-between gap-2.5">
+              <Eyebrow>My Matches</Eyebrow>
+              <SeeAll to="/my-matches" />
+            </div>
+            <div className="mt-2.5 mb-[26px] flex flex-col gap-3.5">
+              {data.week.slice(0, SECTION_CAP).map((m) => {
+                const req = hasPendingRequest(db, m.id)
+                const wlPos = waitlistPosition(db, m.id)
+                return (
+                  <MatchCard
+                    key={m.id}
+                    action="view"
+                    joinStatus={req ? 'requested' : wlPos != null ? 'waitlisted' : null}
+                    waitlistPosition={wlPos}
+                    onAct={req ? () => { actions.cancelRequest(m.id); showToast('Request cancelled') } : undefined}
+                    match={m}
+                    host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
+                    players={matchPlayers(db, m.id)}
+                    showStatusBadge={false}
+                  />
+                )
+              })}
+            </div>
+          </>
+        )}
+
         {/* you're hosting — the host's own match from the localStorage source of
             truth wins (mock mode); otherwise ALL the user's hosted matches are
             grouped under one header (live/seeded store) */}
@@ -285,7 +323,7 @@ export function HomeScreen() {
             <div className="mb-[26px]">
               <div className="mb-2.5 flex items-center justify-between gap-2.5">
                 <Eyebrow>You're hosting</Eyebrow>
-                {data.hosted.length > SECTION_CAP && <SeeAll to="/my-matches" />}
+                <SeeAll to="/hosting" />
               </div>
               <div className="flex flex-col gap-3.5">
                 {data.hosted.slice(0, SECTION_CAP).map((m) => (
@@ -302,34 +340,6 @@ export function HomeScreen() {
               </div>
             </div>
           )
-        )}
-
-        {/* this week — joined matches + pending-request matches, brief card,
-            sorted by timing; requests carry a "Requested" state (CLAUDE.md §4/§5) */}
-        {data.week.length > 0 && (
-          <>
-            <div className="flex items-center justify-between gap-2.5">
-              <Eyebrow>This week</Eyebrow>
-              {data.week.length > SECTION_CAP && <SeeAll to="/my-matches?filter=week" />}
-            </div>
-            <div className="mt-2.5 mb-[26px] flex flex-col gap-3.5">
-              {data.week.slice(0, SECTION_CAP).map((m) => {
-                const req = hasPendingRequest(db, m.id)
-                return (
-                  <MatchCard
-                    key={m.id}
-                    variant="brief"
-                    action="view"
-                    joinStatus={req ? 'requested' : null}
-                    onAct={req ? () => { actions.cancelRequest(m.id); showToast('Request cancelled') } : undefined}
-                    match={m}
-                    host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
-                    players={matchPlayers(db, m.id)}
-                  />
-                )
-              })}
-            </div>
-          </>
         )}
 
         {/* matches you saved — bookmarked, not joined, still joinable; brief card */}

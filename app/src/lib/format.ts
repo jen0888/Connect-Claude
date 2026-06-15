@@ -39,6 +39,14 @@ export function dayLabel(isoTime: string): string {
   return `${DAY_NAMES[d.getDay()]} ${d.getDate()}`
 }
 
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "Thu 23 May" — day + date + month (e.g. Past-archive cards) */
+export function dayDateLabel(isoTime: string): string {
+  const d = new Date(isoTime)
+  return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`
+}
+
 /** hours until start, rounded — for "Next up · in 3h" */
 export function hoursUntil(isoTime: string, now: Date = new Date()): number {
   return Math.max(0, Math.round((new Date(isoTime).getTime() - now.getTime()) / 3600000))

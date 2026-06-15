@@ -15,7 +15,8 @@ import { DecisionButtons, ProfilePeek, ResolvedNote } from './ApprovalCard'
 
 /** Match Details (match-details-other-v2.jsx, Editorial Calm).
  *  One screen, two views: player view (read-only + Join/Request CTA) and
- *  host view (Edit icon, no CTA — full editing lives on the edit screen).
+ *  host view (Edit icon while the match is still open/full, no CTA — full
+ *  editing lives on the edit screen; the pencil hides once it's started/done).
  *  Trust signals shown for the host are CLAUDE.md's: matches played +
  *  attendance — never star ratings (no ratings in Stage 1). */
 
@@ -206,9 +207,14 @@ function MatchDetailsBody({
                 <Bookmark size={14} strokeWidth={1.8} fill={saved ? 'currentColor' : 'none'} />
               </CalmIcon>
             ) : (
-              <CalmIcon ariaLabel="Edit match" onClick={() => navigate(`/matches/${m.id}/edit`)}>
-                <Pencil size={15} strokeWidth={1.8} />
-              </CalmIcon>
+              // Host can edit only before the match starts (open/full). Once it's
+              // live / completed / closed / cancelled, editing is moot — hide the
+              // pencil so a finished match can't be edited.
+              (status === 'open' || status === 'full') && (
+                <CalmIcon ariaLabel="Edit match" onClick={() => navigate(`/matches/${m.id}/edit`)}>
+                  <Pencil size={15} strokeWidth={1.8} />
+                </CalmIcon>
+              )
             )}
           </div>
         </div>

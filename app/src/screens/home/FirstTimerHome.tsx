@@ -28,7 +28,7 @@ import { HOST_CREATE_ROUTE } from '@/lib/hostedMatch'
 /** Home — empty personal state. Rendered whenever the signed-in user has no
  *  joined matches (match_players) and no hosted matches (host_id = me) —
  *  purely data-derived, never a "new user" flag (CLAUDE.md §4/§5).
- *  §4's fixed sections (NEXT UP · You're hosting · This week) have nothing
+ *  §4's fixed sections (NEXT UP · You're hosting · My Matches) have nothing
  *  to show, so they collapse; what remains is a welcome line, the profile
  *  checklist nudge, an "Open to join" rail of seeded matches covering every
  *  join path (instant Join / Request to join / Join waitlist), and the Host

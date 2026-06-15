@@ -1,15 +1,15 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { BadgeCheck, ChevronLeft, EllipsisVertical, Flag, MapPin, MessageCircle, Pencil, ShieldAlert } from 'lucide-react'
+import { BadgeCheck, ChevronLeft, EllipsisVertical, Flag, MapPin, PenLine, Pencil, ShieldAlert } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
-import { actions, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, confirmedNoShowCount, confirmedWinRate, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
-import { artType, courtLabel, dayLabel, matchKind, skillLabel, sportLabel, initials as userInitials } from '@/lib/format'
+import { artType, courtLabel, dayLabel, matchKind, sportLabel, initials as userInitials } from '@/lib/format'
 import { sportEmoji } from '@/lib/sports'
 import { readProfileSports, skillLevelToRating, type SportLevel } from '@/lib/profile'
 import type { User } from '@/lib/types'
@@ -19,12 +19,6 @@ import type { User } from '@/lib/types'
  *  every profile surface; trust signals are peer transparency, never a gate
  *  (CLAUDE.md §5). Other-player view adds Message + the ⋯ → Report / Block
  *  menu (block stays slightly hidden — no primary button). */
-
-function winRate(db: ReturnType<typeof useDB>, userId: string): number | null {
-  const results = db.matchResults.filter((r) => r.player_id === userId)
-  if (!results.length) return null
-  return Math.round((results.filter((r) => r.result === 'win').length / results.length) * 100)
-}
 
 export function ProfileScreen({ own = false }: { own?: boolean }) {
   const { id } = useParams()
@@ -38,7 +32,10 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
   if (!user) return null
   const isMe = user.id === currentUserId
 
-  const rate = winRate(db, user.id)
+  // win rate + no-shows reflect CONFIRMED (closed) matches only — they move once
+  // 2+ players corroborate a result and the match auto-closes (CLAUDE.md §5).
+  const rate = confirmedWinRate(db, user.id)
+  const noShows = confirmedNoShowCount(db, user.id)
   const joinedYear = new Date(user.created_at).getFullYear().toString().slice(-2)
 
   // Sports & level. The canonical primary sport + level is ALWAYS the one on the
@@ -88,7 +85,19 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
               <Pencil size={16} strokeWidth={1.9} />
             </button>
           ) : (
-            <div className="relative">
+            <div className="flex items-center gap-2">
+              {/* Message — round icon in the top-right corner, the SAME create-a-chat
+                  icon (PenLine) the Chat tab uses for "New message" (dashed brand
+                  ring, §6) so starting a chat reads identically across surfaces */}
+              <button
+                onClick={() => navigate(`/chat/dm/${user.id}`)}
+                aria-label={`Message ${first}`}
+                className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-transparent text-brand"
+                style={{ border: '1.5px dashed color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
+              >
+                <PenLine size={17} strokeWidth={1.9} />
+              </button>
+              <div className="relative">
               <button
                 onClick={() => setMenuOpen((v) => !v)}
                 aria-label="More"
@@ -129,6 +138,7 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
                   </div>
                 </>
               )}
+              </div>
             </div>
           )}
         </div>
@@ -161,7 +171,7 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
             {/* gender — public identity field, rendered like skill level (§5) */}
             <span>{t(`gender.${user.gender}`)}</span>
             <span className="h-[3px] w-[3px] rounded-full" style={{ background: 'var(--color-text-faint)' }} />
-            <span>{skillLabel(user.skill_level)} player</span>
+            <span>player</span>
             <span className="h-[3px] w-[3px] rounded-full" style={{ background: 'var(--color-text-faint)' }} />
             <span>Member · <span className="ltr-nums">'{joinedYear}</span></span>
           </div>
@@ -186,14 +196,6 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
               + Add a bio
             </button>
           ) : null}
-          {!isMe && (
-            <button
-              onClick={() => navigate(`/chat/dm/${user.id}`)}
-              className="mt-4 inline-flex h-[42px] cursor-pointer items-center gap-2 rounded-pill border-none bg-brand px-5 text-[13.5px] font-semibold text-onbrand shadow-cta"
-            >
-              <MessageCircle size={15} strokeWidth={2} /> Message
-            </button>
-          )}
         </div>
 
         {/* stats — public trust signals */}
@@ -213,8 +215,8 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
             },
             {
               num: (
-                <span className="nums-tabular" style={{ color: user.no_show_count === 0 ? '#2d5a40' : user.no_show_count <= 2 ? '#a66a1e' : '#7a3a2a' }}>
-                  {user.no_show_count}
+                <span className="nums-tabular" style={{ color: noShows === 0 ? '#2d5a40' : noShows <= 2 ? '#a66a1e' : '#7a3a2a' }}>
+                  {noShows}
                 </span>
               ),
               lbl: 'No-shows',

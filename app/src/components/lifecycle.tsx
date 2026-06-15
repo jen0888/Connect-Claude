@@ -45,6 +45,22 @@ export function StatusBadge({ status }: { status: MatchStatus }) {
   )
 }
 
+/** inline (non-absolute) status pill — dot + label, tinted in the state's token.
+ *  Used in the brief card's bottom-right corner on the Past archives, where the
+ *  lifecycle (Just played / Closed / Cancelled) replaces the chevron. */
+export function LifecycleChip({ status }: { status: MatchStatus }) {
+  const lc = LIFECYCLE[status]
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-[0.14em]"
+      style={{ background: `color-mix(in srgb, ${lc.color} 13%, transparent)`, color: lc.color }}
+    >
+      <span className={`h-[5px] w-[5px] rounded-full ${lc.pulse ? 'conn-pulse' : ''}`} style={{ background: lc.color }} />
+      {lc.label}
+    </span>
+  )
+}
+
 /** explanatory line in the card body for informative states */
 export function LifecycleNote({ status }: { status: MatchStatus }) {
   const lc = LIFECYCLE[status]
@@ -68,7 +84,7 @@ export function lifecycleSpots(status: MatchStatus, m: Pick<Match, 'spots_availa
     case 'open':
       return `${m.spots_available} spot${m.spots_available !== 1 ? 's' : ''} left`
     case 'full':
-      return 'Roster full'
+      return 'Full match'
     case 'cancelled':
       return 'Match cancelled'
     case 'live':

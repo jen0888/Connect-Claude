@@ -2,14 +2,14 @@ import type { MouseEvent, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bookmark, CalendarCheck, Check, ChevronRight, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, UserPlus, UserRound, X } from 'lucide-react'
 import type { Match, MatchStatus, User } from '@/lib/types'
-import { artType, courtLabel, courtNumberLabel, hm, matchKind, skillRangeText, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
+import { artType, courtLabel, courtNumberLabel, dayDateLabel, hm, matchKind, skillRangeText, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
 import { useI18n } from '@/i18n'
 import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
 import { SportArt } from './SportArt'
 import { LadiesBadge } from './LadiesBadge'
-import { LifecycleAction, LifecycleNote, StatusBadge, lifecycleHasAction, lifecycleSpots } from './lifecycle'
+import { LifecycleAction, LifecycleChip, LifecycleNote, StatusBadge, lifecycleHasAction, lifecycleSpots } from './lifecycle'
 
 /** THE canonical match card (home-screens.jsx MatchCard) — one component
  *  reused on Home, Discover, All Matches and first-timer surfaces.
@@ -47,6 +47,10 @@ export interface MatchCardProps {
   saved?: boolean
   onToggleSave?: () => void
   metaText?: string
+  /** brief variant only: render the lifecycle status pill (Just played / Closed /
+   *  Cancelled) in the card's bottom-right corner and DROP the left meta caption.
+   *  Used by the Past archives (hosting + My Matches) — CLAUDE.md §4. */
+  statusCorner?: boolean
   hostNote?: string
   /** host-only passive indicator: count of pending join requests on an approval
    *  match (Home "You're hosting"). Renders a count pill that taps through to
@@ -76,6 +80,7 @@ export function MatchCard({
   saved,
   onToggleSave,
   metaText,
+  statusCorner = false,
   hostNote,
   requestCount = 0,
   genderBlocked = false,
@@ -88,6 +93,9 @@ export function MatchCard({
   // pending approval request: shown on Home "This week" with a Requested badge +
   // a non-actionable "Request pending" CTA (never a Join button) — CLAUDE.md §5
   const requested = joinStatus === 'requested'
+  // queued on a full match — shown on Home "My Matches" with an "On waitlist · #N"
+  // badge (passive; leave from Chat Alerts / Match Details) — CLAUDE.md §5
+  const waitlisted = joinStatus === 'waitlisted'
   const st = status ?? computeStatus(match)
   const dim = st === 'cancelled' || st === 'closed'
   const filled = match.total_spots - match.spots_available
@@ -132,6 +140,20 @@ export function MatchCard({
         <X size={12} strokeWidth={2.2} />
         {t('match.cancelRequest')}
       </button>
+    )
+  } else if (waitlisted) {
+    // queued on a full match → passive "On waitlist · #N" (FIFO position, §5).
+    // Works on any action (e.g. Home "My Matches" uses action="view").
+    actionEl = (
+      <span
+        className="inline-flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border-none px-[15px] text-[12.5px] font-semibold tracking-[0.01em]"
+        style={{ background: 'rgba(26,26,26,0.10)', color: 'rgba(26,26,26,0.6)' }}
+      >
+        <Hourglass size={12} strokeWidth={2.1} />
+        On waitlist{waitlistPosition != null && (
+          <span className="nums-tabular ltr-nums">&nbsp;· #{waitlistPosition}</span>
+        )}
+      </span>
     )
   } else if (lifecycleHasAction(st)) {
     actionEl = <LifecycleAction status={st} matchId={match.id} />
@@ -290,9 +312,22 @@ export function MatchCard({
             className="pointer-events-none absolute inset-0"
             style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 22%, transparent) 0%, transparent 55%)' }}
           />
-          <div className="absolute start-2 top-2 text-[9.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'rgba(244,240,232,0.92)' }}>
-            {whenLabel(match.start_time)}
+          {/* Past archives show weekday + date + month ("Thu 23 May") so a
+              finished match reads unambiguously; elsewhere the relative label
+              ("Today"/"Mon"). */}
+          <div className="absolute start-2 top-2 max-w-[80px] text-[9.5px] font-semibold uppercase leading-tight tracking-[0.16em]" style={{ color: 'rgba(244,240,232,0.92)' }}>
+            {statusCorner ? dayDateLabel(match.start_time) : whenLabel(match.start_time)}
           </div>
+          {/* result chip (e.g. Past archive: Won / Cancelled) — brief honors the
+              same `badge` prop as the full card, so neither forks (CLAUDE.md §4) */}
+          {badge && (
+            <div
+              className="absolute end-1.5 top-1.5 inline-flex items-center rounded-pill px-[7px] py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.14em] text-onbrand backdrop-blur-[6px]"
+              style={{ background: badge.bg ?? 'rgba(26,26,26,0.62)' }}
+            >
+              {badge.text}
+            </div>
+          )}
           <div className="absolute bottom-2 start-2 font-display text-[20px] leading-none text-onbrand ltr-nums">{hm(match.start_time)}</div>
         </div>
 
@@ -343,11 +378,17 @@ export function MatchCard({
           <div className="mt-[9px] flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <AvatarStack initials={roster.map(userInitials)} filled={filled} max={match.total_spots} accent="var(--color-accent)" />
-              <span className="truncate whitespace-nowrap text-[11px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
-                {metaText ?? lifecycleSpots(st, match)}
-              </span>
+              {/* Past archives drop the caption — the lifecycle chip in the corner
+                  carries the state instead (CLAUDE.md §4). */}
+              {!statusCorner && (
+                <span className="truncate whitespace-nowrap text-[11px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
+                  {metaText ?? lifecycleSpots(st, match)}
+                </span>
+              )}
             </div>
-            {action === 'view' && !requested ? (
+            {statusCorner ? (
+              <LifecycleChip status={st} />
+            ) : action === 'view' && !requested && !waitlisted ? (
               <span
                 className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border rtl:rotate-180"
                 style={{ color: 'var(--color-text-muted)', borderColor: 'rgba(26,26,26,0.12)' }}

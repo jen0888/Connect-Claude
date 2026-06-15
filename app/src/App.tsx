@@ -1,11 +1,11 @@
-import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useHydrated } from '@/lib/store'
 import { Lab } from '@/screens/Lab'
 import { HomeScreen } from '@/screens/home/HomeScreen'
 import { DiscoverScreen } from '@/screens/discover/DiscoverScreen'
-import { AllMatchesScreen } from '@/screens/matches/AllMatchesScreen'
+import { AllMatchesScreen, MatchArchiveScreen } from '@/screens/matches/AllMatchesScreen'
 import { MatchListScreen } from '@/screens/matches/MatchListScreen'
 import { CreateMatchScreen } from '@/screens/matches/CreateMatchScreen'
 import { EditMatchScreen } from '@/screens/matches/EditMatchScreen'
@@ -60,14 +60,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-/** `/my-matches` — the hosting archive by default; `?filter=week` shows the
- *  "This week" full list (Home "See all" for that section). One path, branched
- *  on the query param so the See-all routes stay stable (CLAUDE.md §4). */
-function MyMatchesRoute() {
-  const [params] = useSearchParams()
-  return params.get('filter') === 'week' ? <MatchListScreen kind="week" /> : <AllMatchesScreen />
-}
-
 /** Route map — 3 tabs (Discover · Home · Chat), Home is the default
  *  landing tab (CLAUDE.md §4). Screens land here as they're built. */
 function App() {
@@ -83,9 +75,13 @@ function App() {
       <Route path="/chat/dm/:userId" element={<ConversationScreen />} />
       <Route path="/chat/group/:threadId" element={<GroupChatScreen />} />
       <Route path="/matches/all" element={<AllMatchesScreen />} />
-      {/* Home "See all" sub-screens (stacked under Home, no 4th tab — §4).
-          /my-matches = hosting archive; ?filter=week = "This week" list. */}
-      <Route path="/my-matches" element={<MyMatchesRoute />} />
+      {/* Two separate archives, stacked under Home (no 4th tab — §4). Both use
+          the ONE MatchArchiveScreen layout, brief vs full driven by the card
+          variant; each opens on its Upcoming pill.
+            /my-matches = JOINED archive (matches you didn't create) — brief card.
+            /hosting    = HOSTED archive (matches you created)        — full card. */}
+      <Route path="/my-matches" element={<MatchArchiveScreen bucket="joined" />} />
+      <Route path="/hosting" element={<MatchArchiveScreen bucket="hosted" />} />
       <Route path="/saved" element={<MatchListScreen kind="saved" />} />
       <Route path="/matches/create" element={<CreateMatchScreen />} />
       <Route path="/matches/edit-demo" element={<EditMatchScreen />} />
