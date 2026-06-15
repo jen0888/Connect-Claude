@@ -153,6 +153,33 @@
   appearance: textfield;
 }
 
+/* Dual-range slider: two stacked full-width range inputs. The track must NOT
+   capture pointer events (otherwise the top input hijacks every drag and the
+   lower handle can never be moved); only the thumbs do, so each handle is
+   independently grabbable — the host can pick any start and any end freely. */
+.dual-range {
+  pointer-events: none;
+  background: transparent;
+}
+.dual-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  cursor: grab;
+}
+.dual-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: grab;
+}
+
 /* Fixed-height phone-frame scroll setup — a screen is a flex column that owns
    one vertical scroll region; horizontal strips (date chips, sport pills) hide
    their scrollbar. */

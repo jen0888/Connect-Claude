@@ -233,6 +233,8 @@ function DecisionCard({ request, match, player }: { request: MatchRequest; match
 
   if (request.status === 'declined') return <ResolvedLine color="muted" icon={X} text={`You declined ${first}'s request`} />
   if (request.status === 'joined' || request.status === 'approved') return null // the "joined" system line is the follow-up
+  // a sibling request won the last spot → this one is read-time expired (§5)
+  if (request.status === 'expired') return <ResolvedLine color="muted" icon={Lock} text={`${first}'s request — match full, no longer available`} />
   if (request.status !== 'requested') return null
   const full = match.spots_available <= 0
 
@@ -260,8 +262,11 @@ function DecisionCard({ request, match, player }: { request: MatchRequest; match
           <ChevronRight size={16} strokeWidth={2} className="shrink-0 rtl:rotate-180" style={{ color: 'rgba(26,26,26,0.3)' }} />
         </button>
         {full ? (
-          <div className="mt-2.5 rounded-[12px] px-3 py-2 text-[11.5px] leading-[1.4]" style={{ background: 'rgba(26,26,26,0.05)', color: 'var(--color-text-muted)' }}>
-            Match is full — free a spot before approving.
+          <div
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-[11.5px] font-semibold"
+            style={{ background: 'color-mix(in srgb, var(--color-neutral) 14%, transparent)', color: 'var(--color-neutral)' }}
+          >
+            <Lock size={12} strokeWidth={2} /> Match full · no longer available
           </div>
         ) : (
           <div className="mt-2.5 flex gap-2.5">
@@ -279,8 +284,8 @@ function DecisionCard({ request, match, player }: { request: MatchRequest; match
             <button
               type="button"
               onClick={() => {
-                actions.approveRequest(request.id)
-                showToast(`${first} approved`)
+                const res = actions.approveRequest(request.id)
+                showToast(res === 'full' ? 'Match just filled' : `${first} approved`)
               }}
               className="inline-flex h-[42px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill border-none text-[13px] font-semibold text-onbrand"
               style={{ background: 'var(--color-success)', boxShadow: '0 10px 20px -10px var(--color-success)' }}

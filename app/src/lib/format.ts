@@ -1,4 +1,4 @@
-import type { Match, User } from './types'
+import type { Match, SkillLevel, SkillTier, User } from './types'
 
 /** Time/date display helpers — Western numerals in both languages,
  *  numbers stay LTR (CLAUDE.md §3/§7). */
@@ -106,37 +106,56 @@ export function sportLabel(sport: Match['sport']): string {
   return sport.charAt(0).toUpperCase() + sport.slice(1)
 }
 
-/** display label for the 7-step skill ladder (snake_case values) */
-export function skillLabel(level: User['skill_level']): string {
-  const labels: Record<User['skill_level'], string> = {
-    baby_beginner: 'Baby Beginner',
-    beginner: 'Beginner',
-    low_intermediate: 'Low Intermediate',
-    intermediate: 'Intermediate',
-    high_intermediate: 'High Intermediate',
-    advanced: 'Advanced',
-    pro: 'Pro',
-    any: 'Any level',
-  }
-  return labels[level]
+/** abbreviated label for one tier of the shared 7-step ladder (§3) — compact,
+ *  used for range endpoints, filter chips and the scale tick bar */
+const TIER_LABELS: Record<SkillTier, string> = {
+  baby: 'Baby',
+  beginner: 'Beginner',
+  low_int: 'Low Int',
+  int: 'Int',
+  high_int: 'High Int',
+  advance: 'Advance',
+  pro: 'Pro',
 }
 
-/** A match's open-to skill as a readable BAND ("Beginner → Low int."), not a
- *  single point. The store collapses the create form's min→max slider into one
- *  coarse `skill_level` (levelRange in CreateMatchScreen), so we expand each
- *  coarse value back to the band it represents for display on the MatchCard. */
-export function skillRangeLabel(level: Match['skill_level']): string {
-  const ranges: Record<Match['skill_level'], string> = {
-    any: 'All levels',
-    baby_beginner: 'Baby → Beginner',
-    beginner: 'Beginner → Low int.',
-    low_intermediate: 'Low → Intermediate',
-    intermediate: 'Low int. → High int.',
-    high_intermediate: 'Intermediate → Advanced',
-    advanced: 'Advanced → Pro',
-    pro: 'Pro level',
-  }
-  return ranges[level]
+/** full label for one tier — spelled out for the three intermediate tiers; used
+ *  whenever a SINGLE level is displayed (cards, profiles, match details, §6) */
+const TIER_LABELS_FULL: Record<SkillTier, string> = {
+  ...TIER_LABELS,
+  low_int: 'Low Intermediate',
+  int: 'Intermediate',
+  high_int: 'High Intermediate',
+}
+
+export function skillTierLabel(t: SkillTier): string {
+  return TIER_LABELS[t]
+}
+
+/** full single-tier label (Low Intermediate / Intermediate / High Intermediate) */
+export function skillTierLabelFull(t: SkillTier): string {
+  return TIER_LABELS_FULL[t]
+}
+
+/** THE canonical skill-level display formatter (one source of truth, §6) — every
+ *  surface that shows a skill level routes through this so single vs. range never
+ *  drift per component:
+ *   • a single level → the FULL word ("Intermediate", "Low Intermediate")
+ *   • a range (two endpoints) → ABBREVIATED endpoints so it fits ("Low Int – High Int")
+ *  Labels are LTR with the en-dash between them, so it reads cleanly under RTL too. */
+export function formatSkillLevel(min: SkillTier, max: SkillTier = min): string {
+  return min === max ? TIER_LABELS_FULL[min] : `${TIER_LABELS[min]} – ${TIER_LABELS[max]}`
+}
+
+/** display label for a profile/filter skill value (a tier, or 'any') — single
+ *  value, so it uses the full word via formatSkillLevel */
+export function skillLabel(level: SkillLevel): string {
+  return level === 'any' ? 'Any level' : formatSkillLevel(level)
+}
+
+/** A match's open-to skill as text: full word for a single level
+ *  ("Intermediate"), abbreviated endpoints for a range ("Int – Advance"). */
+export function skillRangeText(min: SkillTier, max: SkillTier): string {
+  return formatSkillLevel(min, max)
 }
 
 export function initials(user: Pick<User, 'name'>): string {

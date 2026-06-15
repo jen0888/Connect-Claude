@@ -40,21 +40,34 @@ export const en = {
   'gender.male': 'Male',
   'gender.female': 'Female',
 
-  // Skill levels — 7-step player ladder (sign-up Q3, Edit Profile)
-  'skill.baby_beginner': 'Baby Beginner',
-  'skill.baby_beginner.desc': 'Never played — total fresh start',
+  // Skill levels — 7-step player ladder (sign-up Q3, Edit Profile, match range)
+  'skill.baby': 'Baby',
+  'skill.baby.desc': 'Never played — total fresh start',
   'skill.beginner': 'Beginner',
   'skill.beginner.desc': 'Learning the ropes',
-  'skill.low_intermediate': 'Low Intermediate',
-  'skill.low_intermediate.desc': 'Rallies are coming together',
-  'skill.intermediate': 'Intermediate',
-  'skill.intermediate.desc': 'Solid rallies, fair serves',
-  'skill.high_intermediate': 'High Intermediate',
-  'skill.high_intermediate.desc': 'Consistent, starting to play tactically',
-  'skill.advanced': 'Advanced',
-  'skill.advanced.desc': 'Competitive, consistent',
+  'skill.low_int': 'Low Int',
+  'skill.low_int.desc': 'Rallies are coming together',
+  'skill.int': 'Int',
+  'skill.int.desc': 'Solid rallies, fair serves',
+  'skill.high_int': 'High Int',
+  'skill.high_int.desc': 'Consistent, starting to play tactically',
+  'skill.advance': 'Advance',
+  'skill.advance.desc': 'Competitive, consistent',
   'skill.pro': 'Pro',
   'skill.pro.desc': 'Tournament level — bring it',
+  // Full-word labels for a SINGLE selected level (cards/profiles/match details);
+  // ranges use the abbreviated `skill.*` keys above so they fit (format.ts §6).
+  'skill.baby.full': 'Baby',
+  'skill.beginner.full': 'Beginner',
+  'skill.low_int.full': 'Low Intermediate',
+  'skill.int.full': 'Intermediate',
+  'skill.high_int.full': 'High Intermediate',
+  'skill.advance.full': 'Advance',
+  'skill.pro.full': 'Pro',
+  // skill range header + helper line on the create form (§7 bilingual)
+  'skill.range.single': '{x} only',
+  'skill.range.span': '{x} – {y}',
+  'skill.range.help': 'Tap a level to pick it — tap a second for a range, or tap a stop to go back to one.',
 
   // Auth — shared
   'auth.continueGoogle': 'Continue with Google',

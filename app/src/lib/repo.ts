@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult,
-  NoShowReport, SkillLevel, Sport, User,
+  NoShowReport, SkillLevel, SkillTier, Sport, User,
 } from './types'
 
 /**
@@ -24,14 +24,23 @@ export interface RepoSnapshot {
   noShowReports: NoShowReport[]
   chatThreads: ChatThread[]
   chatMessages: ChatMessage[]
+  /** match ids the signed-in viewer has bookmarked (RLS scopes the table to them) */
+  savedMatchIds: string[]
 }
 
 const asSport = (s: unknown): Sport =>
   s === 'tennis' || s === 'badminton' || s === 'running' ? s : 'padel'
 
 const asSkill = (s: unknown): SkillLevel => {
-  const ok: SkillLevel[] = ['baby_beginner', 'beginner', 'low_intermediate', 'intermediate', 'high_intermediate', 'advanced', 'pro', 'any']
+  const ok: SkillLevel[] = ['baby', 'beginner', 'low_int', 'int', 'high_int', 'advance', 'pro', 'any']
   return ok.includes(s as SkillLevel) ? (s as SkillLevel) : 'any'
+}
+
+/** a match's skill_min/skill_max are concrete tiers (never 'any'); fall back to a
+ *  sane single tier for any legacy/partial row */
+const asTier = (s: unknown): SkillTier => {
+  const ok: SkillTier[] = ['baby', 'beginner', 'low_int', 'int', 'high_int', 'advance', 'pro']
+  return ok.includes(s as SkillTier) ? (s as SkillTier) : 'int'
 }
 
 // gender is NOT NULL in the schema, but stay defensive against legacy/partial rows
@@ -78,7 +87,8 @@ function mapMatch(row: any): Match {
     round_trip: false,
     start_time: row.start_time,
     end_time: row.end_time,
-    skill_level: asSkill(row.skill_level),
+    skill_min: asTier(row.skill_min),
+    skill_max: asTier(row.skill_max),
     total_spots: row.total_spots,
     spots_available: row.spots_available,
     fee_total: fee(row.fee_total),
@@ -120,7 +130,7 @@ const mapMessage = (r: any): ChatMessage => ({
  *  match_requests / chat_* / no_show_reports to the signed-in viewer
  *  automatically — we just map whatever comes back. */
 export async function fetchSnapshot(supabase: SupabaseClient): Promise<RepoSnapshot> {
-  const [users, matches, players, requests, results, reports, threads, messages] = await Promise.all([
+  const [users, matches, players, requests, results, reports, threads, messages, saved] = await Promise.all([
     supabase.from('users').select('*'),
     supabase.from('matches').select('*'),
     supabase.from('match_players').select('*'),
@@ -129,9 +139,10 @@ export async function fetchSnapshot(supabase: SupabaseClient): Promise<RepoSnaps
     supabase.from('no_show_reports').select('*'),
     supabase.from('chat_threads').select('*'),
     supabase.from('chat_messages').select('*'),
+    supabase.from('saved_matches').select('match_id'), // RLS → only the viewer's saves
   ])
 
-  const firstError = [users, matches, players, requests, results, reports, threads, messages].find((r) => r.error)?.error
+  const firstError = [users, matches, players, requests, results, reports, threads, messages, saved].find((r) => r.error)?.error
   if (firstError) throw firstError
 
   const playerRows = players.data ?? []
@@ -147,5 +158,6 @@ export async function fetchSnapshot(supabase: SupabaseClient): Promise<RepoSnaps
     noShowReports: (reports.data ?? []).map(mapReport),
     chatThreads: (threads.data ?? []).map(mapThread),
     chatMessages: (messages.data ?? []).map(mapMessage),
+    savedMatchIds: (saved.data ?? []).map((r) => r.match_id as string),
   }
 }

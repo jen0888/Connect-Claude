@@ -15,6 +15,28 @@ export const ar: Partial<Record<MessageKey, string>> = {
   'gender.male': 'ذكر',
   'gender.female': 'أنثى',
 
+  // Skill ladder — 7 tiers, lowest → highest (sign-up, profile, match range)
+  'skill.baby': 'مبتدئ تمامًا',
+  'skill.beginner': 'مبتدئ',
+  'skill.low_int': 'متوسط منخفض',
+  'skill.int': 'متوسط',
+  'skill.high_int': 'متوسط عالٍ',
+  'skill.advance': 'متقدم',
+  'skill.pro': 'محترف',
+  // Full-word labels for a SINGLE selected level (Arabic spells these out the
+  // same as the abbreviated form; ranges keep the abbreviated keys). LTR-safe.
+  'skill.baby.full': 'مبتدئ تمامًا',
+  'skill.beginner.full': 'مبتدئ',
+  'skill.low_int.full': 'متوسط منخفض',
+  'skill.int.full': 'متوسط',
+  'skill.high_int.full': 'متوسط عالٍ',
+  'skill.advance.full': 'متقدم',
+  'skill.pro.full': 'محترف',
+  // skill range header + helper line on the create form
+  'skill.range.single': '{x} فقط',
+  'skill.range.span': 'من {x} إلى {y}',
+  'skill.range.help': 'اضغط على مستوى لاختياره — واضغط على مستوى ثانٍ لتحديد نطاق، أو اضغط على أي نقطة للعودة إلى مستوى واحد.',
+
   // Sign-up Q2 — gender. titleB is the brand-italic emphasis word.
   'onb.gender.titleA': 'ما هو ',
   'onb.gender.titleB': 'جنسك',

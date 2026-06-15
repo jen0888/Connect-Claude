@@ -49,12 +49,12 @@ export function clearProfileSports(): void {
 /** Collapse the stored 7-step ladder onto the 4 self-rated profile levels. */
 export function skillLevelToRating(level: SkillLevel): SkillRating {
   switch (level) {
-    case 'baby_beginner':
+    case 'baby':
     case 'any':
       return 'Casual'
     case 'beginner':
       return 'Beginner'
-    case 'advanced':
+    case 'advance':
     case 'pro':
       return 'Advanced'
     default:
@@ -66,12 +66,12 @@ export function skillLevelToRating(level: SkillLevel): SkillRating {
 export function ratingToSkillLevel(rating: SkillRating): SkillLevel {
   switch (rating) {
     case 'Casual':
-      return 'baby_beginner'
+      return 'baby'
     case 'Beginner':
       return 'beginner'
     case 'Advanced':
-      return 'advanced'
+      return 'advance'
     default:
-      return 'intermediate'
+      return 'int'
   }
 }

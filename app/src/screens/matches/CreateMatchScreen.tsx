@@ -3,14 +3,16 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MailPlus, MapPin, Plus, Sparkles, TriangleAlert, Trophy, UserRound, Users, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
-import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
+import { CTA, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
+import { SkillRangeSlider } from '@/components/SkillRangeSlider'
 import { useToast } from '@/components/Toast'
 import { actions, currentUserId, getUser, matchInvites, useDB } from '@/lib/store'
 import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
 import { writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
-import type { JoinMode, SkillLevel, Sport } from '@/lib/types'
-import { initials, skillLabel } from '@/lib/format'
-import { keyOf, labelFromKey } from '@/lib/datetime'
+import type { JoinMode, SkillTier, Sport } from '@/lib/types'
+import { useI18n } from '@/i18n'
+import { initials, skillLabel, skillTierLabel, skillTierLabelFull } from '@/lib/format'
+import { diffMinutes, keyOf, labelFromKey } from '@/lib/datetime'
 import { sportEmoji } from '@/lib/sports'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
 import { InvitePicker } from './InvitePicker'
@@ -26,17 +28,6 @@ const SPORTS: { id: Sport; label: string }[] = [
   { id: 'badminton', label: 'Badminton' },
   { id: 'running', label: 'Running' },
 ]
-
-const LEVEL_NAMES = ['Baby', 'Beginner', 'Low int.', 'High int.', 'Advanced']
-
-/** map the 1–5 dual-slider range onto the schema's single skill_level */
-function levelRange(min: number, max: number): SkillLevel {
-  if (min <= 1 && max >= 5) return 'any'
-  const mid = (min + max) / 2
-  if (mid <= 2) return 'beginner'
-  if (mid >= 4.5) return 'advanced'
-  return 'intermediate'
-}
 
 const cardCls = 'rounded-[22px] border bg-card'
 const cardStyle = { borderColor: 'rgba(26,26,26,0.10)' }
@@ -66,6 +57,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const db = useDB()
   const navigate = useNavigate()
   const { showToast } = useToast()
+  const { t } = useI18n()
   const existing = isEdit ? db.matches.find((m) => m.id === id) : undefined
 
   // Draft persistence: only "create" keeps a draft across refreshes — in edit
@@ -83,21 +75,32 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const [dateKey, setDateKey] = usePersistedState(dk('dateKey'), existing ? existing.start_time.slice(0, 10) : keyOf(new Date()))
   const [startTime, setStartTime] = usePersistedState(dk('startTime'), existing ? existing.start_time.slice(11, 16) : '18:30')
   const [endTime, setEndTime] = usePersistedState(dk('endTime'), existing ? existing.end_time.slice(11, 16) : '20:00')
+  // Match length the host picks first; End is derived from Start + duration. Kept
+  // in the shared draft (not WhenCard-local) so it persists across the flow and
+  // the computed end_time written in save() can't drift.
+  const [duration, setDuration] = usePersistedState(
+    dk('duration'),
+    existing ? diffMinutes(existing.start_time.slice(11, 16), existing.end_time.slice(11, 16)) : 90,
+  )
   // The host chooses how many players they still NEED (spots for others); the
   // host occupies one more spot, so total roster = needed + 1. The card then
   // reads "{needed} spots left" right after create. (Stored draft key kept as
   // 'players' for back-compat; existing matches map back via total_spots - 1.)
   const [needed, setNeeded] = usePersistedState(dk('players'), existing ? existing.total_spots - 1 : 3)
   const totalSpots = needed + 1
-  const [minLevel, setMinLevel] = usePersistedState(dk('minLevel'), 2)
-  const [maxLevel, setMaxLevel] = usePersistedState(dk('maxLevel'), 4)
+  // skill (carry-forward §4): persists across the create flow, pre-filled from
+  // the saved min/max in edit mode. Create starts with NOTHING selected — the
+  // host taps to set a level (then a second tap makes a range); required before
+  // create. min === max ⇒ a single level.
+  const [skillMin, setSkillMin] = usePersistedState<SkillTier | null>(dk('skillMin'), existing?.skill_min ?? null)
+  const [skillMax, setSkillMax] = usePersistedState<SkillTier | null>(dk('skillMax'), existing?.skill_max ?? null)
   const [matchType, setMatchType] = usePersistedState<'casual' | 'competition'>(dk('matchType'), 'casual')
   const [gender, setGender] = usePersistedState<'mixed' | 'ladies'>(dk('gender'), 'mixed')
   const [isFree, setIsFree] = usePersistedState<boolean | null>(dk('isFree'), existing ? existing.fee_per_player == null : null)
   const [pricePerPlayer, setPricePerPlayer] = usePersistedState(dk('pricePerPlayer'), existing?.fee_per_player ? String(existing.fee_per_player) : '')
   const [joinMode, setJoinMode] = usePersistedState<JoinMode | null>(dk('joinMode'), existing ? existing.join_mode : null)
   const [waitlistOpen, setWaitlistOpen] = usePersistedState(dk('waitlistOpen'), existing?.waitlist_open ?? false)
-  const [waitlistSize, setWaitlistSize] = usePersistedState(dk('waitlistSize'), existing?.waitlist_size ?? 2)
+  const [waitlistSize, setWaitlistSize] = usePersistedState(dk('waitlistSize'), existing?.waitlist_size ?? 1)
   const [description, setDescription] = usePersistedState(dk('description'), existing?.notes ?? '')
   const [venue, setVenue] = usePersistedState<VenueSelection | null>(dk('venue'), initialVenue)
 
@@ -117,7 +120,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
 
   const isRoute = venue?.id === 'route' || !!venue?.endName
   const venueCompatible = venue != null && (sport === 'running' ? isRoute : !isRoute)
-  const allChosen = isFree !== null && joinMode !== null
+  const allChosen = isFree !== null && joinMode !== null && skillMin !== null && skillMax !== null
 
   const save = async () => {
     if (!allChosen) {
@@ -140,7 +143,8 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       round_trip: sport === 'running' ? (venue?.loop ?? false) : false,
       start_time: new Date(start).toISOString(),
       end_time: new Date(end).toISOString(),
-      skill_level: levelRange(minLevel, maxLevel),
+      skill_min: skillMin!, // guaranteed by the allChosen guard above
+      skill_max: skillMax!,
       total_spots: totalSpots,
       fee_per_player: price,
       fee_total: price ? price * totalSpots : null,
@@ -183,8 +187,8 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       pricePerPlayer: isFree === true ? '' : pricePerPlayer,
       players: totalSpots,
       filled: 1, // host always holds the first spot
-      minLevel,
-      maxLevel,
+      skillMin: skillMin!,
+      skillMax: skillMax!,
       waitlistOpen,
       waitlistSize,
       description: description.trim(),
@@ -288,6 +292,8 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
               onStartTime={setStartTime}
               endTime={endTime}
               onEndTime={setEndTime}
+              duration={duration}
+              onDuration={setDuration}
               restrictPast={!isEdit}
             />
           </div>
@@ -432,22 +438,22 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
               <FieldRow
                 label="Skill level"
                 rightLabel={
-                  <span className="text-[12.5px] font-medium text-ink">
-                    {LEVEL_NAMES[minLevel - 1]} <span style={{ color: 'var(--color-text-muted)' }}>→</span> {LEVEL_NAMES[maxLevel - 1]}
-                  </span>
+                  skillMin && skillMax ? (
+                    <span className="text-[12.5px] font-medium text-ink ltr-nums">
+                      {skillMin === skillMax
+                        ? t('skill.range.single').replace('{x}', skillTierLabelFull(skillMin))
+                        : t('skill.range.span').replace('{x}', skillTierLabel(skillMin)).replace('{y}', skillTierLabel(skillMax))}
+                    </span>
+                  ) : (
+                    <span className="text-[12.5px] font-medium" style={{ color: 'var(--color-text-muted)' }}>Tap to choose</span>
+                  )
                 }
               >
                 <div className="mt-2.5">
-                  <DualSlider
-                    value={[minLevel, maxLevel]}
-                    min={1}
-                    max={5}
-                    onChange={([lo, hi]) => {
-                      setMinLevel(lo)
-                      setMaxLevel(hi)
-                    }}
-                    ticks={['Baby', 'Beg', 'Low int.', 'High int.', 'Adv']}
-                  />
+                  <SkillRangeSlider min={skillMin} max={skillMax} onChange={(lo, hi) => { setSkillMin(lo); setSkillMax(hi) }} />
+                  <p className="mt-2 text-[11.5px] leading-[1.4]" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('skill.range.help')}
+                  </p>
                 </div>
               </FieldRow>
             </div>
@@ -523,7 +529,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                   columns={3}
                   options={[
                     { value: 'open', label: 'Open', icon: <LockOpen size={14} strokeWidth={1.8} /> },
-                    { value: 'approval', label: 'Approval', icon: <Lock size={14} strokeWidth={1.8} /> },
+                    { value: 'approval', label: 'Request', icon: <Lock size={14} strokeWidth={1.8} /> },
                     { value: 'invite', label: 'Invite', icon: <MailPlus size={14} strokeWidth={1.8} /> },
                   ]}
                 />
@@ -735,7 +741,8 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
               <div className="mb-5 flex flex-col gap-2.5">
                 {[
                   { ok: isFree !== null, label: 'Cost — free or split' },
-                  { ok: joinMode !== null, label: 'Joining — open, approval or invite' },
+                  { ok: joinMode !== null, label: 'Joining — open, request or invite' },
+                  { ok: skillMin !== null, label: 'Skill level — tap one or a range' },
                 ].map((r) => (
                   <div key={r.label} className="flex items-center gap-2.5 text-[13.5px] font-medium" style={{ color: r.ok ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
                     <span

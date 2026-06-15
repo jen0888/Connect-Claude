@@ -43,8 +43,8 @@ Status legend: ✅ done · 🔄 in progress · ⬜ to do · ⏭️ defer (with n
 
 ## 6. Tooling & accounts  *(needed for the build phase)*
 
-- ✅ Tech stack chosen — Lovable + Supabase + GitHub (web-first PWA).
-- ⬜ Create the project accounts under the business email: GitHub, Supabase, Lovable, plus a domain registrar and Instagram. One identity, one password manager.
+- ✅ Tech stack chosen — Cursor + Claude Code + Supabase + GitHub (web-first PWA).
+- ⬜ Create the project accounts under the business email: GitHub, Supabase, plus a domain registrar and Instagram. One identity, one password manager.
 - ⬜ Set up a basic analytics/feedback path so you can measure toward the 500-active-players goal once live (can be lightweight in Stage 1).
 
 ## 7. Goals & positioning  *(quick to write down, keeps you aligned)*
@@ -58,7 +58,7 @@ Status legend: ✅ done · 🔄 in progress · ⬜ to do · ⏭️ defer (with n
 
 1. **Name + domain + handles check** (do these together — you want one consistent identity before you register anything).
 2. **Register domain + set up founder email.**
-3. **Create accounts under that email** (GitHub/Supabase/Lovable/IG).
+3. **Create accounts under that email** (GitHub/Supabase/IG).
 4. **Simple logo + tagline + positioning paragraph.**
 5. Everything else (entity decision, dev accounts, analytics) can trail behind without blocking the build.
 

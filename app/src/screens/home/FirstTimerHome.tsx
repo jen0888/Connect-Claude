@@ -18,6 +18,7 @@ import {
   waitlistEntry,
   waitlistPosition,
 } from '@/lib/store'
+import { skillInRange, type SkillTier } from '@/lib/types'
 import { computeStatus } from '@/lib/status'
 import { onboarding } from '@/lib/onboarding'
 import { skillLabel, sportLabel } from '@/lib/format'
@@ -55,7 +56,7 @@ export function FirstTimerHome() {
   // user's level or is open to any ('any'). If that leaves nothing, fall back to
   // the full nearby feed (never empty, §5) and label it honestly.
   const feed = discoverFeed(db)
-  const matched = feed.filter((m) => m.sport === sport && (m.skill_level === skill || m.skill_level === 'any'))
+  const matched = feed.filter((m) => m.sport === sport && (skill === 'any' || skillInRange(skill as SkillTier, m.skill_min, m.skill_max)))
   const usingFallback = matched.length === 0
   const nearby = (usingFallback ? feed : matched).slice(0, 3)
   // profile-setup card hides once the profile is saved complete (§4)

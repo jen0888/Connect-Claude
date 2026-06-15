@@ -7,16 +7,34 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
 import { InviteApprovalSheet, type Invite } from '@/components/InviteApprovalSheet'
-import { actions, currentUserId, getUser, hostedMatches, isJoined, joinedMatches, matchPlayers, myInvites, useDB, useHydrated, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, currentUserId, getUser, hostedMatches, joinedMatches, matchPlayers, myInvites, pendingRequestCount, savedMatches, thisWeekMatches, upcomingJoinedMatches, useDB, useHydrated } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, countdownUntil, courtNumberLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, timeAgoLabel, whenLabel } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
 import { HOST_CREATE_ROUTE, useHostedMatch } from '@/lib/hostedMatch'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { LIFECYCLE } from '@/components/lifecycle'
-import { WeekMatchCard } from './WeekMatchCard'
 import { HostedMatchCard } from './HostedMatchCard'
 import { FirstTimerHome } from './FirstTimerHome'
+
+/** Per-section cap on Home: You're hosting / This week / Matches you saved each
+ *  show at most 3; a "See all" appears only when the full list exceeds it (§4). */
+const SECTION_CAP = 3
+
+/** "See all" — sits at the section header's inline-end (top-right in LTR,
+ *  mirrors to top-left in RTL via `justify-between`). Only rendered when a
+ *  section holds more than SECTION_CAP. */
+function SeeAll({ to }: { to: string }) {
+  return (
+    <Link
+      to={to}
+      className="inline-flex items-center gap-1 text-[11.5px] font-medium no-underline transition-colors hover:text-accent"
+      style={{ color: 'var(--color-text-muted)' }}
+    >
+      See all <ChevronRight size={10} strokeWidth={2.2} className="rtl:rotate-180" />
+    </Link>
+  )
+}
 
 /** Invites the auto-pop-up has already greeted the user with, so it fires once
  *  per invite (not on every Home visit/reload). Deferred invites stay pending
@@ -99,15 +117,11 @@ export function HomeScreen() {
       const s = computeStatus(m)
       return s === 'open' || s === 'full'
     })
-    const upcoming = joined.filter((m) => {
-      const s = computeStatus(m)
-      return s === 'open' || s === 'full'
-    })
-    const nextUp = upcoming[0]
-    const week = upcoming.slice(1).filter((m) => !hosted.some((h) => h.id === m.id))
+    const nextUp = upcomingJoinedMatches(db)[0]
+    const week = thisWeekMatches(db) // upcoming joined after NEXT UP, minus hosted
     const requested = db.matchRequests.filter((r) => r.player_id === currentUserId && r.kind === 'request' && r.status === 'requested')
     const invited = myInvites(db)
-    const saved = db.matches.filter((m) => db.savedMatchIds.includes(m.id) && !isJoined(db, m.id))
+    const saved = savedMatches(db) // bookmarked, not joined, still joinable
     return { joined, hosted, nextUp, week, requested, invited, saved }
   }, [db])
 
@@ -153,7 +167,7 @@ export function HomeScreen() {
   // + no pending invites. Purely data-derived — never a "new user" flag (§4).
   // Also fall here if the profile row is missing (`!me`) — a user with no row
   // can't own matches anyway, and FirstTimerHome renders safely without it.
-  if (!me || (data.joined.length === 0 && data.hosted.length === 0 && !hosted && data.invited.length === 0)) {
+  if (!me || (data.joined.length === 0 && data.hosted.length === 0 && !hosted && data.invited.length === 0 && data.saved.length === 0)) {
     return <FirstTimerHome />
   }
 
@@ -267,19 +281,21 @@ export function HomeScreen() {
         ) : (
           data.hosted.length > 0 && (
             <div className="mb-[26px]">
-              <div className="mb-2.5 flex items-center justify-between">
+              <div className="mb-2.5 flex items-center justify-between gap-2.5">
                 <Eyebrow>You're hosting</Eyebrow>
-                <Link
-                  to="/matches/all?filter=hosting"
-                  className="inline-flex items-center gap-1 text-[11.5px] font-medium no-underline transition-colors hover:text-accent"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  See all <ChevronRight size={10} strokeWidth={2.2} className="rtl:rotate-180" />
-                </Link>
+                {data.hosted.length > SECTION_CAP && <SeeAll to="/my-matches" />}
               </div>
               <div className="flex flex-col gap-3.5">
-                {data.hosted.map((m) => (
-                  <MatchCard key={m.id} match={m} host={getUser(db, m.host_id)} players={matchPlayers(db, m.id)} action="edit" showStatusBadge={false} />
+                {data.hosted.slice(0, SECTION_CAP).map((m) => (
+                  <MatchCard
+                    key={m.id}
+                    match={m}
+                    host={getUser(db, m.host_id)}
+                    players={matchPlayers(db, m.id)}
+                    action="edit"
+                    showStatusBadge={false}
+                    requestCount={m.join_mode === 'approval' ? pendingRequestCount(db, m.id) : 0}
+                  />
                 ))}
               </div>
             </div>
@@ -313,60 +329,57 @@ export function HomeScreen() {
           )
         })}
 
-        {/* this week */}
+        {/* this week — brief card (CLAUDE.md §4) */}
         {data.week.length > 0 && (
           <>
-            <Eyebrow>This week</Eyebrow>
+            <div className="flex items-center justify-between gap-2.5">
+              <Eyebrow>This week</Eyebrow>
+              {data.week.length > SECTION_CAP && <SeeAll to="/my-matches?filter=week" />}
+            </div>
             <div className="mt-2.5 mb-[26px] flex flex-col gap-3.5">
-              {data.week.map((m) => (
-                <WeekMatchCard key={m.id} match={m} host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null} players={matchPlayers(db, m.id)} />
+              {data.week.slice(0, SECTION_CAP).map((m) => (
+                <MatchCard
+                  key={m.id}
+                  variant="brief"
+                  action="view"
+                  match={m}
+                  host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
+                  players={matchPlayers(db, m.id)}
+                />
               ))}
             </div>
           </>
         )}
 
-        {/* saved — bookmarked but never joined */}
+        {/* matches you saved — bookmarked, not joined, still joinable; brief card */}
         {data.saved.length > 0 && (
           <>
-            <div className="flex items-center justify-between">
-              <Eyebrow>Saved · not joined yet</Eyebrow>
-              <Link
-                to="/matches/all"
-                className="inline-flex items-center gap-1 text-[11.5px] font-medium no-underline transition-colors hover:text-accent"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                See all <ChevronRight size={10} strokeWidth={2.2} className="rtl:rotate-180" />
-              </Link>
+            <div className="flex items-center justify-between gap-2.5">
+              <Eyebrow>Matches you saved</Eyebrow>
+              {data.saved.length > SECTION_CAP && <SeeAll to="/saved" />}
             </div>
             <div className="mt-2.5 flex flex-col gap-3.5">
-              {data.saved.map((m) => {
-                const waitlisted = waitlistEntry(db, m.id)
-                return (
-                  <MatchCard
-                    key={m.id}
-                    match={m}
-                    host={getUser(db, m.host_id)}
-                    players={matchPlayers(db, m.id)}
-                    action="join"
-                    joinStatus={waitlisted ? 'waitlisted' : null}
-                    waitlistPosition={waitlisted ? waitlistPosition(db, m.id) : null}
-                    onAct={() => {
-                      if (computeStatus(m) === 'full') {
-                        actions.joinWaitlist(m.id)
-                        showToast("On the waitlist — you'll be auto-joined if a spot frees")
-                      } else if (m.join_mode === 'approval') {
-                        actions.requestToJoin(m.id)
-                        showToast('Request sent')
-                      } else {
-                        actions.joinMatch(m.id)
-                        showToast('Joined')
-                      }
-                    }}
-                    saved={db.savedMatchIds.includes(m.id)}
-                    onToggleSave={() => actions.toggleSaveMatch(m.id)}
-                  />
-                )
-              })}
+              {data.saved.slice(0, SECTION_CAP).map((m) => (
+                <MatchCard
+                  key={m.id}
+                  variant="brief"
+                  match={m}
+                  host={getUser(db, m.host_id)}
+                  players={matchPlayers(db, m.id)}
+                  action="join"
+                  onAct={() => {
+                    if (m.join_mode === 'approval') {
+                      actions.requestToJoin(m.id)
+                      showToast('Request sent')
+                    } else {
+                      actions.joinMatch(m.id)
+                      showToast('Joined')
+                    }
+                  }}
+                  saved={db.savedMatchIds.includes(m.id)}
+                  onToggleSave={() => actions.toggleSaveMatch(m.id)}
+                />
+              ))}
             </div>
           </>
         )}

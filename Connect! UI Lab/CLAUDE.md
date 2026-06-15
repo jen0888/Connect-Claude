@@ -86,9 +86,11 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 
 **Build order (keep it):** foundation (tokens) → shared components → pages → flows. Do not build screens before the design system and components exist.
 
-**The canonical match card is THE priority component.** One component reused on Discover, Home, and My Matches — sport, venue + court #, date/time, host + avatar, spots joined/needed, state badge. Building it once is what prevents "cards look different on every page."
+**The canonical match card is THE priority component.** One component reused on Discover, Home, and My Matches — sport, venue + court #, date/time, host + avatar, spots joined/needed, state badge. Building it once is what prevents "cards look different on every page." The card takes a **`variant: 'brief' | 'full'` prop** (brief = condensed render of the same component, never a separate component) and a **save/bookmark toggle**.
 
-**Home sections (fixed order):** 1) NEXT UP (imminent joined match) · 2) You're hosting (See all → hosting-only archive; per-card Edit + Record results) · 3) This week (other joined matches) · 4) Host CTA. Plus a transient JUST PLAYED card when a finished match awaits post-match input (24h window).
+**Home sections (fixed order):** 1) NEXT UP (imminent joined match) · 2) You're hosting · 3) This week (other joined matches) · 4) Matches you saved (bookmarked, not yet joined) · 5) Host CTA. Plus a transient JUST PLAYED card when a finished match awaits post-match input (24h window).
+- **Per-section caps & card variant:** You're hosting, This week, and Matches you saved each show a **max of 3 matches**. You're hosting uses the **full** card (per-card Edit + Record results); This week and Matches you saved use the **brief** card. NEXT UP is unchanged.
+- **"See all":** when a capped section holds **more than 3** matches, show a **"See all" button at the section header's inline-start** (top-left in LTR, mirrors in RTL) opening that section's full list — hosting → `/my-matches`; This week → `/my-matches?filter=week`; Saved → `/saved`. Sections with ≤3 matches show no button. See §5 for the saved-matches and display rules.
 
 **Save-then-route (action-specific, not blanket):** Match Edit → Home + toast · Edit Profile → View Profile (`/profile`) + toast · Settings inline toggles → save in place (no Save button, no nav). Toasts (created/cancelled/saved) are transient (~2s), never destination screens.
 
@@ -104,11 +106,12 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 | `/signup` | Sign Up questionnaire | Public. Multi-step, in order **DOB · gender · sport · skill**; steps share one draft (carry-forward). DOB is collected first and hard-gates under-18. Gender (`male`/`female`) is required. **Language is set on `/splash`, not here. Country/city are deferred to a later stage** (not collected in Stage 1) |
 | `/welcome` | "You're all set" | Post-signup confirmation → `/home` |
 | `/discover` | **Discover** | Tab. Always-seeded feed, no empty state |
-| `/home` | **Home** | Tab. **Default landing.** Sections: NEXT UP · You're hosting · This week · Host CTA (+ transient JUST PLAYED). Pending **invites surface as a transient pop-up sheet over Home** on load (see §5 invite flow); accepted invites land in NEXT UP/This week |
+| `/home` | **Home** | Tab. **Default landing.** Sections (capped at 3 each, "See all" when >3): NEXT UP · You're hosting (full card) · This week (brief card) · Matches you saved (brief card; bookmarked, not joined) · Host CTA (+ transient JUST PLAYED). Pending **invites surface as a transient pop-up sheet over Home** on load (see §5 invite flow); accepted invites land in NEXT UP/This week |
 | `/chat` | **Chat** | Tab. Unified inbox; notifications inline in threads. "Decide later" invites land here as an actionable notification |
 | `/chat/:threadId` | Chat thread | Sub-screen. Canonical group **or** DM thread (deep-link, never fork). No chat before joining |
-| `/my-matches` | My Matches | Sub-screen of Home (hosting "See all" archive) |
-| `/matches/new` | Create-a-Match | Sub-screen. Holds a **draft** object across the whole create flow |
+| `/my-matches` | My Matches | Sub-screen of Home (hosting "See all" archive; `?filter=week` = This week "See all") |
+| `/saved` | Saved Matches | Sub-screen of Home ("Matches you saved" See all). Bookmarked, not-yet-joined matches |
+| `/matches/new` | Create-a-Match | Sub-screen. Holds a **draft** object across the whole create flow. **Time fields order: Date → Duration → Start time → End time**; End time **auto-computes** from Start + Duration (recomputes when either changes; handles day-rollover) |
 | `/matches/new/location` | Choose Location | Sub-screen. Search · recent · curated · add custom → returns venue + court # to the draft |
 | `/matches/new/review` | Review / Confirm | Sub-screen. Pre-filled from the draft → on confirm `/home` + toast |
 | `/matches/:id` | Match Details | Sub-screen. Result is canonical here |
@@ -179,6 +182,14 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 
 **Discover feed is always seeded** — new users never see a blank cold-start. No empty state.
 
+**Home section display (Stage 1 rule):** NEXT UP unchanged. **You're hosting**, **This week**, **Matches you saved** each render at most **3** cards; a **"See all"** at the section header inline-start appears only when the section holds **>3**. Card variant: You're hosting = **full** card; This week & Matches you saved = **brief** card. All variants come from the one canonical match card via a `variant` prop — never per-section components.
+
+**Matches you saved (saved ≠ joined):** a user can **bookmark a match they haven't joined** via a save toggle on the canonical card. Saving is a personal bookmark only — it does **not** join, request, or hold a slot (consistent with the no-slot-hold rule). A match leaves the Saved section when the user **joins** it (moves to NEXT UP/This week), **un-saves** it, or it's **no longer joinable** (full/cancelled/started — read-time, no cron). Saved state reflects **live** on the card's bookmark icon everywhere it renders (Discover, Home, Match Details) via Realtime / shared store. Backed by `saved_matches` (see §6).
+
+**Skill-level label display:** stored value unchanged — display-only, applied via a **single shared formatter** consumed by every surface (canonical card, View/Other-Player Profile, Match Details, etc.). **Single level → full word:** `int` → *Intermediate*, `low int` → *Low Intermediate*, `high int` → *High Intermediate*. **A range (two endpoints) → abbreviated** to fit the space: e.g. *Low Int – High Int*, *Int – High Int*. Provide both full + abbreviated AR strings in i18n; keep labels LTR-safe in mixed text.
+
+**Match time fields (Create-a-Match / Match Edit):** field order is **Date → Duration → Start time → End time**. The user picks **Duration** before the times; entering **Start time auto-fills End time = start + duration**. Changing Start time or Duration recomputes End time; handle day-rollover (e.g. 23:30 + 90m). Values carry forward into review/confirm and onto the created card; `start_time`/`end_time` on `matches` are written from the computed values.
+
 ---
 
 ## 6. Data model (Supabase)
@@ -186,11 +197,12 @@ Extracted from the live EN screens (`Connect! — Design Tokens.pdf`). **Never h
 Apply **Row Level Security on all tables.**
 
 - `users` — id, name, email, phone, avatar_url, sport, skill_level, language (ar/en — **set on `/splash`**), dob, **gender** (`male`/`female` — required, NOT NULL, CHECK/enum; public), **city/location** (nullable — **deferred to a later stage, not collected in Stage 1 sign-up**), **bio** (text, nullable), attendance_rate, created_at
-- `matches` — id, host_id, sport, venue_id (FK nullable), venue_name, venue_location, court_number, start_time, end_time, skill_level, total_spots, spots_available, fee_total, fee_per_player (display only), join_mode (`open`/`approval`/`invite`), status, notes, created_at
+- `matches` — id, host_id, sport, venue_id (FK nullable), venue_name, venue_location, court_number, start_time, end_time (computed from start + chosen duration), skill_level (single level **or** a min–max range; label rendered per §5 skill-level display rule), total_spots, spots_available, fee_total, fee_per_player (display only), join_mode (`open`/`approval`/`invite`), status, notes, created_at
 - `match_players` — id, match_id, player_id, joined_at, attended
 - `match_requests` — id, match_id, player_id, kind (`request`/`invite`/`waitlist`), status (`requested`/`invited`/`waitlisted`/`approved`/`accepted`/`promoted`/`joined`/`declined`/`left`/`expired`), created_at. RLS so only the host and the player involved can see/act. (`request` = player→host; `invite` = host→player; `waitlist` = player joins the FIFO queue on a full match.) Add **unique(match_id, player_id, kind)** so a player can't double-waitlist. Waitlist position = `created_at` order; FIFO promotion runs in the cancellation action, not a trigger.
 - `no_show_reports` — id, match_id, reported_player, reporter_id, created_at, **unique(match_id, reported_player, reporter_id)**. Confirmed no-shows computed at read time via a view.
 - `match_results` — id, match_id, player_id, result (win/loss/draw) — optional, feeds win rate
+- `saved_matches` — id, user_id, match_id, created_at, **unique(user_id, match_id)**. Personal bookmarks of not-yet-joined matches (Home "Matches you saved"). RLS so a user sees/edits only their own saves.
 - `venues` — curated Doha venues (reused for Stage 3 court booking)
 - `notifications` — id, user_id, type, title_en, title_ar, body_en, body_ar, is_read, created_at
 

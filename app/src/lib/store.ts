@@ -62,13 +62,17 @@ interface DB {
    *  resurfaces a deleted thread, iMessage-style). */
   archivedThreadIds: string[]
   deletedThreadAt: Record<string, string>
+  /** count of Chat notifications (Alerts) the user has already seen — drives the
+   *  Chat-tab badge: it clears once the inbox is opened and only re-appears when
+   *  a genuinely NEW notification arrives. Device-local, persisted like above. */
+  notifSeenCount: number
 }
 
 /** chat inbox prefs persist to localStorage so archive/delete survive reload
  *  (no Supabase table — device-local, like block/save/read state). */
 const CHAT_PREFS_KEY = 'connect.chatPrefs'
 
-function loadChatPrefs(): { archivedThreadIds: string[]; deletedThreadAt: Record<string, string> } {
+function loadChatPrefs(): { archivedThreadIds: string[]; deletedThreadAt: Record<string, string>; notifSeenCount: number } {
   try {
     const raw = localStorage.getItem(CHAT_PREFS_KEY)
     if (raw) {
@@ -76,17 +80,18 @@ function loadChatPrefs(): { archivedThreadIds: string[]; deletedThreadAt: Record
       return {
         archivedThreadIds: Array.isArray(p.archivedThreadIds) ? p.archivedThreadIds : [],
         deletedThreadAt: p.deletedThreadAt && typeof p.deletedThreadAt === 'object' ? p.deletedThreadAt : {},
+        notifSeenCount: typeof p.notifSeenCount === 'number' ? p.notifSeenCount : 0,
       }
     }
   } catch {
     /* storage unavailable / malformed — start clean */
   }
-  return { archivedThreadIds: [], deletedThreadAt: {} }
+  return { archivedThreadIds: [], deletedThreadAt: {}, notifSeenCount: 0 }
 }
 
 function saveChatPrefs(d: DB) {
   try {
-    localStorage.setItem(CHAT_PREFS_KEY, JSON.stringify({ archivedThreadIds: d.archivedThreadIds, deletedThreadAt: d.deletedThreadAt }))
+    localStorage.setItem(CHAT_PREFS_KEY, JSON.stringify({ archivedThreadIds: d.archivedThreadIds, deletedThreadAt: d.deletedThreadAt, notifSeenCount: d.notifSeenCount }))
   } catch {
     /* storage unavailable — prefs stay in-memory only */
   }
@@ -109,6 +114,7 @@ const SEEDED: DB = {
   savedMatchIds: [],
   archivedThreadIds: CHAT_PREFS.archivedThreadIds,
   deletedThreadAt: CHAT_PREFS.deletedThreadAt,
+  notifSeenCount: CHAT_PREFS.notifSeenCount,
 }
 
 /** post-onboarding "fresh account" flag — persists so a reload after the
@@ -168,6 +174,7 @@ const EMPTY_DB: DB = {
   noShowReports: [], chatThreads: [], chatMessages: [], threadReadAt: {},
   blockedUserIds: [], savedMatchIds: [],
   archivedThreadIds: CHAT_PREFS.archivedThreadIds, deletedThreadAt: CHAT_PREFS.deletedThreadAt,
+  notifSeenCount: CHAT_PREFS.notifSeenCount,
 }
 
 // Live mode (Supabase configured): start empty, hydrate on connectLive(). Mock
@@ -251,7 +258,9 @@ async function rehydrate() {
   if (!supabase) return
   try {
     const snap = await fetchSnapshot(supabase)
-    // keep client-only state (block/save/read) that has no table yet
+    // snap carries savedMatchIds (saved_matches table, RLS-scoped); block/read
+    // state (blockedUserIds/threadReadAt) has no table yet, so it's preserved by
+    // the spread since `snap` doesn't include those keys.
     db = { ...db, ...snap }
     liveHydrated = true // first snapshot is in — release the route guard
     emit()
@@ -409,16 +418,48 @@ export function myInvites(d: DB, userId = currentUserId): MatchRequest[] {
 }
 
 /** join requests awaiting MY approval as host — the "request review" feed in
- *  the Chat Alerts pill. Pending requests on my own non-cancelled matches,
- *  newest first. */
+ *  the Chat Alerts pill. Pending ('requested') requests on my own upcoming
+ *  matches, newest first. Includes requests that have just `expired` (a sibling
+ *  request won the last spot, §5) so they FLIP to a disabled "no longer
+ *  available" state in place rather than vanishing; once the match is past they
+ *  drop. Whether a row is still actionable is read-time → `requestIsActionable`. */
 export function myHostRequests(d: DB, userId = currentUserId): MatchRequest[] {
   return d.matchRequests
-    .filter((r) => r.kind === 'request' && r.status === 'requested')
+    .filter((r) => r.kind === 'request' && (r.status === 'requested' || r.status === 'expired'))
     .filter((r) => {
       const m = d.matches.find((x) => x.id === r.match_id)
-      return !!m && m.host_id === userId && m.status !== 'cancelled'
+      if (!m || m.host_id !== userId || m.status === 'cancelled') return false
+      const s = computeStatus(m)
+      return s === 'open' || s === 'full'
     })
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+/** Is a join request still actionable (host can Approve)? Read-time, no slot
+ *  hold (§5): a 'requested' row is live only while its match is still open with
+ *  a free spot. Once full/live/past/cancelled — or already resolved — it's
+ *  effectively expired and the Approve/Decline controls go inert. */
+export function requestIsActionable(d: DB, r: MatchRequest): boolean {
+  if (r.kind !== 'request' || r.status !== 'requested') return false
+  const m = d.matches.find((x) => x.id === r.match_id)
+  if (!m || m.status === 'cancelled' || m.spots_available <= 0) return false
+  return computeStatus(m) === 'open'
+}
+
+/** Count of actionable join requests on one match — drives the Home "You're
+ *  hosting" card "{n} requests" pill. Pending requests on a full match are
+ *  read-time expired (§5) so the pill clears the moment the match fills. */
+export function pendingRequestCount(d: DB, matchId: string): number {
+  return d.matchRequests.filter((r) => r.match_id === matchId && requestIsActionable(d, r)).length
+}
+
+/** Items awaiting the user's attention in Chat — actionable join requests on
+ *  matches they host, invites sent to them, and their waitlist standing. Powers
+ *  the Chat tab badge + the Alerts pill (CLAUDE.md §4 — notifications live in
+ *  Chat, never a Home bell). Non-actionable (full/expired) requests don't count. */
+export function notificationCount(d: DB, userId = currentUserId): number {
+  const reqs = myHostRequests(d, userId).filter((r) => requestIsActionable(d, r)).length
+  return myInvites(d, userId).length + reqs + myWaitlistEntries(d, userId).length
 }
 
 /** my active waitlist entries — the "waitlist review" feed in the Chat Alerts
@@ -479,14 +520,42 @@ export function discoverFeed(d: DB): Match[] {
   return discoverMatches(d).filter((m) => m.host_id !== currentUserId)
 }
 
+/** Chronological order for every match list (Home sections + "See all"):
+ *  soonest start_time first, ties broken by created_at — read-time, stable. */
+export const byStartThenCreated = (a: Match, b: Match) =>
+  a.start_time.localeCompare(b.start_time) || a.created_at.localeCompare(b.created_at)
+
 export function joinedMatches(d: DB, userId = currentUserId): Match[] {
-  return d.matches
-    .filter((m) => isJoined(d, m.id, userId))
-    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+  return d.matches.filter((m) => isJoined(d, m.id, userId)).sort(byStartThenCreated)
 }
 
 export function hostedMatches(d: DB, userId = currentUserId): Match[] {
-  return d.matches.filter((m) => m.host_id === userId).sort((a, b) => a.start_time.localeCompare(b.start_time))
+  return d.matches.filter((m) => m.host_id === userId).sort(byStartThenCreated)
+}
+
+/** matches you've joined that are still ahead (open/full), soonest first. The
+ *  first is NEXT UP; the rest (minus ones you host) are "This week" (§4). */
+export function upcomingJoinedMatches(d: DB, userId = currentUserId): Match[] {
+  return joinedMatches(d, userId).filter((m) => {
+    const s = computeStatus(m)
+    return s === 'open' || s === 'full'
+  })
+}
+
+/** Home "This week" — upcoming joined matches after NEXT UP, excluding ones you
+ *  host (those live under "You're hosting"). */
+export function thisWeekMatches(d: DB, userId = currentUserId): Match[] {
+  const hostedIds = new Set(hostedMatches(d, userId).map((m) => m.id))
+  return upcomingJoinedMatches(d, userId).slice(1).filter((m) => !hostedIds.has(m.id))
+}
+
+/** Home "Matches you saved" — bookmarked, NOT joined, and still joinable
+ *  (open). A match drops out the moment it's joined / full / cancelled /
+ *  started, computed at read time (no cron) — CLAUDE.md §5. */
+export function savedMatches(d: DB): Match[] {
+  return d.matches
+    .filter((m) => d.savedMatchIds.includes(m.id) && !isJoined(d, m.id) && computeStatus(m) === 'open')
+    .sort(byStartThenCreated)
 }
 
 /* ── chat selectors — one canonical thread per match / per pair,
@@ -610,7 +679,10 @@ export function threadTimeline(d: DB, threadId: string): TimelineItem[] {
     if (m && m.host_id === currentUserId && m.status !== 'cancelled') {
       for (const r of d.matchRequests) {
         if (r.match_id !== m.id || r.kind !== 'request') continue
-        if (r.status !== 'requested' && r.status !== 'declined') continue
+        // requested → actionable/disabled card; declined/expired → follow-up line
+        // (expired = a sibling won the last spot, §5). approved/joined collapse to
+        // the trigger's "X joined" system line, so they're skipped here.
+        if (r.status !== 'requested' && r.status !== 'declined' && r.status !== 'expired') continue
         const player = getUser(d, r.player_id)
         if (!player) continue
         items.push({ kind: 'decision', id: `dec-${r.id}`, created_at: r.created_at, request: r, match: m, player })
@@ -923,14 +995,20 @@ export const actions = {
   },
 
   /** host approves: requested → approved → joined; first to fill wins,
-   *  remaining pending requests expire when the match fills. */
-  approveRequest(requestId: string) {
-    if (liveReady) { void rpc('approve_request', { p_request: requestId }); return }
+   *  remaining pending requests expire when the match fills (§5 no slot hold).
+   *  Returns 'joined' on success or 'full' if the last slot was taken between
+   *  render and tap, so the caller surfaces "Match just filled" instead of
+   *  over-filling. Returns null in live mode (RPC is async + raises on full). */
+  approveRequest(requestId: string): 'joined' | 'full' | null {
+    if (liveReady) { void rpc('approve_request', { p_request: requestId }); return null }
+    let result: 'joined' | 'full' | null = null
     mutate((d) => {
       const r = d.matchRequests.find((x) => x.id === requestId)
       if (!r) return d
       const m = d.matches.find((x) => x.id === r.match_id)
-      if (!m || m.spots_available <= 0) return d
+      if (!m) return d
+      if (m.spots_available <= 0) { result = 'full'; return d }
+      result = 'joined'
       const spotsLeft = m.spots_available - 1
       // mirror the live `_sync_thread_on_join` trigger: add the approved player
       // to the match's group thread and announce the join inline (§7 follow-up).
@@ -961,6 +1039,7 @@ export const actions = {
           : d.chatMessages,
       }
     })
+    return result
   },
 
   /** host → player invite. A pending invite holds NO slot (CLAUDE.md §5). */
@@ -1098,7 +1177,8 @@ export const actions = {
         p_court_number: input.court_number ?? null,
         p_start: input.start_time,
         p_end: input.end_time,
-        p_skill: input.skill_level,
+        p_skill_min: input.skill_min,
+        p_skill_max: input.skill_max,
         p_total_spots: input.total_spots,
         p_fee_total: input.fee_total ?? 0,
         p_fee_per_player: input.fee_per_player ?? 0,
@@ -1154,7 +1234,7 @@ export const actions = {
       if (!supabase) return
       // map app fields → matches columns (drop route_*/round_trip/status — not
       // in the Stage-1 schema; cancel goes through cancelMatch)
-      const cols = ['sport', 'name', 'venue_id', 'venue_name', 'venue_location', 'court_number', 'start_time', 'end_time', 'skill_level', 'total_spots', 'spots_available', 'fee_total', 'fee_per_player', 'join_mode', 'notes']
+      const cols = ['sport', 'name', 'venue_id', 'venue_name', 'venue_location', 'court_number', 'start_time', 'end_time', 'skill_min', 'skill_max', 'total_spots', 'spots_available', 'fee_total', 'fee_per_player', 'join_mode', 'notes']
       const src = patch as Record<string, unknown>
       const dbPatch: Record<string, unknown> = {}
       for (const k of cols) if (k in src) dbPatch[k] = src[k] ?? null
@@ -1253,6 +1333,19 @@ export const actions = {
         { id: newId('msg'), thread_id: threadId, sender_id: currentUserId, body, created_at: new Date().toISOString(), system: true, tone, icon },
       ],
     }))
+  },
+
+  /** record that the user has seen the current Chat notifications (Alerts) up to
+   *  `count` — called when the inbox is open so the Chat-tab badge clears, and
+   *  to clamp `seen` back down when the live count drops (an actioned/expired
+   *  alert must never suppress a genuinely new one). No-op if unchanged. */
+  markNotificationsSeen(count: number) {
+    mutate((d) => {
+      if (d.notifSeenCount === count) return d
+      const next = { ...d, notifSeenCount: count }
+      saveChatPrefs(next)
+      return next
+    })
   },
 
   markThreadRead(threadId: string) {
@@ -1362,11 +1455,20 @@ export const actions = {
   },
 
   toggleSaveMatch(matchId: string) {
+    const wasSaved = db.savedMatchIds.includes(matchId)
+    // optimistic in BOTH modes so the bookmark flips instantly everywhere the
+    // card renders; live mode then persists to saved_matches (Realtime + the
+    // afterWrite rehydrate confirm it, and propagate across windows).
     mutate((d) => ({
       ...d,
-      savedMatchIds: d.savedMatchIds.includes(matchId)
-        ? d.savedMatchIds.filter((id) => id !== matchId)
-        : [...d.savedMatchIds, matchId],
+      savedMatchIds: wasSaved ? d.savedMatchIds.filter((id) => id !== matchId) : [...d.savedMatchIds, matchId],
     }))
+    if (liveReady && supabase) {
+      afterWrite(
+        wasSaved
+          ? supabase.from('saved_matches').delete().eq('user_id', currentUserId).eq('match_id', matchId)
+          : supabase.from('saved_matches').insert({ user_id: currentUserId, match_id: matchId }),
+      )
+    }
   },
 }

@@ -34,8 +34,13 @@ export function AvatarStack({
   const bg = dark ? 'rgba(244,240,232,0.18)' : 'rgba(26,26,26,0.08)'
   const fg = dark ? 'var(--surface-page)' : 'var(--color-text)'
   const ring = dark ? 'var(--color-text)' : '#fff'
-  const shown = Math.min(filled, 3)
-  const empty = max - filled
+  // Guard against inconsistent data (e.g. spots_available > total_spots): a
+  // negative `filled` would make Array.from({length}) throw RangeError and
+  // crash the whole card. Clamp to a sane [0, max] window.
+  const safeMax = Math.max(0, max)
+  const safeFilled = Math.max(0, Math.min(filled, safeMax))
+  const shown = Math.min(safeFilled, 3)
+  const empty = safeMax - safeFilled
   return (
     <div className="inline-flex items-center">
       {Array.from({ length: shown }, (_, i) => (

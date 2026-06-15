@@ -101,7 +101,7 @@ export function LifecycleAction({ status, matchId }: { status: MatchStatus; matc
   if (status === 'closed') {
     return (
       <Link to={`/post-match/${matchId}`} className={`${base} border border-ink/16 bg-transparent`} style={{ color: 'rgba(26,26,26,0.6)' }}>
-        <Lock size={13} strokeWidth={2} /> Locked
+        <Lock size={13} strokeWidth={2} /> Completed
       </Link>
     )
   }

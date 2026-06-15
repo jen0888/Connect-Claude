@@ -1061,7 +1061,7 @@ export function OnboardingSportScreen() {
 }
 
 /* ── Q4 — Skill level (Baby Beginner → Pro, 7 steps) ────────────────── */
-const SKILLS: OnboardingSkill[] = ['baby_beginner', 'beginner', 'low_intermediate', 'intermediate', 'high_intermediate', 'advanced', 'pro']
+const SKILLS: OnboardingSkill[] = ['baby', 'beginner', 'low_int', 'int', 'high_int', 'advance', 'pro']
 
 export function OnboardingSkillScreen() {
   const { t } = useI18n()

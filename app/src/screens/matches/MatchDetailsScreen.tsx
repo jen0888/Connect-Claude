@@ -5,10 +5,10 @@ import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { MiniMap, PlayerDots } from '@/components/controls'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, invitablePlayers, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, currentUserId, getUser, invitablePlayers, isJoined, matchPlayers, pendingRequest, requestIsActionable, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
-import { courtNumberLabel, dayLabel, hm, initials, skillLabel, sportLabel, whenLabel } from '@/lib/format'
-import type { Match, SkillLevel } from '@/lib/types'
+import { courtNumberLabel, dayLabel, hm, initials, skillLabel, skillRangeText, skillTierLabel, sportLabel, whenLabel } from '@/lib/format'
+import { SKILL_TIERS, skillOrd, type Match } from '@/lib/types'
 import { DecisionButtons, ProfilePeek, ResolvedNote } from './ApprovalCard'
 
 /** Match Details (match-details-other-v2.jsx, Editorial Calm).
@@ -17,31 +17,8 @@ import { DecisionButtons, ProfilePeek, ResolvedNote } from './ApprovalCard'
  *  Trust signals shown for the host are CLAUDE.md's: matches played +
  *  attendance — never star ratings (no ratings in Stage 1). */
 
-const LEVEL_NAMES = ['Baby', 'Beginner', 'Low int.', 'High int.', 'Advanced']
-
-/** schema single skill_level → display range on the 1–5 bar.
- *  Matches store the coarse levels; the fine player-ladder steps are
- *  mapped anyway so the function stays total over SkillLevel. */
-function levelToRange(level: SkillLevel): [number, number] {
-  switch (level) {
-    case 'baby_beginner':
-      return [1, 1]
-    case 'beginner':
-      return [1, 2]
-    case 'low_intermediate':
-      return [2, 3]
-    case 'intermediate':
-      return [2, 4]
-    case 'high_intermediate':
-      return [3, 4]
-    case 'advanced':
-      return [4, 5]
-    case 'pro':
-      return [5, 5]
-    case 'any':
-      return [1, 5]
-  }
-}
+/** the 7 ordered tier labels, lowest → highest — for the skill range bar */
+const LEVEL_NAMES = SKILL_TIERS.map(skillTierLabel)
 
 function CalmIcon({ onClick, children, ariaLabel, active = false }: { onClick?: () => void; children: ReactNode; ariaLabel: string; active?: boolean }) {
   return (
@@ -124,7 +101,9 @@ function MatchDetailsBody({
   const pending = pendingRequest(db, m.id)
   const status = computeStatus(m)
   const saved = db.savedMatchIds.includes(m.id)
-  const [minLevel, maxLevel] = levelToRange(m.skill_level)
+  // 1-based positions on the 7-tier bar (skill_min/skill_max are the stored range)
+  const minLevel = skillOrd(m.skill_min) + 1
+  const maxLevel = skillOrd(m.skill_max) + 1
 
   const filled = m.total_spots - m.spots_available
   const isFull = m.spots_available <= 0
@@ -241,8 +220,8 @@ function MatchDetailsBody({
               <span className="inline-flex items-center gap-1.5 rounded-pill px-[11px] py-1.5 text-[12px] font-medium tracking-[0.01em]" style={{ background: 'rgba(26,26,26,0.06)' }}>
                 {sportLabel(m.sport)}
               </span>
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-[11px] py-1.5 text-[12px] font-medium tracking-[0.01em]" style={{ background: 'rgba(26,26,26,0.06)' }}>
-                {LEVEL_NAMES[minLevel - 1]} <span style={{ color: 'var(--color-text-muted)' }}>→</span> {LEVEL_NAMES[maxLevel - 1]}
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-[11px] py-1.5 text-[12px] font-medium tracking-[0.01em] ltr-nums" style={{ background: 'rgba(26,26,26,0.06)' }}>
+                {skillRangeText(m.skill_min, m.skill_max)}
               </span>
               {m.fee_per_player == null && (
                 <span className="inline-flex items-center gap-1.5 rounded-pill px-[11px] py-1.5 text-[12px] font-medium tracking-[0.01em]" style={{ background: 'rgba(26,26,26,0.06)' }}>
@@ -383,25 +362,25 @@ function MatchDetailsBody({
               <div>
                 <div className="mb-2 flex items-end justify-between gap-3">
                   <div className="text-[13.5px] font-medium text-ink">Skill level</div>
-                  <span className="text-[12.5px] font-medium text-ink">
-                    {LEVEL_NAMES[minLevel - 1]} <span style={{ color: 'var(--color-text-muted)' }}>→</span> {LEVEL_NAMES[maxLevel - 1]}
+                  <span className="text-[12.5px] font-medium text-ink ltr-nums">
+                    {skillRangeText(m.skill_min, m.skill_max)}
                   </span>
                 </div>
-                {/* static range bar */}
+                {/* static range bar — 7 tiers (skill_min..skill_max) */}
                 <div className="relative mt-2.5 h-[22px]">
                   <div className="absolute inset-x-0 top-[9px] h-1 rounded-sm" style={{ background: 'rgba(26,26,26,0.10)' }} />
                   <div
                     className="absolute top-[9px] h-1 rounded-sm bg-brand"
-                    style={{ insetInlineStart: `${((minLevel - 1) / 4) * 100}%`, width: `${((maxLevel - minLevel) / 4) * 100}%` }}
+                    style={{ insetInlineStart: `${((minLevel - 1) / 6) * 100}%`, width: `${((maxLevel - minLevel) / 6) * 100}%` }}
                   />
-                  {[1, 2, 3, 4, 5].map((n) => {
+                  {[1, 2, 3, 4, 5, 6, 7].map((n) => {
                     const inRange = n >= minLevel && n <= maxLevel
                     return (
                       <span
                         key={n}
                         className="absolute top-1 h-3.5 w-3.5 -translate-x-1/2 rounded-full rtl:translate-x-1/2"
                         style={{
-                          insetInlineStart: `${((n - 1) / 4) * 100}%`,
+                          insetInlineStart: `${((n - 1) / 6) * 100}%`,
                           background: inRange ? 'var(--color-brand)' : 'var(--surface-card)',
                           border: `1.5px solid ${inRange ? 'var(--color-brand)' : 'rgba(26,26,26,0.18)'}`,
                         }}
@@ -409,12 +388,12 @@ function MatchDetailsBody({
                     )
                   })}
                 </div>
-                <div className="mt-1 flex justify-between text-[9.5px] font-medium uppercase tracking-[0.08em]">
+                <div className="mt-1 flex justify-between text-[9px] font-medium uppercase tracking-[0.06em]">
                   {LEVEL_NAMES.map((l, i) => {
                     const inRange = i + 1 >= minLevel && i + 1 <= maxLevel
                     return (
                       <span key={l} style={{ color: inRange ? 'var(--color-brand)' : 'var(--color-text-muted)', fontWeight: inRange ? 600 : 500 }}>
-                        {['Baby', 'Beg', 'Low int.', 'High int.', 'Adv'][i]}
+                        {l}
                       </span>
                     )
                   })}
@@ -423,30 +402,37 @@ function MatchDetailsBody({
             </div>
           </div>
 
-          {/* host view: pending join requests — approve/decline, no slot hold */}
+          {/* host view: pending join requests — approve/decline, no slot hold (§5).
+              A request whose match has since filled is read-time expired: it stays
+              visible but flips to a non-actionable "no longer available" note. */}
           {hostView &&
             db.matchRequests
-              .filter((r) => r.match_id === m.id && r.kind === 'request' && r.status === 'requested')
+              .filter((r) => r.match_id === m.id && r.kind === 'request' && (r.status === 'requested' || r.status === 'expired'))
               .map((r) => {
                 const requester = getUser(db, r.player_id)
                 if (!requester) return null
+                const actionable = requestIsActionable(db, r)
                 return (
                   <div key={r.id} className="mt-6">
                     <Eyebrow accent="var(--color-brand)">Wants to join</Eyebrow>
                     <div className="mt-3 flex flex-col gap-3">
                       <ProfilePeek user={requester} mode="request" />
-                      <DecisionButtons
-                        mode="request"
-                        size="sm"
-                        onApprove={() => {
-                          actions.approveRequest(r.id)
-                          showToast(`${requester.name.split(' ')[0]} is in`)
-                        }}
-                        onDecline={() => {
-                          actions.declineRequest(r.id)
-                          showToast('Request declined')
-                        }}
-                      />
+                      {actionable ? (
+                        <DecisionButtons
+                          mode="request"
+                          size="sm"
+                          onApprove={() => {
+                            const res = actions.approveRequest(r.id)
+                            showToast(res === 'full' ? 'Match just filled' : `${requester.name.split(' ')[0]} is in`)
+                          }}
+                          onDecline={() => {
+                            actions.declineRequest(r.id)
+                            showToast('Request declined')
+                          }}
+                        />
+                      ) : (
+                        <ResolvedNote status="expired" text="Match full — this request is no longer available." />
+                      )}
                     </div>
                   </div>
                 )

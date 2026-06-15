@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { JoinMode, Sport } from './types'
+import type { JoinMode, SkillTier, Sport } from './types'
 import { isSupabaseConfigured } from './supabase'
 
 /** Where any "host a match" button should route, by mode.
@@ -45,8 +45,8 @@ export interface HostedMatch {
   pricePerPlayer: string // digits only
   players: number // total spots
   filled: number // spots taken (host counts as 1)
-  minLevel: number
-  maxLevel: number
+  skillMin: SkillTier
+  skillMax: SkillTier
   waitlistOpen: boolean
   waitlistSize: number
   description: string

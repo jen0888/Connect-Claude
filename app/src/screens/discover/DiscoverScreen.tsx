@@ -8,7 +8,8 @@ import { actions, discoverFeed, getUser, isJoined, matchPlayers, pendingRequest,
 import { computeStatus } from '@/lib/status'
 import { usePersistedState } from '@/lib/usePersistedState'
 import { HOST_CREATE_ROUTE } from '@/lib/hostedMatch'
-import type { Match, SkillLevel, Sport } from '@/lib/types'
+import { SKILL_TIERS, skillInRange, type Match, type SkillTier, type Sport } from '@/lib/types'
+import { skillTierLabel } from '@/lib/format'
 
 /** Discover — browse open matches (discover.jsx DiscoverScreen).
  *  Feed is always seeded, never an empty cold-start (CLAUDE.md §5);
@@ -22,12 +23,12 @@ const TIME_FILTERS = [
   { id: 'week', label: 'This week' },
   { id: 'weekend', label: 'Weekend' },
 ] as const
+// one filter per tier of the shared ladder (§3) + "Any level"; a match matches a
+// tier when that tier falls within its [skill_min, skill_max] range
 const LEVEL_FILTERS = [
-  { id: 'all', label: 'Any level' },
-  { id: 'beginner', label: 'Beginner' },
-  { id: 'intermediate', label: 'Intermediate' },
-  { id: 'advanced', label: 'Advanced' },
-] as const
+  { id: 'all' as const, label: 'Any level' },
+  ...SKILL_TIERS.map((t) => ({ id: t, label: skillTierLabel(t) })),
+]
 
 type TimeBucket = 'tonight' | 'tomorrow' | 'week' | 'weekend'
 
@@ -95,7 +96,7 @@ export function DiscoverScreen() {
     return discoverFeed(db).filter((m) => {
       if (sport !== 'All' && m.sport !== (sport.toLowerCase() as Sport)) return false
       if (time !== 'all' && bucketOf(m) !== time) return false
-      if (level !== 'all' && m.skill_level !== (level as SkillLevel) && m.skill_level !== 'any') return false
+      if (level !== 'all' && !skillInRange(level as SkillTier, m.skill_min, m.skill_max)) return false
       if (q) {
         const host = getUser(db, m.host_id)
         const hay = [m.venue_name, m.court_number, m.route_start, m.route_end, m.sport, host?.name]

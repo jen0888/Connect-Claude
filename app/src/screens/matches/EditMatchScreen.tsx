@@ -17,15 +17,17 @@ import {
 } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
-import { CTA, DualSlider, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
+import { CTA, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
+import { SkillRangeSlider } from '@/components/SkillRangeSlider'
 import { useToast } from '@/components/Toast'
 import { getUser, useDB } from '@/lib/store'
 import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
-import type { JoinMode, Sport } from '@/lib/types'
+import type { JoinMode, SkillTier, Sport } from '@/lib/types'
 import { clearHostedMatch, readHostedMatch, writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
-import { initials, skillLabel } from '@/lib/format'
-import { keyOf, labelFromKey } from '@/lib/datetime'
+import { initials, skillLabel, skillTierLabel, skillTierLabelFull } from '@/lib/format'
+import { diffMinutes, keyOf, labelFromKey } from '@/lib/datetime'
 import { sportEmoji } from '@/lib/sports'
+import { useI18n } from '@/i18n'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
 import { InvitePicker } from './InvitePicker'
 import { WhenCard } from './WhenCard'
@@ -43,7 +45,6 @@ const SPORTS: { id: Sport; label: string }[] = [
   { id: 'running', label: 'Running' },
 ]
 
-const LEVEL_NAMES = ['Baby', 'Beginner', 'Low int.', 'High int.', 'Advanced']
 const cardCls = 'rounded-[22px] border bg-card'
 const cardStyle = { borderColor: 'rgba(26,26,26,0.10)' }
 const hairline = 'rgba(26,26,26,0.10)'
@@ -93,8 +94,8 @@ const SEED = {
   isFree: false,
   pricePerPlayer: '25',
   players: 2,
-  minLevel: 2,
-  maxLevel: 4,
+  skillMin: 'beginner' as SkillTier,
+  skillMax: 'advance' as SkillTier,
   waitlistOpen: false,
   waitlistSize: 3,
   description: '',
@@ -115,8 +116,8 @@ const CREATE_DEFAULTS = {
   isFree: false,
   pricePerPlayer: '',
   players: 4,
-  minLevel: 2,
-  maxLevel: 4,
+  skillMin: 'beginner' as SkillTier,
+  skillMax: 'advance' as SkillTier,
   waitlistOpen: false,
   waitlistSize: 1,
   description: '',
@@ -133,6 +134,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
   const navigate = useNavigate()
   const { showToast } = useToast()
   const db = useDB()
+  const { t } = useI18n()
 
   // Edit pre-fills from the live match (localStorage source of truth); create
   // opens from blank defaults with nothing pre-loaded. Read once on mount.
@@ -153,6 +155,12 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
   const [dateKey, setDateKey] = usePersistedState(dk('dateKey'), stored?.dateKey ?? (isCreate ? keyOf(new Date()) : fallback.dateKey))
   const [startTime, setStartTime] = usePersistedState(dk('startTime'), stored?.startTime ?? fallback.startTime)
   const [endTime, setEndTime] = usePersistedState(dk('endTime'), stored?.endTime ?? fallback.endTime)
+  // Match length, picked first; End is derived from Start + duration. Persisted in
+  // the draft so it carries across the flow and the saved end_time can't drift.
+  const [duration, setDuration] = usePersistedState(
+    dk('duration'),
+    diffMinutes(stored?.startTime ?? fallback.startTime, stored?.endTime ?? fallback.endTime),
+  )
   const [matchType, setMatchType] = usePersistedState(dk('matchType'), stored?.matchType ?? fallback.matchType)
   const [gender, setGender] = usePersistedState(dk('gender'), stored?.gender ?? fallback.gender)
   // Host picks how many players they NEED (others); they hold one more spot, so
@@ -160,8 +168,8 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
   // HostedMatch.players stays the total; map it back to needed on load.
   const [needed, setNeeded] = usePersistedState(dk('players'), (stored?.players ?? fallback.players) - 1)
   const totalSpots = needed + 1
-  const [minLevel, setMinLevel] = usePersistedState(dk('minLevel'), stored?.minLevel ?? fallback.minLevel)
-  const [maxLevel, setMaxLevel] = usePersistedState(dk('maxLevel'), stored?.maxLevel ?? fallback.maxLevel)
+  const [skillMin, setSkillMin] = usePersistedState<SkillTier>(dk('skillMin'), stored?.skillMin ?? fallback.skillMin)
+  const [skillMax, setSkillMax] = usePersistedState<SkillTier>(dk('skillMax'), stored?.skillMax ?? fallback.skillMax)
   const [isFree, setIsFree] = usePersistedState(dk('isFree'), stored?.isFree ?? fallback.isFree)
   const [pricePerPlayer, setPricePerPlayer] = usePersistedState(dk('pricePerPlayer'), stored?.pricePerPlayer ?? fallback.pricePerPlayer)
   // joinMode supersedes the old binary requireApproval; fall back to it for
@@ -198,8 +206,8 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
       pricePerPlayer: isFree ? '' : pricePerPlayer,
       players: totalSpots,
       filled: 1, // host always holds the first spot
-      minLevel,
-      maxLevel,
+      skillMin,
+      skillMax,
       waitlistOpen,
       waitlistSize,
       description: description.trim(),
@@ -303,6 +311,8 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
               onStartTime={setStartTime}
               endTime={endTime}
               onEndTime={setEndTime}
+              duration={duration}
+              onDuration={setDuration}
               restrictPast={isCreate}
             />
           </div>
@@ -455,22 +465,18 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
               <FieldRow
                 label="Skill level"
                 rightLabel={
-                  <span className="text-[12.5px] font-medium text-ink">
-                    {LEVEL_NAMES[minLevel - 1]} <span style={{ color: 'var(--color-text-muted)' }}>→</span> {LEVEL_NAMES[maxLevel - 1]}
+                  <span className="text-[12.5px] font-medium text-ink ltr-nums">
+                    {skillMin === skillMax
+                      ? t('skill.range.single').replace('{x}', skillTierLabelFull(skillMin))
+                      : t('skill.range.span').replace('{x}', skillTierLabel(skillMin)).replace('{y}', skillTierLabel(skillMax))}
                   </span>
                 }
               >
                 <div className="mt-2.5">
-                  <DualSlider
-                    value={[minLevel, maxLevel]}
-                    min={1}
-                    max={5}
-                    onChange={([lo, hi]) => {
-                      setMinLevel(lo)
-                      setMaxLevel(hi)
-                    }}
-                    ticks={['Baby', 'Beg', 'Low int.', 'High int.', 'Adv']}
-                  />
+                  <SkillRangeSlider min={skillMin} max={skillMax} onChange={(lo, hi) => { setSkillMin(lo); setSkillMax(hi) }} />
+                  <p className="mt-2 text-[11.5px] leading-[1.4]" style={{ color: 'var(--color-text-muted)' }}>
+                    {t('skill.range.help')}
+                  </p>
                 </div>
               </FieldRow>
             </div>
@@ -541,7 +547,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
                   columns={3}
                   options={[
                     { value: 'open', label: 'Open', icon: <LockOpen size={14} strokeWidth={1.8} /> },
-                    { value: 'approval', label: 'Approval', icon: <Lock size={14} strokeWidth={1.8} /> },
+                    { value: 'approval', label: 'Request', icon: <Lock size={14} strokeWidth={1.8} /> },
                     { value: 'invite', label: 'Invite', icon: <MailPlus size={14} strokeWidth={1.8} /> },
                   ]}
                 />

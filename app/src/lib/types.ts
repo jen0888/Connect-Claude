@@ -10,17 +10,21 @@ export type Sport = 'padel' | 'tennis' | 'badminton' | 'running'
  *  CHECK constraint (CLAUDE.md §6). */
 export type Gender = 'male' | 'female'
 
-/** 7-step player ladder. Matches keep using the coarse levels
- *  (beginner/intermediate/advanced via the 1–5 slider) plus 'any'. */
-export type SkillLevel =
-  | 'baby_beginner'
-  | 'beginner'
-  | 'low_intermediate'
-  | 'intermediate'
-  | 'high_intermediate'
-  | 'advanced'
-  | 'pro'
-  | 'any'
+/** The single ordered skill scale, shared app-wide (matches `skill_min`/`skill_max`,
+ *  profile skill, Discover filter, display). Lowest → highest, exactly 7 tiers —
+ *  store the value, render the label via `format.skillTierLabel`. */
+export const SKILL_TIERS = ['baby', 'beginner', 'low_int', 'int', 'high_int', 'advance', 'pro'] as const
+export type SkillTier = (typeof SKILL_TIERS)[number]
+/** tier ordinal (0..6) — for range math + the skill_min ≤ skill_max guard */
+export function skillOrd(t: SkillTier): number {
+  return SKILL_TIERS.indexOf(t)
+}
+/** true if `tier` falls within the inclusive [min, max] range, by tier order */
+export function skillInRange(tier: SkillTier, min: SkillTier, max: SkillTier): boolean {
+  return skillOrd(tier) >= skillOrd(min) && skillOrd(tier) <= skillOrd(max)
+}
+/** a concrete tier, or 'any' (no preference) for the profile/filter context */
+export type SkillLevel = SkillTier | 'any'
 
 export type JoinMode = 'open' | 'approval' | 'invite'
 
@@ -68,7 +72,9 @@ export interface Match {
   round_trip: boolean
   start_time: string // ISO
   end_time: string // ISO
-  skill_level: SkillLevel
+  /** open-to skill RANGE, by tier order; skill_min === skill_max ⇒ a single level */
+  skill_min: SkillTier
+  skill_max: SkillTier
   total_spots: number
   spots_available: number
   fee_total: number | null // informational only — never a transaction

@@ -1,8 +1,8 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bookmark, CalendarCheck, Check, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, X } from 'lucide-react'
+import { Bookmark, CalendarCheck, Check, ChevronRight, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, UserPlus, X } from 'lucide-react'
 import type { Match, MatchStatus, User } from '@/lib/types'
-import { artType, courtLabel, courtNumberLabel, hm, matchKind, skillRangeLabel, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
+import { artType, courtLabel, courtNumberLabel, hm, matchKind, skillRangeText, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
 import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
@@ -23,6 +23,10 @@ export interface MatchCardProps {
   match: Match
   host?: User | null
   players?: User[]
+  /** 'full' (default) = the tall image-header card; 'brief' = a condensed
+   *  horizontal row (Home "This week" / "Matches you saved"). SAME component —
+   *  never a separate per-section card (CLAUDE.md §4/§8). */
+  variant?: 'brief' | 'full'
   action?: 'view' | 'join' | 'cancel' | 'edit' | 'attend'
   /** attend-toggle state (action='attend') */
   attended?: boolean
@@ -42,12 +46,17 @@ export interface MatchCardProps {
   onToggleSave?: () => void
   metaText?: string
   hostNote?: string
+  /** host-only passive indicator: count of pending join requests on an approval
+   *  match (Home "You're hosting"). Renders a count pill that taps through to
+   *  Match Details. 0/undefined hides it. Never forks the card (CLAUDE.md §4). */
+  requestCount?: number
 }
 
 export function MatchCard({
   match,
   host,
   players = [],
+  variant = 'full',
   action = 'view',
   attended = false,
   joinStatus = null,
@@ -62,6 +71,7 @@ export function MatchCard({
   onToggleSave,
   metaText,
   hostNote,
+  requestCount = 0,
 }: MatchCardProps) {
   const navigate = useNavigate()
   const st = status ?? computeStatus(match)
@@ -217,10 +227,104 @@ export function MatchCard({
     )
   }
 
+  /* brief = condensed horizontal row (Home "This week" / "Matches you saved").
+     Same component, same props (action / saved / onToggleSave) — just a
+     compact layout (CLAUDE.md §4: never a per-section card). */
+  if (variant === 'brief') {
+    return (
+      <div
+        onClick={onCardClick}
+        className="flex shrink-0 cursor-pointer items-stretch overflow-hidden rounded-[18px] border bg-card shadow-row transition-transform hover:-translate-y-px"
+        style={{ borderColor: 'rgba(26,26,26,0.08)' }}
+      >
+        {/* left art panel — sport · day · time */}
+        <div
+          className="relative w-[96px] shrink-0"
+          style={{ filter: dim ? 'grayscale(0.6) brightness(0.92)' : dimImage ? 'grayscale(0.5)' : 'none', opacity: dimImage ? 0.55 : 1 }}
+        >
+          <div className="absolute inset-0">
+            <SportArt type={artType(match)} />
+          </div>
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 22%, transparent) 0%, transparent 55%)' }}
+          />
+          <div className="absolute start-2 top-2 text-[9.5px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'rgba(244,240,232,0.92)' }}>
+            {whenLabel(match.start_time)}
+          </div>
+          <div className="absolute bottom-2 start-2 font-display text-[20px] leading-none text-onbrand ltr-nums">{hm(match.start_time)}</div>
+        </div>
+
+        {/* right content */}
+        <div className="flex min-w-0 flex-1 flex-col justify-between px-3.5 pt-[11px] pb-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="mb-1 flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>
+                <span className="inline-flex items-center gap-[5px]">
+                  <span className="h-[5px] w-[5px] rounded-full bg-accent" />
+                  {sportLabel(match.sport)}
+                </span>
+                <span className="text-[16px] leading-none" style={{ color: 'var(--color-text)' }}>·</span>
+                <span className="truncate">{match.venue_name}</span>
+              </div>
+              <div className="font-display text-[19px] leading-[1.1]" style={{ letterSpacing: '-0.012em', color: dim ? 'var(--color-text-faint)' : 'var(--color-text)' }}>
+                {match.name ? (
+                  match.name
+                ) : (
+                  <>
+                    {matchKind(match)} <span className="italic" style={{ color: dim ? 'var(--color-text-faint)' : 'var(--color-brand)' }}>at</span> {courtLabel(match)}
+                  </>
+                )}
+              </div>
+            </div>
+            {onToggleSave && (
+              <button
+                aria-label={saved ? 'Remove from saved' : 'Save'}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleSave()
+                }}
+                className="-me-1 -mt-0.5 inline-flex h-[22px] w-[22px] shrink-0 cursor-pointer items-center justify-center rounded-full border-none transition-colors"
+                style={{
+                  background: saved ? 'var(--color-brand)' : 'rgba(26,26,26,0.06)',
+                  color: saved ? 'var(--color-text-onbrand)' : 'var(--color-text-muted)',
+                }}
+              >
+                <Bookmark size={10} strokeWidth={1.8} fill={saved ? 'currentColor' : 'none'} />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-[9px] flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <AvatarStack initials={roster.map(userInitials)} filled={filled} max={match.total_spots} accent="var(--color-accent)" />
+              <span className="truncate whitespace-nowrap text-[11px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
+                {metaText ?? lifecycleSpots(st, match)}
+              </span>
+            </div>
+            {action === 'view' ? (
+              <span
+                className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border rtl:rotate-180"
+                style={{ color: 'var(--color-text-muted)', borderColor: 'rgba(26,26,26,0.12)' }}
+              >
+                <ChevronRight size={14} strokeWidth={2.2} />
+              </span>
+            ) : (
+              actionEl
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       onClick={onCardClick}
-      className="block cursor-pointer overflow-hidden rounded-[22px] border bg-card shadow-card transition-transform hover:-translate-y-px"
+      // shrink-0: the card always sizes to its content. Without it, in a flex
+      // column scroll container (e.g. My Matches) many cards shrink to fit the
+      // viewport — collapsing to a clipped sliver of the image, footer cut off.
+      className="block shrink-0 cursor-pointer overflow-hidden rounded-[22px] border bg-card shadow-card transition-transform hover:-translate-y-px"
       style={{ borderColor: 'rgba(26,26,26,0.08)' }}
     >
       {/* image header */}
@@ -244,13 +348,13 @@ export function MatchCard({
               e.stopPropagation()
               onToggleSave()
             }}
-            className="absolute end-2.5 top-2.5 z-2 inline-flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border-none text-onbrand backdrop-blur-[8px] transition-colors"
+            className="absolute end-2.5 top-2.5 z-2 inline-flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-full border-none text-onbrand backdrop-blur-[8px] transition-colors"
             style={{
               background: saved ? 'var(--color-brand)' : 'rgba(26,26,26,0.42)',
               boxShadow: saved ? '0 6px 14px -6px var(--color-brand)' : 'none',
             }}
           >
-            <Bookmark size={13} strokeWidth={1.8} fill={saved ? 'currentColor' : 'none'} />
+            <Bookmark size={10} strokeWidth={1.8} fill={saved ? 'currentColor' : 'none'} />
           </button>
         )}
         {showStatusBadge && !badge && <StatusBadge status={st} />}
@@ -296,7 +400,7 @@ export function MatchCard({
             </span>
             <span className="inline-flex items-center gap-[5px]">
               <Gauge size={12} strokeWidth={2} />
-              {skillRangeLabel(match.skill_level)}
+              <span className="ltr-nums">{skillRangeText(match.skill_min, match.skill_max)}</span>
             </span>
           </span>
           <span className="inline-flex flex-col gap-1">
@@ -308,9 +412,23 @@ export function MatchCard({
           </span>
         </div>
         {host && (
-          <div className="mt-2 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
-            Hosted by <span className="font-semibold" style={{ color: 'rgba(26,26,26,0.78)' }}>{host.name}</span>
-            {hostNote ? ` · ${hostNote}` : ''}
+          <div className="mt-2 flex items-center justify-between gap-2 text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="min-w-0 truncate">
+              Hosted by <span className="font-semibold" style={{ color: 'rgba(26,26,26,0.78)' }}>{host.name}</span>
+              {hostNote ? ` · ${hostNote}` : ''}
+            </span>
+            {requestCount > 0 && (
+              <Link
+                to={detailHref}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`${requestCount} pending join ${requestCount === 1 ? 'request' : 'requests'} — review`}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-2.5 py-1 text-[12.5px] font-semibold no-underline"
+                style={{ background: 'var(--color-warning)', color: 'var(--color-text-onbrand)' }}
+              >
+                <UserPlus size={12} strokeWidth={2.2} />
+                <span className="nums-tabular ltr-nums">{requestCount}</span> {requestCount === 1 ? 'request' : 'requests'}
+              </Link>
+            )}
           </div>
         )}
         <LifecycleNote status={st} />

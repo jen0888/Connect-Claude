@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Archive, ArchiveRestore, ArrowRight, Check, Layers, MailPlus, PenLine, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowRight, Check, ChevronRight, Layers, Lock, MailPlus, PenLine, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
-import { actions, archivedThreads, currentUserId, getUser, inboxThreads, isGroupThread, isThreadArchived, myHostRequests, myInvites, myWaitlistEntries, threadMessages, threadTitle, unreadCount, useDB, waitlistPosition } from '@/lib/store'
+import { actions, archivedThreads, currentUserId, getUser, inboxThreads, isGroupThread, isThreadArchived, myHostRequests, myInvites, myWaitlistEntries, requestIsActionable, threadMessages, threadTitle, unreadCount, useDB, waitlistPosition } from '@/lib/store'
 import { SwipeRow, type SwipeAction } from '@/screens/chat/SwipeRow'
 import { usePersistedState } from '@/lib/usePersistedState'
 import { artType, hm, initials, matchKind, courtLabel, whenLabel } from '@/lib/format'
@@ -47,7 +47,10 @@ export function ChatListScreen() {
   const invites = myInvites(db)
   const hostReqs = myHostRequests(db)
   const waitReviews = myWaitlistEntries(db)
-  const notifCount = invites.length + hostReqs.length + waitReviews.length
+  // only ACTIONABLE requests drive the badge/seen count — a request on a match
+  // that just filled is read-time expired (§5) and shows disabled, not unread.
+  const actionableReqs = hostReqs.filter((r) => requestIsActionable(db, r))
+  const notifCount = invites.length + actionableReqs.length + waitReviews.length
   const showNotifications = filter === 'all' || filter === 'alerts'
   const showThreads = filter !== 'alerts'
 
@@ -330,9 +333,11 @@ export function ChatListScreen() {
             </>
           )}
 
-          {/* join requests — players asking to join a match you host (request
-              review). Approve/Decline here mirrors the inline decision card in
-              the match thread (§7). */}
+          {/* join requests — players asking to join a match you host. The inbox
+              is a POINTER ONLY (B.2): each row deep-links to Match Details, where
+              the actionable approve/decline bars live — no inline buttons here
+              (and never inside an opened thread). The in-thread §7 decision card
+              remains the in-conversation action surface. */}
           {showNotifications && hostReqs.length > 0 && (
             <>
               <Eyebrow>Join requests</Eyebrow>
@@ -340,58 +345,52 @@ export function ChatListScreen() {
                 const m = db.matches.find((x) => x.id === r.match_id)
                 const player = getUser(db, r.player_id)
                 if (!m || !player) return null
-                const full = m.spots_available <= 0
-                return (
-                  <div
-                    key={r.id}
-                    className="flex shrink-0 flex-col gap-2.5 rounded-[16px] border px-3.5 py-3"
-                    style={{ background: 'color-mix(in srgb, var(--color-info) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-info) 25%, transparent)' }}
-                  >
-                    <Link to={`/matches/${m.id}`} className="flex items-center gap-[13px] text-inherit no-underline">
-                      <div className="inline-flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-accent font-display text-[21px] italic text-onbrand">
+                // read-time expired — a sibling won the last spot (§5). Flips in
+                // place to a disabled, non-actionable row (neutral), not a pointer.
+                if (!requestIsActionable(db, r)) {
+                  return (
+                    <div
+                      key={r.id}
+                      className="flex shrink-0 items-center gap-[13px] rounded-[16px] border px-3.5 py-3"
+                      style={{ background: 'rgba(255,255,255,0.55)', borderColor: 'rgba(26,26,26,0.08)' }}
+                    >
+                      <div
+                        className="inline-flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full font-display text-[21px] italic"
+                        style={{ background: 'color-mix(in srgb, var(--color-neutral) 20%, transparent)', color: 'var(--color-neutral)' }}
+                      >
                         {initials(player)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <span className="block truncate text-[14.5px] font-semibold text-ink">{player.name}</span>
-                        <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                          Wants to join {matchKind(m)} · {courtLabel(m)}
+                        <span className="block truncate text-[14.5px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{player.name}</span>
+                        <div className="mt-[3px] inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: 'var(--color-neutral)' }}>
+                          <Lock size={12} strokeWidth={2} /> Match full · no longer available
                         </div>
                       </div>
-                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ background: 'var(--color-info)', boxShadow: '0 6px 14px -6px var(--color-info)' }}>
-                        <UserPlus size={12} strokeWidth={2} /> Request
-                      </span>
-                    </Link>
-                    {full ? (
-                      <div className="rounded-[12px] px-3 py-2 text-[11.5px] leading-[1.4]" style={{ background: 'rgba(26,26,26,0.05)', color: 'var(--color-text-muted)' }}>
-                        Match is full — free a spot before approving.
+                    </div>
+                  )
+                }
+                // pending → passive pointer to Match Details (review there)
+                return (
+                  <Link
+                    key={r.id}
+                    to={`/matches/${m.id}`}
+                    className="flex shrink-0 items-center gap-[13px] rounded-[16px] border px-3.5 py-3 text-inherit no-underline transition-all hover:bg-card"
+                    style={{ background: 'color-mix(in srgb, var(--color-info) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-info) 25%, transparent)' }}
+                  >
+                    <div className="inline-flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-accent font-display text-[21px] italic text-onbrand">
+                      {initials(player)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-[14.5px] font-semibold text-ink">{player.name}</span>
+                      <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                        Wants to join {matchKind(m)} · {courtLabel(m)}
                       </div>
-                    ) : (
-                      <div className="flex gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            actions.declineRequest(r.id)
-                            showToast('Request declined')
-                          }}
-                          className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill bg-transparent text-[13px] font-semibold"
-                          style={{ color: 'color-mix(in srgb, var(--color-danger) 78%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 24%, transparent)' }}
-                        >
-                          <X size={14} strokeWidth={2.2} /> Decline
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            actions.approveRequest(r.id)
-                            showToast(`${player.name.split(' ')[0]} approved`)
-                          }}
-                          className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill border-none text-[13px] font-semibold text-onbrand"
-                          style={{ background: 'var(--color-success)', boxShadow: '0 10px 20px -10px var(--color-success)' }}
-                        >
-                          <Check size={14} strokeWidth={2.4} /> Approve
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ background: 'var(--color-info)', boxShadow: '0 6px 14px -6px var(--color-info)' }}>
+                      <UserPlus size={12} strokeWidth={2} /> Review
+                    </span>
+                    <ChevronRight size={16} strokeWidth={2} className="shrink-0 rtl:rotate-180" style={{ color: 'rgba(26,26,26,0.3)' }} />
+                  </Link>
                 )
               })}
             </>

@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useState } from 'react'
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 
 /** Shared form controls — ported from create-match-shared.jsx. */
@@ -72,14 +73,40 @@ export function Slider({
   ticks?: string[]
 }) {
   const pct = ((value - min) / (max - min)) * 100
+  const [pressed, setPressed] = useState(false)
+  // Visual only — same discrete-dot track as the skill slider, single thumb.
+  // Interaction is unchanged: the native range input below still owns it.
+  const stops = Math.round((max - min) / step) + 1
   return (
     <div className="flex flex-col gap-2">
       <div className="relative flex h-7 items-center">
+        {/* faint full track */}
         <div className="absolute inset-x-0 h-1 rounded-pill" style={{ background: 'rgba(26,26,26,0.10)' }} />
-        <div className="absolute h-1 rounded-pill bg-brand" style={{ insetInlineStart: 0, width: `${pct}%` }} />
+        {/* filled segment from the start up to the selected stop */}
+        <div className="absolute h-1 rounded-pill" style={{ background: 'var(--color-brand)', insetInlineStart: 0, width: `${pct}%` }} />
+        {/* discrete stop dots — brand inside the fill, muted outside; the
+            selected stop is the ringed handle below, so skip its dot */}
+        {Array.from({ length: stops }, (_, i) => {
+          const v = min + i * step
+          if (v === value) return null
+          const p = ((v - min) / (max - min)) * 100
+          return (
+            <span
+              key={v}
+              className="pointer-events-none absolute h-[8px] w-[8px] -translate-x-1/2 rounded-full rtl:translate-x-1/2"
+              style={{ insetInlineStart: `${p}%`, background: v < value ? 'var(--color-brand)' : 'rgba(26,26,26,0.20)' }}
+            />
+          )
+        })}
+        {/* selected stop = ringed handle (same as skill endpoints) */}
         <div
-          className="absolute h-[22px] w-[22px] rounded-full border-2 border-brand bg-white"
-          style={{ insetInlineStart: `calc(${pct}% - 11px)`, boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
+          className="pointer-events-none absolute h-[22px] w-[22px] -translate-x-1/2 rounded-pill border-2 bg-white rtl:translate-x-1/2"
+          style={{
+            insetInlineStart: `${pct}%`,
+            borderColor: pressed ? 'var(--color-brandstrong)' : 'var(--color-brand)',
+            background: pressed ? 'var(--color-brandstrong)' : '#fff',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
+          }}
         />
         <input
           type="range"
@@ -88,14 +115,23 @@ export function Slider({
           step={step}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
+          onPointerDown={() => setPressed(true)}
+          onPointerUp={() => setPressed(false)}
+          onPointerCancel={() => setPressed(false)}
+          onBlur={() => setPressed(false)}
           className="absolute inset-0 m-0 w-full cursor-pointer opacity-0"
         />
       </div>
       {ticks && (
-        <div className="flex justify-between text-[10px] font-medium tracking-[0.05em] nums-tabular" style={{ color: 'rgba(26,26,26,0.4)' }}>
-          {ticks.map((t, i) => (
-            <span key={i}>{t}</span>
-          ))}
+        <div className="flex justify-between text-[10px] font-medium tracking-[0.05em] nums-tabular">
+          {ticks.map((t, i) => {
+            const selected = min + i * step === value
+            return (
+              <span key={i} style={{ color: selected ? 'var(--color-text)' : 'var(--color-text-muted)', fontWeight: selected ? 600 : 500 }}>
+                {t}
+              </span>
+            )
+          })}
         </div>
       )}
     </div>
@@ -120,35 +156,61 @@ export function DualSlider({
   const [lo, hi] = value
   const loPct = ((lo - min) / (max - min)) * 100
   const hiPct = ((hi - min) / (max - min)) * 100
+  // When both thumbs sit on the same value they overlap, so the one on top wins
+  // the grab. Raise the thumb that still has room to move toward the open side
+  // (lo when pinned high, hi when pinned low) so neither handle can get stuck.
+  const overlap = lo === hi
+  const mid = (min + max) / 2
+  const loZ = overlap ? (lo >= mid ? 5 : 3) : 4
+  const hiZ = overlap ? (hi >= mid ? 3 : 5) : 5
+
+  // Tapping an empty stop on the track moves the NEAREST handle to it (thumb
+  // drags are captured by the thumbs themselves via .dual-range, so this only
+  // fires for taps between/outside the handles). RTL-aware: flip the fraction.
+  const onTrackPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const rect = el.getBoundingClientRect()
+    if (rect.width === 0) return
+    let frac = (e.clientX - rect.left) / rect.width
+    if (getComputedStyle(el).direction === 'rtl') frac = 1 - frac
+    const v = Math.max(min, Math.min(max, Math.round((min + frac * (max - min)) / step) * step))
+    if (Math.abs(v - lo) <= Math.abs(v - hi)) onChange([Math.min(v, hi), hi])
+    else onChange([lo, Math.max(v, lo)])
+  }
+
   return (
-    <div className="flex flex-col gap-2.5">
-      <div className="relative flex h-7 items-center">
+    <div className="flex flex-col gap-2">
+      <div className="relative flex h-7 items-center" onPointerDown={onTrackPointerDown}>
         <div className="absolute inset-x-0 h-1 rounded-pill" style={{ background: 'rgba(26,26,26,0.10)' }} />
         <div className="absolute h-1 rounded-pill bg-brand" style={{ insetInlineStart: `${loPct}%`, width: `${hiPct - loPct}%` }} />
         {[loPct, hiPct].map((p, i) => (
           <div
             key={i}
-            className="absolute h-[22px] w-[22px] rounded-full border-2 border-brand bg-white"
+            className="pointer-events-none absolute h-[22px] w-[22px] rounded-full border-2 border-brand bg-white"
             style={{ insetInlineStart: `calc(${p}% - 11px)`, boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
           />
         ))}
         <input
           type="range"
+          aria-label="Lower bound"
           min={min}
           max={max}
           step={step}
           value={lo}
           onChange={(e) => onChange([Math.min(parseFloat(e.target.value), hi), hi])}
-          className="absolute inset-0 m-0 w-full cursor-pointer opacity-0"
+          className="dual-range absolute inset-0 m-0 w-full opacity-0"
+          style={{ zIndex: loZ }}
         />
         <input
           type="range"
+          aria-label="Upper bound"
           min={min}
           max={max}
           step={step}
           value={hi}
           onChange={(e) => onChange([lo, Math.max(parseFloat(e.target.value), lo)])}
-          className="absolute inset-0 m-0 w-full cursor-pointer opacity-0"
+          className="dual-range absolute inset-0 m-0 w-full opacity-0"
+          style={{ zIndex: hiZ }}
         />
       </div>
       {ticks && (
