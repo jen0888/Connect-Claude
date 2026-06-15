@@ -15,10 +15,13 @@ const fieldStyle = { borderColor: 'rgba(26,26,26,0.18)' }
 
 export function InvitePicker({
   selected,
+  femaleOnly = false,
   onClose,
   onConfirm,
 }: {
   selected: string[]
+  /** restrict the directory to female players (a 'ladies' match — §6) */
+  femaleOnly?: boolean
   onClose: () => void
   onConfirm: (ids: string[]) => void
 }) {
@@ -26,8 +29,12 @@ export function InvitePicker({
   const [picked, setPicked] = useState<string[]>(selected)
   const [query, setQuery] = useState('')
 
-  // everyone but the host (the current user); the host always holds their own spot
-  const people = useMemo(() => db.users.filter((u) => u.id !== currentUserId), [db.users])
+  // everyone but the host (the current user); the host always holds their own
+  // spot. A 'ladies' match can only invite women, so males are filtered out.
+  const people = useMemo(
+    () => db.users.filter((u) => u.id !== currentUserId && (!femaleOnly || u.gender === 'female')),
+    [db.users, femaleOnly],
+  )
   const list = useMemo(
     () => people.filter((u) => !query.trim() || u.name.toLowerCase().includes(query.toLowerCase())),
     [people, query],

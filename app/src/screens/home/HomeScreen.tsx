@@ -7,9 +7,9 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
 import { InviteApprovalSheet, type Invite } from '@/components/InviteApprovalSheet'
-import { actions, currentUserId, getUser, hostedMatches, joinedMatches, matchPlayers, myInvites, pendingRequestCount, savedMatches, thisWeekMatches, upcomingJoinedMatches, useDB, useHydrated } from '@/lib/store'
+import { actions, currentUserId, getUser, hasPendingRequest, hostedMatches, joinedMatches, matchPlayers, myInvites, pendingRequestCount, requestedMatches, savedMatches, thisWeekMatches, upcomingJoinedMatches, useDB, useHydrated } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
-import { artType, countdownUntil, courtNumberLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, timeAgoLabel, whenLabel } from '@/lib/format'
+import { artType, countdownUntil, courtNumberLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, whenLabel } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
 import { HOST_CREATE_ROUTE, useHostedMatch } from '@/lib/hostedMatch'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -118,8 +118,10 @@ export function HomeScreen() {
       return s === 'open' || s === 'full'
     })
     const nextUp = upcomingJoinedMatches(db)[0]
-    const week = thisWeekMatches(db) // upcoming joined after NEXT UP, minus hosted
-    const requested = db.matchRequests.filter((r) => r.player_id === currentUserId && r.kind === 'request' && r.status === 'requested')
+    // This week now folds in pending-request matches (sorted by start_time),
+    // shown with a "Requested" state — no separate Home section (CLAUDE.md §4/§5).
+    const week = thisWeekMatches(db)
+    const requested = requestedMatches(db) // for the empty-state guard below
     const invited = myInvites(db)
     const saved = savedMatches(db) // bookmarked, not joined, still joinable
     return { joined, hosted, nextUp, week, requested, invited, saved }
@@ -167,7 +169,7 @@ export function HomeScreen() {
   // + no pending invites. Purely data-derived — never a "new user" flag (§4).
   // Also fall here if the profile row is missing (`!me`) — a user with no row
   // can't own matches anyway, and FirstTimerHome renders safely without it.
-  if (!me || (data.joined.length === 0 && data.hosted.length === 0 && !hosted && data.invited.length === 0 && data.saved.length === 0)) {
+  if (!me || (data.joined.length === 0 && data.hosted.length === 0 && !hosted && data.invited.length === 0 && data.saved.length === 0 && data.requested.length === 0)) {
     return <FirstTimerHome />
   }
 
@@ -302,34 +304,8 @@ export function HomeScreen() {
           )
         )}
 
-        {/* requested to join — awaiting host approval */}
-        {data.requested.map((r) => {
-          const m = db.matches.find((x) => x.id === r.match_id)
-          if (!m) return null
-          return (
-            <div key={r.id}>
-              <div className="mb-2.5">
-                <Eyebrow>Requested to join</Eyebrow>
-              </div>
-              <div className="mb-[26px]">
-                <MatchCard
-                  match={m}
-                  host={getUser(db, m.host_id)}
-                  players={matchPlayers(db, m.id)}
-                  action="cancel"
-                  onAct={() => {
-                    actions.cancelRequest(m.id)
-                    showToast('Request cancelled')
-                  }}
-                  badge={{ text: 'Awaiting host', pulse: true }}
-                  hostNote={`sent ${timeAgoLabel(r.created_at)}`}
-                />
-              </div>
-            </div>
-          )
-        })}
-
-        {/* this week — brief card (CLAUDE.md §4) */}
+        {/* this week — joined matches + pending-request matches, brief card,
+            sorted by timing; requests carry a "Requested" state (CLAUDE.md §4/§5) */}
         {data.week.length > 0 && (
           <>
             <div className="flex items-center justify-between gap-2.5">
@@ -337,16 +313,21 @@ export function HomeScreen() {
               {data.week.length > SECTION_CAP && <SeeAll to="/my-matches?filter=week" />}
             </div>
             <div className="mt-2.5 mb-[26px] flex flex-col gap-3.5">
-              {data.week.slice(0, SECTION_CAP).map((m) => (
-                <MatchCard
-                  key={m.id}
-                  variant="brief"
-                  action="view"
-                  match={m}
-                  host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
-                  players={matchPlayers(db, m.id)}
-                />
-              ))}
+              {data.week.slice(0, SECTION_CAP).map((m) => {
+                const req = hasPendingRequest(db, m.id)
+                return (
+                  <MatchCard
+                    key={m.id}
+                    variant="brief"
+                    action="view"
+                    joinStatus={req ? 'requested' : null}
+                    onAct={req ? () => { actions.cancelRequest(m.id); showToast('Request cancelled') } : undefined}
+                    match={m}
+                    host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
+                    players={matchPlayers(db, m.id)}
+                  />
+                )
+              })}
             </div>
           </>
         )}

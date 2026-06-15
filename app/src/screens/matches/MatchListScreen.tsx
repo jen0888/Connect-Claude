@@ -3,7 +3,7 @@ import { ChevronLeft } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, matchPlayers, savedMatches, thisWeekMatches, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, hasPendingRequest, matchPlayers, savedMatches, thisWeekMatches, useDB } from '@/lib/store'
 
 /** "See all" destinations for the capped Home sections (CLAUDE.md §4):
  *   • week  → /my-matches/week  — every upcoming joined match (This week)
@@ -69,6 +69,7 @@ export function MatchListScreen({ kind }: { kind: 'week' | 'saved' }) {
                 host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
                 players={matchPlayers(db, m.id)}
                 action={kind === 'saved' ? 'join' : 'view'}
+                joinStatus={kind === 'week' && hasPendingRequest(db, m.id) ? 'requested' : undefined}
                 onAct={
                   kind === 'saved'
                     ? () => {
@@ -80,7 +81,12 @@ export function MatchListScreen({ kind }: { kind: 'week' | 'saved' }) {
                           showToast('Joined')
                         }
                       }
-                    : undefined
+                    : kind === 'week' && hasPendingRequest(db, m.id)
+                      ? () => {
+                          actions.cancelRequest(m.id)
+                          showToast('Request cancelled')
+                        }
+                      : undefined
                 }
                 saved={kind === 'saved' ? db.savedMatchIds.includes(m.id) : undefined}
                 onToggleSave={kind === 'saved' ? () => actions.toggleSaveMatch(m.id) : undefined}

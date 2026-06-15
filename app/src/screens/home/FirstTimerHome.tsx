@@ -9,6 +9,7 @@ import {
   actions,
   currentUserId,
   discoverFeed,
+  genderBlocks,
   getUser,
   isJoined,
   isProfileComplete,
@@ -165,7 +166,9 @@ export function FirstTimerHome() {
                 action="join"
                 joinStatus={joined ? 'joined' : waitlisted ? 'waitlisted' : pending ? 'requested' : null}
                 waitlistPosition={waitlisted ? waitlistPosition(db, m.id) : null}
+                genderBlocked={genderBlocks(db, m.id)}
                 onAct={() => {
+                  if (genderBlocks(db, m.id)) return // ladies-only gate (defensive)
                   if (status === 'full') {
                     actions.joinWaitlist(m.id)
                     showToast("On the waitlist — you'll be auto-joined if a spot frees", 3000)

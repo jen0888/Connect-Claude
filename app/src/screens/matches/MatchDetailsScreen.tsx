@@ -1,10 +1,12 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { Bookmark, Check, ChevronLeft, ChevronRight, Hourglass, ListPlus, LogOut, MapPin, MessageCircle, Pencil, Plus, Send, Share, Star } from 'lucide-react'
+import { Bookmark, Check, ChevronLeft, ChevronRight, Hourglass, ListPlus, LogOut, MapPin, MessageCircle, Pencil, Plus, Send, Share, Star, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
+import { LadiesBadge } from '@/components/LadiesBadge'
 import { MiniMap, PlayerDots } from '@/components/controls'
 import { useToast } from '@/components/Toast'
+import { useI18n } from '@/i18n'
 import { actions, currentUserId, getUser, invitablePlayers, isJoined, matchPlayers, pendingRequest, requestIsActionable, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { courtNumberLabel, dayLabel, hm, initials, skillLabel, skillRangeText, skillTierLabel, sportLabel, whenLabel } from '@/lib/format'
@@ -94,8 +96,14 @@ function MatchDetailsBody({
   showToast: (s: string) => void
   db: ReturnType<typeof useDB>
 }) {
+  const { t } = useI18n()
   const hostView = m.host_id === currentUserId
   const host = getUser(db, m.host_id)!
+  const viewer = getUser(db, currentUserId)
+  const ladies = m.gender_restriction === 'ladies'
+  // a male viewer is barred from a 'ladies' match — surfaced as a disabled,
+  // non-judgmental CTA, never a tappable Join/Request/Waitlist (CLAUDE.md §6)
+  const genderBlocked = ladies && !hostView && viewer?.gender !== 'female'
   const players = matchPlayers(db, m.id)
   const joined = isJoined(db, m.id)
   const pending = pendingRequest(db, m.id)
@@ -118,7 +126,7 @@ function MatchDetailsBody({
   const canJoin = joinedState === 'idle' && status === 'open' && !inviteOnly
   // waitlist applies to ANY full match, orthogonal to join_mode (§5)
   const canWaitlist = joinedState === 'idle' && status === 'full' && !hostView
-  const canAct = canJoin || canWaitlist
+  const canAct = (canJoin || canWaitlist) && !genderBlocked
   const ctaLabel =
     joinedState === 'joined'
       ? "You're in"
@@ -223,6 +231,7 @@ function MatchDetailsBody({
               <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-[11px] py-1.5 text-[12px] font-medium tracking-[0.01em] ltr-nums" style={{ background: 'rgba(26,26,26,0.06)' }}>
                 {skillRangeText(m.skill_min, m.skill_max)}
               </span>
+              {ladies && <LadiesBadge size="md" />}
               {m.fee_per_player == null && (
                 <span className="inline-flex items-center gap-1.5 rounded-pill px-[11px] py-1.5 text-[12px] font-medium tracking-[0.01em]" style={{ background: 'rgba(26,26,26,0.06)' }}>
                   Free to join
@@ -648,6 +657,17 @@ function MatchDetailsBody({
             className="absolute inset-x-0 bottom-0 z-5 flex flex-col items-center gap-2.5 px-[22px] pt-4 pb-[22px]"
             style={{ background: 'linear-gradient(180deg, transparent, var(--surface-page) 30%)' }}
           >
+            {genderBlocked ? (
+              // ladies-only gate, surfaced kindly — disabled inline state, no modal (§6)
+              <div
+                className="inline-flex h-14 w-full items-center justify-center gap-2.5 rounded-pill text-[14px] font-semibold tracking-[0.01em]"
+                style={{ border: '1.5px solid rgba(26,26,26,0.12)', color: 'var(--color-text-faint)' }}
+              >
+                <UserRound size={16} strokeWidth={2} />
+                {t('match.gender.blockedInline')}
+              </div>
+            ) : (
+              <>
             <button
               type="button"
               onClick={onJoin}
@@ -693,6 +713,8 @@ function MatchDetailsBody({
               >
                 Leave waitlist
               </button>
+            )}
+              </>
             )}
           </div>
         )}

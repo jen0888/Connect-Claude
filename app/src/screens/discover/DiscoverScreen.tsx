@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, ListFilter, Plus, Search, X } from 'lucide-r
 import { Shell } from '@/components/Shell'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
-import { actions, discoverFeed, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, discoverFeed, genderBlocks, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { usePersistedState } from '@/lib/usePersistedState'
 import { HOST_CREATE_ROUTE } from '@/lib/hostedMatch'
@@ -29,6 +29,12 @@ const LEVEL_FILTERS = [
   { id: 'all' as const, label: 'Any level' },
   ...SKILL_TIERS.map((t) => ({ id: t, label: skillTierLabel(t) })),
 ]
+// match gender restriction (§6): a match is 'ladies' or (absent ⇒) 'mixed'
+const GENDER_FILTERS = [
+  { id: 'all', label: 'Anyone' },
+  { id: 'mixed', label: 'Mixed' },
+  { id: 'ladies', label: 'Ladies only' },
+] as const
 
 type TimeBucket = 'tonight' | 'tomorrow' | 'week' | 'weekend'
 
@@ -81,14 +87,16 @@ export function DiscoverScreen() {
   const [sport, setSport] = usePersistedState<(typeof SPORT_FILTERS)[number]>('discover:sport', 'All')
   const [time, setTime] = usePersistedState<(typeof TIME_FILTERS)[number]['id']>('discover:time', 'all')
   const [level, setLevel] = usePersistedState<(typeof LEVEL_FILTERS)[number]['id']>('discover:level', 'all')
+  const [gender, setGender] = usePersistedState<(typeof GENDER_FILTERS)[number]['id']>('discover:gender', 'all')
   const [query, setQuery] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
 
-  const activeCount = (sport !== 'All' ? 1 : 0) + (time !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0)
+  const activeCount = (sport !== 'All' ? 1 : 0) + (time !== 'all' ? 1 : 0) + (level !== 'all' ? 1 : 0) + (gender !== 'all' ? 1 : 0)
   const summary = [
     sport !== 'All' ? sport : null,
     time !== 'all' ? TIME_FILTERS.find((x) => x.id === time)?.label : null,
     level !== 'all' ? LEVEL_FILTERS.find((x) => x.id === level)?.label : null,
+    gender !== 'all' ? GENDER_FILTERS.find((x) => x.id === gender)?.label : null,
   ].filter(Boolean) as string[]
 
   const filtered = useMemo(() => {
@@ -97,6 +105,7 @@ export function DiscoverScreen() {
       if (sport !== 'All' && m.sport !== (sport.toLowerCase() as Sport)) return false
       if (time !== 'all' && bucketOf(m) !== time) return false
       if (level !== 'all' && !skillInRange(level as SkillTier, m.skill_min, m.skill_max)) return false
+      if (gender !== 'all' && (m.gender_restriction ?? 'mixed') !== gender) return false
       if (q) {
         const host = getUser(db, m.host_id)
         const hay = [m.venue_name, m.court_number, m.route_start, m.route_end, m.sport, host?.name]
@@ -107,7 +116,7 @@ export function DiscoverScreen() {
       }
       return true
     })
-  }, [db, sport, time, level, query])
+  }, [db, sport, time, level, gender, query])
 
   const spotlight = filtered[0]
   const rest = filtered.slice(1)
@@ -121,6 +130,7 @@ export function DiscoverScreen() {
   }, [rest])
 
   const act = (m: Match) => {
+    if (genderBlocks(db, m.id)) return // ladies-only gate — no CTA renders, defensive
     if (computeStatus(m) === 'full') {
       // full match → the join CTA is the waitlist (any join_mode, §5)
       actions.joinWaitlist(m.id)
@@ -148,6 +158,7 @@ export function DiscoverScreen() {
         featured={featured}
         joinStatus={joined ? 'joined' : waitlisted ? 'waitlisted' : pending ? 'requested' : null}
         waitlistPosition={waitlisted ? waitlistPosition(db, m.id) : null}
+        genderBlocked={genderBlocks(db, m.id)}
         onAct={() => act(m)}
         saved={db.savedMatchIds.includes(m.id)}
         onToggleSave={() => actions.toggleSaveMatch(m.id)}
@@ -250,6 +261,7 @@ export function DiscoverScreen() {
                         setSport('All')
                         setTime('all')
                         setLevel('all')
+                        setGender('all')
                       }}
                       className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-semibold tracking-[0.01em] text-brand"
                     >
@@ -262,6 +274,7 @@ export function DiscoverScreen() {
                     { label: 'Sports', node: <ChipRow items={SPORT_FILTERS.map((s) => ({ id: s, label: s }))} value={sport} onChange={setSport} /> },
                     { label: 'Time', node: <ChipRow items={TIME_FILTERS} value={time} onChange={setTime} /> },
                     { label: 'Level', node: <ChipRow items={LEVEL_FILTERS} value={level} onChange={setLevel} /> },
+                    { label: 'Open to', node: <ChipRow items={GENDER_FILTERS} value={gender} onChange={setGender} /> },
                   ] as const
                 ).map((g) => (
                   <div key={g.label} className="flex flex-col gap-[7px]">

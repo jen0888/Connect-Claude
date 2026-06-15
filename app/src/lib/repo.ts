@@ -94,6 +94,7 @@ function mapMatch(row: any): Match {
     fee_total: fee(row.fee_total),
     fee_per_player: fee(row.fee_per_player),
     join_mode: row.join_mode === 'approval' || row.join_mode === 'invite' ? row.join_mode : 'open',
+    gender_restriction: row.gender_restriction === 'ladies' ? 'ladies' : 'mixed',
     // DB lifecycle status → stored shape; computeStatus re-derives open/full/live
     status: row.status === 'cancelled' ? 'cancelled' : 'active',
     notes: row.notes ?? null,

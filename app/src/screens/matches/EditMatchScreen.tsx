@@ -20,7 +20,7 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { CTA, MiniMap, PlayerDots, Segmented, Slider, Toggle } from '@/components/controls'
 import { SkillRangeSlider } from '@/components/SkillRangeSlider'
 import { useToast } from '@/components/Toast'
-import { getUser, useDB } from '@/lib/store'
+import { currentUserId, getUser, useDB } from '@/lib/store'
 import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
 import type { JoinMode, SkillTier, Sport } from '@/lib/types'
 import { clearHostedMatch, readHostedMatch, writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
@@ -188,6 +188,10 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
   const isRoute = venue?.id === 'route' || !!venue?.endName
   const venueCompatible = venue != null && (sport === 'running' ? isRoute : !isRoute)
   const dateLabel = labelFromKey(dateKey)
+  // "Ladies only" is offered ONLY to female hosts; otherwise the value is locked
+  // to 'mixed' and the toggle isn't rendered (server-enforced too, §6).
+  const canLadies = getUser(db, currentUserId)?.gender === 'female'
+  const effectiveGender: 'mixed' | 'ladies' = canLadies ? gender : 'mixed'
 
   const save = () => {
     const next: HostedMatch = {
@@ -198,7 +202,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
       startTime,
       endTime,
       matchType,
-      gender,
+      gender: effectiveGender,
       joinMode,
       requireApproval: joinMode === 'approval', // derived for older readers
       invitedPlayerIds: joinMode === 'invite' ? invitedPlayerIds : [],
@@ -420,18 +424,23 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
                 />
               </FieldRow>
 
-              <Divider />
+              {/* "Ladies only" host-gated: female hosts only (server-enforced too, §6) */}
+              {canLadies && (
+                <>
+                  <Divider />
 
-              <FieldRow label="Open to" hint={gender === 'mixed' ? 'Any gender welcome.' : 'Female players only.'}>
-                <Segmented
-                  value={gender}
-                  onChange={setGender}
-                  options={[
-                    { value: 'mixed', label: 'Mixed', icon: <Users size={14} strokeWidth={1.8} /> },
-                    { value: 'ladies', label: 'Ladies only', icon: <UserRound size={14} strokeWidth={1.8} /> },
-                  ]}
-                />
-              </FieldRow>
+                  <FieldRow label="Open to" hint={gender === 'mixed' ? 'Any gender welcome.' : 'Female players only.'}>
+                    <Segmented
+                      value={gender}
+                      onChange={setGender}
+                      options={[
+                        { value: 'mixed', label: 'Mixed', icon: <Users size={14} strokeWidth={1.8} /> },
+                        { value: 'ladies', label: 'Ladies only', icon: <UserRound size={14} strokeWidth={1.8} /> },
+                      ]}
+                    />
+                  </FieldRow>
+                </>
+              )}
             </div>
           </div>
 
@@ -791,6 +800,7 @@ export function EditMatchScreen({ mode = 'edit' }: { mode?: 'create' | 'edit' } 
         {showInvite && (
           <InvitePicker
             selected={invitedPlayerIds}
+            femaleOnly={effectiveGender === 'ladies'}
             onClose={() => setShowInvite(false)}
             onConfirm={(ids) => {
               setInvitedPlayerIds(ids)

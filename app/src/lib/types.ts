@@ -28,6 +28,12 @@ export type SkillLevel = SkillTier | 'any'
 
 export type JoinMode = 'open' | 'approval' | 'invite'
 
+/** Match gender restriction (CLAUDE.md §6). 'mixed' = open to all genders;
+ *  'ladies' = female players only. The enum leaves room for a future 'men'
+ *  value — NOT built in Stage 1. Mirrors the `matches.gender_restriction`
+ *  CHECK (in ('mixed','ladies'), NOT NULL default 'mixed'); absent ⇒ 'mixed'. */
+export type GenderRestriction = 'mixed' | 'ladies'
+
 /** Stored status — time-based states are computed at read time, never stored. */
 export type StoredMatchStatus = 'active' | 'cancelled'
 
@@ -80,6 +86,8 @@ export interface Match {
   fee_total: number | null // informational only — never a transaction
   fee_per_player: number | null // display only
   join_mode: JoinMode
+  /** 'ladies' restricts the match to female players (server-enforced); absent ⇒ 'mixed' */
+  gender_restriction?: GenderRestriction
   waitlist_open?: boolean // queue allowed once full (default off)
   waitlist_size?: number // max queued players, 1–8 (only meaningful when waitlist_open)
   status: StoredMatchStatus

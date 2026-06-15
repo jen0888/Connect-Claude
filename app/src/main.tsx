@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { LocaleProvider } from './i18n'
 import { ToastProvider } from './components/Toast'
+import { RpcErrorListener } from './components/RpcErrorListener'
 import { AuthProvider } from './context/AuthContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
@@ -16,6 +17,7 @@ createRoot(document.getElementById('root')!).render(
           <BrowserRouter>
             <ToastProvider>
               <App />
+              <RpcErrorListener />
             </ToastProvider>
           </BrowserRouter>
         </LocaleProvider>

@@ -104,7 +104,7 @@ export const MATCHES: Match[] = [
     court_number: 'Court A', route_start: null, route_end: null, round_trip: false,
     start_time: iso(143), end_time: iso(144), skill_min: 'advance', skill_max: 'advance',
     total_spots: 2, spots_available: 1, fee_total: 80, fee_per_player: 40,
-    join_mode: 'approval', status: 'active', notes: 'Hit + drills, one set after.', created_at: iso(-20),
+    join_mode: 'approval', gender_restriction: 'ladies', status: 'active', notes: 'Hit + drills, one set after.', created_at: iso(-20),
   },
   // Discover — badminton tonight (open)
   {

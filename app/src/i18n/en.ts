@@ -23,11 +23,18 @@ export const en = {
   'match.action.attended': 'Attended',
   'match.action.cancel': 'Cancel',
   'match.action.edit': 'Edit',
+  'match.cancelRequest': 'Cancel request', // withdraw a pending approval request (Home "This week")
   'match.action.recordResult': 'Record result',
   'match.action.openChat': 'Open chat',
   'match.spotsLeft': '{count} spots left',
   'match.spotLeft': '1 spot left',
   'match.hostedBy': 'Hosted by {name}',
+
+  // Ladies-only gender restriction (CLAUDE.md §6)
+  'match.ladiesOnly': 'Ladies only',
+  'match.gender.womenOnly': 'Women only', // compact disabled card pill
+  'match.gender.blockedInline': 'This match is for women only.', // disabled CTA on Match Details
+  'match.gender.blockedToast': 'This match is open to women only.', // RPC safety-net toast
 
   // Sports
   'sport.padel': 'Padel',

@@ -121,6 +121,11 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const isRoute = venue?.id === 'route' || !!venue?.endName
   const venueCompatible = venue != null && (sport === 'running' ? isRoute : !isRoute)
   const allChosen = isFree !== null && joinMode !== null && skillMin !== null && skillMax !== null
+  // "Ladies only" is offered ONLY to female hosts; for everyone else the option
+  // isn't rendered and the value is locked to 'mixed' (the server rejects a
+  // ladies match from a non-female host too, CLAUDE.md §6).
+  const canLadies = getUser(db, currentUserId)?.gender === 'female'
+  const effectiveGender: 'mixed' | 'ladies' = canLadies ? gender : 'mixed'
 
   const save = async () => {
     if (!allChosen) {
@@ -149,6 +154,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       fee_per_player: price,
       fee_total: price ? price * totalSpots : null,
       join_mode: (joinMode ?? 'open') as JoinMode,
+      gender_restriction: effectiveGender,
       waitlist_open: waitlistOpen,
       waitlist_size: waitlistOpen ? waitlistSize : undefined,
       notes: description.trim() || null,
@@ -179,7 +185,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       startTime,
       endTime,
       matchType,
-      gender,
+      gender: effectiveGender,
       joinMode: (joinMode ?? 'open') as JoinMode,
       requireApproval: joinMode === 'approval',
       invitedPlayerIds: joinMode === 'invite' ? invitedIds : [],
@@ -393,18 +399,25 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                 />
               </FieldRow>
 
-              <div className="h-px" style={{ background: 'rgba(26,26,26,0.10)' }} />
+              {/* "Ladies only" is host-gated: only a female host can restrict a
+                  match to women. Male hosts don't see the toggle and the value
+                  stays 'mixed' (server-enforced too, CLAUDE.md §6). */}
+              {canLadies && (
+                <>
+                  <div className="h-px" style={{ background: 'rgba(26,26,26,0.10)' }} />
 
-              <FieldRow label="Open to" hint={gender === 'mixed' ? 'Any gender welcome.' : 'Female players only.'}>
-                <Segmented
-                  value={gender}
-                  onChange={setGender}
-                  options={[
-                    { value: 'mixed', label: 'Mixed', icon: <Users size={14} strokeWidth={1.8} /> },
-                    { value: 'ladies', label: 'Ladies only', icon: <UserRound size={14} strokeWidth={1.8} /> },
-                  ]}
-                />
-              </FieldRow>
+                  <FieldRow label="Open to" hint={gender === 'mixed' ? 'Any gender welcome.' : 'Female players only.'}>
+                    <Segmented
+                      value={gender}
+                      onChange={setGender}
+                      options={[
+                        { value: 'mixed', label: 'Mixed', icon: <Users size={14} strokeWidth={1.8} /> },
+                        { value: 'ladies', label: 'Ladies only', icon: <UserRound size={14} strokeWidth={1.8} /> },
+                      ]}
+                    />
+                  </FieldRow>
+                </>
+              )}
             </div>
           </div>
 
@@ -776,6 +789,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
         {showInvite && (
           <InvitePicker
             selected={invitedIds}
+            femaleOnly={effectiveGender === 'ladies'}
             onClose={() => setShowInvite(false)}
             onConfirm={(ids) => { setInvitedIds(ids); setShowInvite(false) }}
           />

@@ -1,12 +1,14 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bookmark, CalendarCheck, Check, ChevronRight, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, UserPlus, X } from 'lucide-react'
+import { Bookmark, CalendarCheck, Check, ChevronRight, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, UserPlus, UserRound, X } from 'lucide-react'
 import type { Match, MatchStatus, User } from '@/lib/types'
 import { artType, courtLabel, courtNumberLabel, hm, matchKind, skillRangeText, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
+import { useI18n } from '@/i18n'
 import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
 import { SportArt } from './SportArt'
+import { LadiesBadge } from './LadiesBadge'
 import { LifecycleAction, LifecycleNote, StatusBadge, lifecycleHasAction, lifecycleSpots } from './lifecycle'
 
 /** THE canonical match card (home-screens.jsx MatchCard) — one component
@@ -50,6 +52,10 @@ export interface MatchCardProps {
    *  match (Home "You're hosting"). Renders a count pill that taps through to
    *  Match Details. 0/undefined hides it. Never forks the card (CLAUDE.md §4). */
   requestCount?: number
+  /** viewer is barred by the match's 'ladies' gender restriction (computed by the
+   *  caller from the viewer's gender). Replaces the join/request/waitlist CTA with
+   *  a disabled, non-judgmental "Women only" state (CLAUDE.md §6). */
+  genderBlocked?: boolean
 }
 
 export function MatchCard({
@@ -72,8 +78,16 @@ export function MatchCard({
   metaText,
   hostNote,
   requestCount = 0,
+  genderBlocked = false,
 }: MatchCardProps) {
   const navigate = useNavigate()
+  const { t } = useI18n()
+  const ladies = match.gender_restriction === 'ladies'
+  // a male viewer on a 'ladies' match: no tappable join CTA — a disabled state instead
+  const blocked = genderBlocked && action === 'join' && joinStatus !== 'joined'
+  // pending approval request: shown on Home "This week" with a Requested badge +
+  // a non-actionable "Request pending" CTA (never a Join button) — CLAUDE.md §5
+  const requested = joinStatus === 'requested'
   const st = status ?? computeStatus(match)
   const dim = st === 'cancelled' || st === 'closed'
   const filled = match.total_spots - match.spots_available
@@ -103,8 +117,35 @@ export function MatchCard({
 
   /* footer action */
   let actionEl: ReactNode
-  if (lifecycleHasAction(st)) {
+  if (requested) {
+    // pending approval request → actionable "Cancel request" (withdraw, §5).
+    // The Ladies-only badge stacks above this button in the render below.
+    actionEl = (
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onAct?.()
+        }}
+        className="inline-flex h-[38px] shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-pill border bg-transparent px-[15px] text-[12px] font-semibold tracking-[0.01em] transition-colors"
+        style={{ borderColor: 'color-mix(in srgb, var(--color-warning) 40%, transparent)', color: 'var(--color-warning)' }}
+      >
+        <X size={12} strokeWidth={2.2} />
+        {t('match.cancelRequest')}
+      </button>
+    )
+  } else if (lifecycleHasAction(st)) {
     actionEl = <LifecycleAction status={st} matchId={match.id} />
+  } else if (blocked) {
+    // ladies-only gate, surfaced kindly — disabled, no modal, no shaming (§6)
+    actionEl = (
+      <span
+        className="inline-flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border bg-transparent px-[15px] text-[12px] font-semibold tracking-[0.01em]"
+        style={{ borderColor: 'rgba(26,26,26,0.12)', color: 'var(--color-text-faint)' }}
+      >
+        <UserRound size={12} strokeWidth={2} />
+        {t('match.gender.womenOnly')}
+      </span>
+    )
   } else if (action === 'join' && joinStatus !== 'joined' && st === 'full') {
     // full match → the join CTA becomes the waitlist (any join_mode, §5)
     actionEl =
@@ -135,7 +176,7 @@ export function MatchCard({
           Join waitlist
         </button>
       )
-  } else if (action === 'join' && joinStatus !== 'joined' && joinStatus !== 'requested' && match.join_mode === 'invite') {
+  } else if (action === 'join' && joinStatus !== 'joined' && match.join_mode === 'invite') {
     // invite is a personal offer, not a public listing slot (§5) — no public join CTA
     actionEl = (
       <span
@@ -157,7 +198,7 @@ export function MatchCard({
         className="inline-flex h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border-none px-[17px] text-[12.5px] font-semibold tracking-[0.01em] transition-colors"
         style={{
           cursor: done ? 'default' : 'pointer',
-          background: joinStatus === 'requested' ? 'var(--color-text)' : done ? 'rgba(26,26,26,0.10)' : 'var(--color-brand)',
+          background: done ? 'rgba(26,26,26,0.10)' : 'var(--color-brand)',
           color: joinStatus === 'joined' ? 'rgba(26,26,26,0.6)' : 'var(--color-text-onbrand)',
           boxShadow: done ? 'none' : '0 8px 18px -8px var(--color-brand)',
         }}
@@ -258,7 +299,7 @@ export function MatchCard({
         {/* right content */}
         <div className="flex min-w-0 flex-1 flex-col justify-between px-3.5 pt-[11px] pb-3">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="mb-1 flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.18em]" style={{ color: 'var(--color-text-muted)' }}>
                 <span className="inline-flex items-center gap-[5px]">
                   <span className="h-[5px] w-[5px] rounded-full bg-accent" />
@@ -267,14 +308,18 @@ export function MatchCard({
                 <span className="text-[16px] leading-none" style={{ color: 'var(--color-text)' }}>·</span>
                 <span className="truncate">{match.venue_name}</span>
               </div>
-              <div className="font-display text-[19px] leading-[1.1]" style={{ letterSpacing: '-0.012em', color: dim ? 'var(--color-text-faint)' : 'var(--color-text)' }}>
-                {match.name ? (
-                  match.name
-                ) : (
-                  <>
-                    {matchKind(match)} <span className="italic" style={{ color: dim ? 'var(--color-text-faint)' : 'var(--color-brand)' }}>at</span> {courtLabel(match)}
-                  </>
-                )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 truncate font-display text-[19px] leading-[1.1]" style={{ letterSpacing: '-0.012em', color: dim ? 'var(--color-text-faint)' : 'var(--color-text)' }}>
+                  {match.name ? (
+                    match.name
+                  ) : (
+                    <>
+                      {matchKind(match)} <span className="italic" style={{ color: dim ? 'var(--color-text-faint)' : 'var(--color-brand)' }}>at</span> {courtLabel(match)}
+                    </>
+                  )}
+                </div>
+                {/* Ladies-only badge, in line with the match name */}
+                {ladies && <LadiesBadge />}
               </div>
             </div>
             {onToggleSave && (
@@ -302,7 +347,7 @@ export function MatchCard({
                 {metaText ?? lifecycleSpots(st, match)}
               </span>
             </div>
-            {action === 'view' ? (
+            {action === 'view' && !requested ? (
               <span
                 className="inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border rtl:rotate-180"
                 style={{ color: 'var(--color-text-muted)', borderColor: 'rgba(26,26,26,0.12)' }}
@@ -374,24 +419,28 @@ export function MatchCard({
 
       {/* body */}
       <div className="px-[18px] pt-[18px] pb-4">
-        <h2
-          className="m-0 font-display font-normal transition-colors"
-          style={{
-            fontSize: featured ? 30 : 26,
-            lineHeight: 1.05,
-            letterSpacing: '-0.015em',
-            color: dim ? 'var(--color-text-faint)' : 'var(--color-text)',
-          }}
-        >
-          {match.name ? (
-            match.name
-          ) : (
-            <>
-              {matchKind(match)} <span className="italic" style={{ color: dim ? 'var(--color-text-faint)' : 'var(--color-brand)' }}>at</span>{' '}
-              {courtLabel(match)}
-            </>
-          )}
-        </h2>
+        <div className="flex items-start justify-between gap-2.5">
+          <h2
+            className="m-0 min-w-0 font-display font-normal transition-colors"
+            style={{
+              fontSize: featured ? 30 : 26,
+              lineHeight: 1.05,
+              letterSpacing: '-0.015em',
+              color: dim ? 'var(--color-text-faint)' : 'var(--color-text)',
+            }}
+          >
+            {match.name ? (
+              match.name
+            ) : (
+              <>
+                {matchKind(match)} <span className="italic" style={{ color: dim ? 'var(--color-text-faint)' : 'var(--color-brand)' }}>at</span>{' '}
+                {courtLabel(match)}
+              </>
+            )}
+          </h2>
+          {/* Ladies-only badge, in line with the match name */}
+          {ladies && <span className="mt-1.5 shrink-0"><LadiesBadge /></span>}
+        </div>
         <div className="mt-3 flex items-start gap-6 text-[12.5px] nums-tabular" style={{ color: 'rgba(26,26,26,0.62)' }}>
           <span className="inline-flex flex-col gap-1">
             <span className="inline-flex items-center gap-[5px]">
@@ -408,7 +457,11 @@ export function MatchCard({
               <MapPin size={12} strokeWidth={2} />
               {locationLine}
             </span>
-            {courtText && <span className="ps-[17px]">{courtText}</span>}
+            {courtText && (
+              <span className="ps-[17px]">
+                <span className="text-[16px] leading-none" style={{ color: 'var(--color-text)' }}>·</span> {courtText}
+              </span>
+            )}
           </span>
         </div>
         {host && (
@@ -417,6 +470,7 @@ export function MatchCard({
               Hosted by <span className="font-semibold" style={{ color: 'rgba(26,26,26,0.78)' }}>{host.name}</span>
               {hostNote ? ` · ${hostNote}` : ''}
             </span>
+            {/* host's pending-request count pill, inline-end of the "Hosted by" row */}
             {requestCount > 0 && (
               <Link
                 to={detailHref}

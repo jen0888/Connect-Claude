@@ -341,6 +341,21 @@ export function clearClientState() {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const asUuidOrNull = (v: unknown): string | null => (typeof v === 'string' && UUID_RE.test(v) ? v : null)
 
+/** Transient RPC-error channel → a toast. The store isn't React, so it can't
+ *  call showToast directly; a tiny listener mounted under ToastProvider
+ *  (RpcErrorListener) subscribes and surfaces the message. We emit a stable
+ *  CODE (not a sentence) so the React side owns i18n. Right now the only code is
+ *  'gender_restricted' — the server gate the UI tries to never let you reach
+ *  (deep-link/race safety net, CLAUDE.md §5). */
+const rpcErrorListeners = new Set<(code: string) => void>()
+export function subscribeRpcError(cb: (code: string) => void): () => void {
+  rpcErrorListeners.add(cb)
+  return () => rpcErrorListeners.delete(cb)
+}
+function emitRpcError(code: string) {
+  for (const l of rpcErrorListeners) l(code)
+}
+
 /** call a flow RPC, then refresh `db` (Realtime will also fire, but this makes
  *  the acting window feel instant). Errors are logged; callers stay fire-and-forget. */
 async function rpc(fn: string, params: Record<string, unknown>): Promise<unknown> {
@@ -348,6 +363,9 @@ async function rpc(fn: string, params: Record<string, unknown>): Promise<unknown
   const { data, error } = await supabase.rpc(fn, params)
   if (error) {
     console.error(`[rpc] ${fn} failed:`, error.message)
+    // surface the gender gate as a transient toast (the UI normally blocks this,
+    // so this only fires on a deep-link / race / direct-API attempt)
+    if (/gender_restricted/i.test(error.message)) emitRpcError('gender_restricted')
     return
   }
   await rehydrate()
@@ -380,9 +398,30 @@ export function isJoined(d: DB, matchId: string, userId = currentUserId): boolea
   return d.matchPlayers.some((mp) => mp.match_id === matchId && mp.player_id === userId)
 }
 
+/** The "Ladies only" gate, read-time. True when a user is barred from a match
+ *  because it's `gender_restriction='ladies'` and they aren't female. The server
+ *  is the real gate (RLS + RPCs raise 'gender_restricted'); this mirrors it so
+ *  the UI never offers a join/request/waitlist/invite CTA it knows will be
+ *  rejected, and so mock mode behaves the same (CLAUDE.md §6). */
+export function genderBlocks(d: DB, matchId: string, userId = currentUserId): boolean {
+  const m = d.matches.find((x) => x.id === matchId)
+  if (!m || m.gender_restriction !== 'ladies') return false
+  return getUser(d, userId)?.gender !== 'female'
+}
+
 export function pendingRequest(d: DB, matchId: string, userId = currentUserId): MatchRequest | undefined {
   return d.matchRequests.find(
     (r) => r.match_id === matchId && r.player_id === userId && (r.status === 'requested' || r.status === 'invited'),
+  )
+}
+
+/** The user has a pending approval REQUEST (kind 'request', status 'requested')
+ *  on this match — distinct from an invite. Drives the per-user Discover exclude
+ *  and the Home "This week" Requested state, until the host approves (→ joined)
+ *  or declines (→ back to Discover, freshly actionable) (CLAUDE.md §5). */
+export function hasPendingRequest(d: DB, matchId: string, userId = currentUserId): boolean {
+  return d.matchRequests.some(
+    (r) => r.match_id === matchId && r.player_id === userId && r.kind === 'request' && r.status === 'requested',
   )
 }
 
@@ -486,8 +525,11 @@ export function matchInvites(d: DB, matchId: string): MatchRequest[] {
  *  with no active invite/request pending (CLAUDE.md §5 — invite is host→player). */
 export function invitablePlayers(d: DB, matchId: string): User[] {
   const m = d.matches.find((x) => x.id === matchId)
+  const ladies = m?.gender_restriction === 'ladies'
   return d.users.filter((u) => {
     if (u.id === currentUserId || (m && u.id === m.host_id)) return false
+    // a 'ladies' match can only invite female players (server enforces too, §5)
+    if (ladies && u.gender !== 'female') return false
     if (isJoined(d, matchId, u.id)) return false
     if (d.blockedUserIds.includes(u.id)) return false
     const active = d.matchRequests.some(
@@ -514,10 +556,24 @@ export function discoverMatches(d: DB): Match[] {
  *  not hosted by me, soonest first. Discover renders the whole list (then
  *  applies its filters); the First-Timer Home renders the first three. Both
  *  surfaces read this one selector so they can never drift (CLAUDE.md §4).
- *  Future SQL: select * from matches where read_status in ('open','full')
- *  and host_id != :me order by start_time. */
+ *
+ *  Per-user dedup (CLAUDE.md §5): a match leaves YOUR Discover the moment you're
+ *  involved — you host it, you've joined it, or you have a pending approval
+ *  request on it (those live on Home instead: You're hosting / NEXT UP·This week /
+ *  This week with a "Requested" state). Saved/bookmarked matches are NOT excluded
+ *  (save ≠ join — they stay, with the bookmark filled). It stays seeded for
+ *  everyone else; this is per-viewer filtering, never an empty state. A declined
+ *  request flips `hasPendingRequest` false → the match returns here (read-time).
+ *  Future SQL: select * from matches m where read_status in ('open','full')
+ *    and m.host_id != :me
+ *    and not exists (select 1 from match_players p where p.match_id=m.id and p.player_id=:me)
+ *    and not exists (select 1 from match_requests r where r.match_id=m.id and r.player_id=:me
+ *                    and r.kind='request' and r.status='requested')
+ *    order by m.start_time. */
 export function discoverFeed(d: DB): Match[] {
-  return discoverMatches(d).filter((m) => m.host_id !== currentUserId)
+  return discoverMatches(d).filter(
+    (m) => m.host_id !== currentUserId && !isJoined(d, m.id) && !hasPendingRequest(d, m.id),
+  )
 }
 
 /** Chronological order for every match list (Home sections + "See all"):
@@ -542,11 +598,28 @@ export function upcomingJoinedMatches(d: DB, userId = currentUserId): Match[] {
   })
 }
 
-/** Home "This week" — upcoming joined matches after NEXT UP, excluding ones you
- *  host (those live under "You're hosting"). */
+/** Matches you have a pending approval request on — still open/full, not joined,
+ *  not hosted. They fold into "This week" with a Requested state (no separate
+ *  Home section, CLAUDE.md §4) until the host approves (→ a joined match) or
+ *  declines (→ back to Discover). FIFO/chronological like the rest. */
+export function requestedMatches(d: DB, userId = currentUserId): Match[] {
+  return d.matches
+    .filter((m) => m.host_id !== userId && !isJoined(d, m.id, userId) && hasPendingRequest(d, m.id, userId))
+    .filter((m) => {
+      const s = computeStatus(m)
+      return s === 'open' || s === 'full'
+    })
+    .sort(byStartThenCreated)
+}
+
+/** Home "This week" — upcoming joined matches after NEXT UP (excluding ones you
+ *  host — those live under "You're hosting") PLUS your pending-request matches,
+ *  all sorted by start_time. Pending requests render with a "Requested" state
+ *  (CLAUDE.md §4/§5). */
 export function thisWeekMatches(d: DB, userId = currentUserId): Match[] {
   const hostedIds = new Set(hostedMatches(d, userId).map((m) => m.id))
-  return upcomingJoinedMatches(d, userId).slice(1).filter((m) => !hostedIds.has(m.id))
+  const joinedWeek = upcomingJoinedMatches(d, userId).slice(1).filter((m) => !hostedIds.has(m.id))
+  return [...joinedWeek, ...requestedMatches(d, userId)].sort(byStartThenCreated)
 }
 
 /** Home "Matches you saved" — bookmarked, NOT joined, and still joinable
@@ -713,12 +786,15 @@ export function threadTimeline(d: DB, threadId: string): TimelineItem[] {
  *  powers the DM "invite to play" picker (§5). Joinable (open/full) and the
  *  other player isn't already in / pending. */
 export function invitableMatchesFor(d: DB, otherId: string): Match[] {
+  const other = getUser(d, otherId)
   return hostedMatches(d)
     .filter((m) => m.status !== 'cancelled')
     .filter((m) => {
       const s = computeStatus(m)
       return s === 'open' || s === 'full'
     })
+    // a male can't be invited to a 'ladies' match — don't even offer it (§5)
+    .filter((m) => !(m.gender_restriction === 'ladies' && other?.gender !== 'female'))
     .filter((m) => invitablePlayers(d, m.id).some((u) => u.id === otherId))
 }
 
@@ -870,6 +946,7 @@ export const actions = {
     mutate((d) => {
       const m = d.matches.find((x) => x.id === matchId)
       if (!m || m.spots_available <= 0 || isJoined(d, matchId)) return d
+      if (genderBlocks(d, matchId)) return d // ladies-only gate (mock parity, §6)
       return {
         ...d,
         matches: d.matches.map((x) => (x.id === matchId ? { ...x, spots_available: x.spots_available - 1 } : x)),
@@ -930,6 +1007,7 @@ export const actions = {
     mutate((d) => {
       const m = d.matches.find((x) => x.id === matchId)
       if (!m || m.host_id === currentUserId || isJoined(d, matchId)) return d
+      if (genderBlocks(d, matchId)) return d // ladies-only gate (mock parity, §6)
       if (computeStatus(m) !== 'full') return d
       const existing = d.matchRequests.find(
         (r) => r.match_id === matchId && r.player_id === currentUserId && r.kind === 'waitlist',
@@ -970,6 +1048,7 @@ export const actions = {
     if (liveReady) { void rpc('request_to_join', { p_match: matchId }); return }
     mutate((d) => {
       if (pendingRequest(d, matchId)) return d
+      if (genderBlocks(d, matchId)) return d // ladies-only gate (mock parity, §6)
       return {
         ...d,
         matchRequests: [
@@ -1184,6 +1263,7 @@ export const actions = {
         p_fee_per_player: input.fee_per_player ?? 0,
         p_join_mode: input.join_mode,
         p_notes: input.notes ?? null,
+        p_gender_restriction: input.gender_restriction ?? 'mixed',
       })
       if (error) {
         console.error('[rpc] create_match failed:', error.message)
@@ -1234,13 +1314,14 @@ export const actions = {
       if (!supabase) return
       // map app fields → matches columns (drop route_*/round_trip/status — not
       // in the Stage-1 schema; cancel goes through cancelMatch)
-      const cols = ['sport', 'name', 'venue_id', 'venue_name', 'venue_location', 'court_number', 'start_time', 'end_time', 'skill_min', 'skill_max', 'total_spots', 'spots_available', 'fee_total', 'fee_per_player', 'join_mode', 'notes']
+      const cols = ['sport', 'name', 'venue_id', 'venue_name', 'venue_location', 'court_number', 'start_time', 'end_time', 'skill_min', 'skill_max', 'total_spots', 'spots_available', 'fee_total', 'fee_per_player', 'join_mode', 'gender_restriction', 'notes']
       const src = patch as Record<string, unknown>
       const dbPatch: Record<string, unknown> = {}
       for (const k of cols) if (k in src) dbPatch[k] = src[k] ?? null
       if ('venue_id' in dbPatch) dbPatch.venue_id = asUuidOrNull(dbPatch.venue_id)
       if (dbPatch.fee_total == null && 'fee_total' in dbPatch) dbPatch.fee_total = 0
       if (dbPatch.fee_per_player == null && 'fee_per_player' in dbPatch) dbPatch.fee_per_player = 0
+      if ('gender_restriction' in dbPatch && dbPatch.gender_restriction == null) dbPatch.gender_restriction = 'mixed'
       afterWrite(supabase.from('matches').update(dbPatch).eq('id', matchId))
     }
   },

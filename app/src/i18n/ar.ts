@@ -15,6 +15,15 @@ export const ar: Partial<Record<MessageKey, string>> = {
   'gender.male': 'ذكر',
   'gender.female': 'أنثى',
 
+  // Pending approval-request — withdraw CTA (Home "This week" card)
+  'match.cancelRequest': 'إلغاء الطلب',
+
+  // Ladies-only gender restriction (CLAUDE.md §6/§7)
+  'match.ladiesOnly': 'للسيدات فقط',
+  'match.gender.womenOnly': 'للسيدات فقط',
+  'match.gender.blockedInline': 'هذه المباراة للسيدات فقط.',
+  'match.gender.blockedToast': 'هذه المباراة مفتوحة للسيدات فقط.',
+
   // Skill ladder — 7 tiers, lowest → highest (sign-up, profile, match range)
   'skill.baby': 'مبتدئ تمامًا',
   'skill.beginner': 'مبتدئ',
