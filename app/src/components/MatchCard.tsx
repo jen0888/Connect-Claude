@@ -4,6 +4,7 @@ import { Bookmark, CalendarCheck, Check, ChevronRight, Clock, Eye, Gauge, Hourgl
 import type { Match, MatchStatus, User } from '@/lib/types'
 import { artType, courtLabel, courtNumberLabel, dayDateLabel, hm, matchKind, skillRangeText, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
+import { matchImage } from '@/lib/matchImage'
 import { useI18n } from '@/i18n'
 import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
@@ -62,6 +63,10 @@ export interface MatchCardProps {
    *  caller from the viewer's gender). Replaces the join/request/waitlist CTA with
    *  a disabled, non-judgmental "Women only" state (CLAUDE.md §6). */
   genderBlocked?: boolean
+  /** override the cover photo index (default = stable hash of match.id). Lists
+   *  pass a distinct per-position value so a feed never repeats a photo — e.g.
+   *  Discover assigns sequential indices to its tennis cards. */
+  coverIndex?: number
 }
 
 export function MatchCard({
@@ -86,6 +91,7 @@ export function MatchCard({
   hostNote,
   requestCount = 0,
   genderBlocked = false,
+  coverIndex,
 }: MatchCardProps) {
   const navigate = useNavigate()
   const { t } = useI18n()
@@ -105,6 +111,9 @@ export function MatchCard({
   // if the joined-players list hasn't hydrated yet (e.g. a freshly created match).
   const roster = host && !players.some((p) => p.id === host.id) ? [host, ...players] : players
   const imgH = featured ? 140 : 118
+  // Cover photo for this match (null for sports without art → SVG SportArt
+  // fallback). Variant-specific crop: full-width banner vs 96px brief thumb.
+  const coverImg = matchImage(match.sport, match.id, variant === 'brief' ? 'brief' : 'full', coverIndex)
   const detailHref = `/matches/${match.id}`
 
   /* Location line on the card art: court name · court no. · indoor/outdoor.
@@ -333,12 +342,18 @@ export function MatchCard({
           style={{ filter: dim ? 'grayscale(0.6) brightness(0.92)' : dimImage ? 'grayscale(0.5)' : 'none', opacity: dimImage ? 0.55 : 1 }}
         >
           <div className="absolute inset-0">
-            <SportArt type={artType(match)} />
+            {coverImg ? (
+              <img src={coverImg} alt="" loading="lazy" className="h-full w-full object-cover" />
+            ) : (
+              <SportArt type={artType(match)} />
+            )}
           </div>
           <div
             className="pointer-events-none absolute inset-0"
             style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 22%, transparent) 0%, transparent 55%)' }}
           />
+          {/* readability scrim under the day/time + result badge over the photo */}
+          {coverImg && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />}
           {/* Past archives show weekday + date + month ("Thu 23 May") so a
               finished match reads unambiguously; elsewhere the relative label
               ("Today"/"Mon"). */}
@@ -449,11 +464,17 @@ export function MatchCard({
           filter: dim ? 'grayscale(0.6) brightness(0.92)' : dimImage ? 'grayscale(0.5)' : 'none',
         }}
       >
-        <SportArt type={artType(match)} />
+        {coverImg ? (
+          <img src={coverImg} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <SportArt type={artType(match)} />
+        )}
         <div
           className="pointer-events-none absolute inset-0"
           style={{ background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 20%, transparent) 0%, transparent 50%)' }}
         />
+        {/* readability scrim under the badge + sport label over the photo */}
+        {coverImg && <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />}
         {onToggleSave && (
           <button
             aria-label={saved ? 'Remove from saved' : 'Save'}
