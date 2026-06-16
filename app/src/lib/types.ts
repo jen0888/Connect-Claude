@@ -79,6 +79,7 @@ export interface Match {
   route_start: string | null
   route_end: string | null
   round_trip: boolean
+  distance_km: number | null // running route distance (km); null for court sports / when unset
   start_time: string // ISO
   end_time: string // ISO
   /** open-to skill RANGE, by tier order; skill_min === skill_max ⇒ a single level */

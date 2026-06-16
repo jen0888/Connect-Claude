@@ -109,11 +109,29 @@ export function MatchCard({
      Never repeat the venue name (courtLabel falls back to it), and pull the
      indoor/outdoor setting from the curated venue when we know it. */
   const setting = match.venue_id ? VENUES.find((v) => v.id === match.venue_id)?.setting ?? null : null
-  const locationLine = match.sport === 'running'
-    ? [match.venue_name, match.route_end].filter(Boolean).join(' · ')
-    : [match.venue_name, setting].filter(Boolean).join(' · ')
-  // court no. renders on its own line under the location (court sports only)
-  const courtText = match.sport === 'running' ? null : courtNumberLabel(match.court_number)
+  // Running matches show a start → end route (or a loop) instead of a venue/court.
+  const isRun = match.sport === 'running'
+  const runStart = match.route_start ?? match.venue_name
+  const runEnd = match.round_trip ? 'Loop · back to start' : match.route_end
+  const locationLine = isRun ? (
+    runEnd ? (
+      <span className="min-w-0">
+        {runStart}
+        <span className="inline-block px-1 opacity-40 rtl:rotate-180">→</span>
+        {runEnd}
+      </span>
+    ) : (
+      runStart
+    )
+  ) : (
+    [match.venue_name, setting].filter(Boolean).join(' · ')
+  )
+  // second line under the location: distance for runs, court no. for court sports
+  const courtText = isRun
+    ? match.distance_km
+      ? `${match.distance_km} km`
+      : null
+    : courtNumberLabel(match.court_number)
 
   const done = joinStatus === 'joined' || joinStatus === 'requested'
   const joinLabel = joinStatus === 'joined' ? 'Joined' : joinStatus === 'requested' ? 'Requested' : match.join_mode === 'approval' ? 'Request' : 'Join'
@@ -499,8 +517,8 @@ export function MatchCard({
               {locationLine}
             </span>
             {courtText && (
-              <span className="ps-[17px]">
-                <span className="text-[16px] leading-none" style={{ color: 'var(--color-text)' }}>·</span> {courtText}
+              <span className="ps-[17px] ltr-nums">
+                {!isRun && <span className="text-[16px] leading-none" style={{ color: 'var(--color-text)' }}>·</span>}{!isRun && ' '}{courtText}
               </span>
             )}
           </span>

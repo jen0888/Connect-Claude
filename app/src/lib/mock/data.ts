@@ -65,7 +65,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-nextup', host_id: 'u-marco', sport: 'padel',
     venue_id: 'padelin-aspire', venue_name: 'Padel In — Aspire Zone', venue_location: 'Aspire Zone · Al Waab',
-    court_number: 'Court 4', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 4', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(3), end_time: iso(4), skill_min: 'int', skill_max: 'advance',
     total_spots: 4, spots_available: 1, fee_total: 100, fee_per_player: 25,
     join_mode: 'open', status: 'active', notes: 'Doubles. Bring a can of balls if you have one.', created_at: iso(-48),
@@ -74,7 +74,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-hosted', host_id: 'u-you', sport: 'padel',
     venue_id: 'padelin-aspire', venue_name: 'Padel In — Aspire Zone', venue_location: 'Aspire Zone · Al Waab',
-    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(65), end_time: iso(66), skill_min: 'int', skill_max: 'int',
     total_spots: 2, spots_available: 1, fee_total: 80, fee_per_player: 40,
     join_mode: 'open', status: 'active', notes: null, created_at: iso(-24),
@@ -83,7 +83,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-run', host_id: 'u-lb', sport: 'running',
     venue_id: null, venue_name: 'Aspire Park', venue_location: 'Aspire Zone · Al Waab',
-    court_number: null, route_start: 'Aspire Park main gate', route_end: 'Bayside loop', round_trip: true,
+    court_number: null, route_start: 'Aspire Park main gate', route_end: 'Bayside loop', round_trip: true, distance_km: 6,
     start_time: iso(17), end_time: iso(17.75), skill_min: 'baby', skill_max: 'pro',
     total_spots: 8, spots_available: 3, fee_total: 0, fee_per_player: null,
     join_mode: 'open', status: 'active', notes: 'Easy pace, ~6 km. All levels.', created_at: iso(-72),
@@ -92,7 +92,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-sat', host_id: 'u-hd', sport: 'padel',
     venue_id: 'doha-oasis', venue_name: 'Doha Oasis Padel', venue_location: 'Msheireb',
-    court_number: 'Court 1', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 1', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(113), end_time: iso(114.5), skill_min: 'baby', skill_max: 'pro',
     total_spots: 4, spots_available: 2, fee_total: 120, fee_per_player: 30,
     join_mode: 'approval', status: 'active', notes: null, created_at: iso(-30),
@@ -101,7 +101,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-tennis', host_id: 'u-jk', sport: 'tennis',
     venue_id: 'westbay-tennis', venue_name: 'West Bay Tennis Club', venue_location: 'West Bay',
-    court_number: 'Court A', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court A', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(143), end_time: iso(144), skill_min: 'advance', skill_max: 'advance',
     total_spots: 2, spots_available: 1, fee_total: 80, fee_per_player: 40,
     join_mode: 'approval', gender_restriction: 'ladies', status: 'active', notes: 'Hit + drills, one set after.', created_at: iso(-20),
@@ -110,7 +110,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-badminton', host_id: 'u-rp', sport: 'badminton',
     venue_id: 'dynamic', venue_name: 'Dynamic Sports Academy', venue_location: 'Ain Khaled',
-    court_number: 'Hall 2', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Hall 2', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(6), end_time: iso(7), skill_min: 'int', skill_max: 'int',
     total_spots: 4, spots_available: 2, fee_total: 60, fee_per_player: 15,
     join_mode: 'open', status: 'active', notes: null, created_at: iso(-10),
@@ -119,7 +119,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-justplayed', host_id: 'u-you', sport: 'padel',
     venue_id: 'padel91', venue_name: 'Padel 91 West Walk', venue_location: 'West Walk · Al Waab',
-    court_number: 'Court 3', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 3', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(-3), end_time: iso(-2), skill_min: 'int', skill_max: 'int',
     total_spots: 4, spots_available: 0, fee_total: 100, fee_per_player: 25,
     join_mode: 'open', status: 'active', notes: null, created_at: iso(-96),
@@ -129,7 +129,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-live', host_id: 'u-nv', sport: 'tennis',
     venue_id: 'khalifa', venue_name: 'Khalifa Int’l Tennis Complex', venue_location: 'West Bay · Al Dafna',
-    court_number: 'Court 6', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 6', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(-0.5), end_time: iso(0.75), skill_min: 'int', skill_max: 'int',
     total_spots: 4, spots_available: 0, fee_total: 0, fee_per_player: null,
     join_mode: 'open', status: 'active', notes: null, created_at: iso(-50),
@@ -138,7 +138,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-full-padel', host_id: 'u-hd', sport: 'padel',
     venue_id: 'the-dome', venue_name: 'The Dome — Education City Golf', venue_location: 'Education City · Al Rayyan',
-    court_number: 'Court 1', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 1', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(28), end_time: iso(29.5), skill_min: 'int', skill_max: 'int',
     total_spots: 4, spots_available: 0, fee_total: 100, fee_per_player: 25,
     join_mode: 'open', status: 'active', notes: 'Locked in — waitlist open if someone drops.', created_at: iso(-60),
@@ -147,7 +147,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-full-tennis', host_id: 'u-jk', sport: 'tennis',
     venue_id: 'khalifa', venue_name: 'Khalifa Int’l Tennis Complex', venue_location: 'West Bay · Al Dafna',
-    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(37), end_time: iso(38), skill_min: 'advance', skill_max: 'advance',
     total_spots: 2, spots_available: 0, fee_total: 70, fee_per_player: 35,
     join_mode: 'approval', status: 'active', notes: null, created_at: iso(-55),
@@ -156,7 +156,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-bad-beg', host_id: 'u-rp', sport: 'badminton',
     venue_id: 'accelerate', venue_name: 'Accelerate Sports', venue_location: 'Doha',
-    court_number: 'Court 5', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 5', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(9), end_time: iso(10), skill_min: 'beginner', skill_max: 'beginner',
     total_spots: 4, spots_available: 2, fee_total: 0, fee_per_player: null,
     join_mode: 'open', status: 'active', notes: 'Casual rallies, rackets to borrow.', created_at: iso(-15),
@@ -165,7 +165,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-invite-tennis', host_id: 'u-nv', sport: 'tennis',
     venue_id: 'al-dana', venue_name: 'Al Dana Club — Indoor Tennis', venue_location: 'Doha',
-    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(52), end_time: iso(53), skill_min: 'int', skill_max: 'int',
     total_spots: 4, spots_available: 2, fee_total: 120, fee_per_player: 30,
     join_mode: 'invite', status: 'active', notes: 'Regulars group — ask Noor for an invite.', created_at: iso(-22),
@@ -174,7 +174,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-custom-padel', host_id: 'u-st', sport: 'padel',
     venue_id: null, venue_name: 'Barwa Madinatna community court', venue_location: 'Al Wakrah Road',
-    court_number: null, route_start: null, route_end: null, round_trip: false,
+    court_number: null, route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(76), end_time: iso(77), skill_min: 'beginner', skill_max: 'beginner',
     total_spots: 4, spots_available: 3, fee_total: 0, fee_per_player: null,
     join_mode: 'approval', status: 'active', notes: 'Compound court, friendly beginners game.', created_at: iso(-18),
@@ -183,7 +183,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-run-corniche', host_id: 'u-lb', sport: 'running',
     venue_id: null, venue_name: 'Doha Corniche', venue_location: 'Corniche · Al Dafna',
-    court_number: null, route_start: 'Sheraton Park gate', route_end: 'MIA Park', round_trip: false,
+    court_number: null, route_start: 'Sheraton Park gate', route_end: 'MIA Park', round_trip: false, distance_km: 5,
     start_time: iso(25), end_time: iso(25.75), skill_min: 'beginner', skill_max: 'beginner',
     total_spots: 10, spots_available: 6, fee_total: 0, fee_per_player: null,
     join_mode: 'open', status: 'active', notes: 'Sunrise 5K along the water. Walk breaks fine.', created_at: iso(-36),
@@ -192,7 +192,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-past-won', host_id: 'u-marco', sport: 'padel',
     venue_id: 'padelin-cc', venue_name: 'Padel In — City Center Doha', venue_location: 'West Bay · Al Dafna',
-    court_number: 'Court 1', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 1', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(-170), end_time: iso(-169), skill_min: 'int', skill_max: 'int',
     total_spots: 4, spots_available: 0, fee_total: 100, fee_per_player: 25,
     join_mode: 'open', status: 'active', notes: null, created_at: iso(-250),
@@ -201,7 +201,7 @@ export const MATCHES: Match[] = [
   {
     id: 'm-cancelled', host_id: 'u-st', sport: 'padel',
     venue_id: 'padel-garden', venue_name: 'Padel Garden — Katara Hills', venue_location: 'Katara',
-    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false,
+    court_number: 'Court 2', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(26), end_time: iso(27), skill_min: 'beginner', skill_max: 'beginner',
     total_spots: 4, spots_available: 1, fee_total: 80, fee_per_player: 20,
     join_mode: 'open', status: 'cancelled', notes: null, created_at: iso(-40),

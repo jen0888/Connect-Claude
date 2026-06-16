@@ -85,6 +85,7 @@ function mapMatch(row: any): Match {
     route_start: null, // running-route fields aren't modelled in the Stage-1 schema
     route_end: null,
     round_trip: false,
+    distance_km: null,
     start_time: row.start_time,
     end_time: row.end_time,
     skill_min: asTier(row.skill_min),

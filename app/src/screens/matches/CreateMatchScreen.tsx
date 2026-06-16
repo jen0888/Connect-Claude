@@ -146,6 +146,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       route_start: sport === 'running' ? (venue?.name ?? null) : null,
       route_end: sport === 'running' ? (venue?.loop ? venue.name : (venue?.endName ?? null)) : null,
       round_trip: sport === 'running' ? (venue?.loop ?? false) : false,
+      distance_km: sport === 'running' && typeof venue?.km === 'number' ? venue.km : null,
       start_time: new Date(start).toISOString(),
       end_time: new Date(end).toISOString(),
       skill_min: skillMin!, // guaranteed by the allChosen guard above
