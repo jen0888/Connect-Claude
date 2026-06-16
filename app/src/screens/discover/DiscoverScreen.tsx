@@ -10,15 +10,10 @@ import { usePersistedState } from '@/lib/usePersistedState'
 import { HOST_CREATE_ROUTE } from '@/lib/hostedMatch'
 import { SKILL_TIERS, skillInRange, type Match, type SkillTier, type Sport } from '@/lib/types'
 import { skillTierLabel } from '@/lib/format'
-import { sportImageCount } from '@/lib/matchImage'
 
 /** Discover — browse open matches (discover.jsx DiscoverScreen).
  *  Feed is always seeded, never an empty cold-start (CLAUDE.md §5);
  *  the only empty state is a too-narrow filter. */
-
-// Random starting photo per session (computed once at import — keeps Discover's
-// cover-image assignment out of render so it stays react-pure + flicker-free).
-const COVER_OFFSET = Math.floor(Math.random() * 7)
 
 const SPORT_FILTERS = ['All', 'Padel', 'Tennis', 'Badminton', 'Running'] as const
 const TIME_FILTERS = [
@@ -123,21 +118,6 @@ export function DiscoverScreen() {
     })
   }, [db, sport, time, level, gender, query])
 
-  // Give each match with cover art a DISTINCT photo index by its position in the
-  // feed, so Discover never shows the same tennis photo twice (within a sport's
-  // image count). Counted per-sport, offset randomly per session for variety.
-  const coverIndexByMatch = useMemo(() => {
-    const map = new Map<string, number>()
-    const seen: Partial<Record<Sport, number>> = {}
-    for (const m of filtered) {
-      if (sportImageCount(m.sport) === 0) continue
-      const n = seen[m.sport] ?? 0
-      map.set(m.id, COVER_OFFSET + n)
-      seen[m.sport] = n + 1
-    }
-    return map
-  }, [filtered])
-
   const spotlight = filtered[0]
   const rest = filtered.slice(1)
   const grouped = useMemo(() => {
@@ -179,7 +159,6 @@ export function DiscoverScreen() {
         joinStatus={joined ? 'joined' : waitlisted ? 'waitlisted' : pending ? 'requested' : null}
         waitlistPosition={waitlisted ? waitlistPosition(db, m.id) : null}
         genderBlocked={genderBlocks(db, m.id)}
-        coverIndex={coverIndexByMatch.get(m.id)}
         onAct={() => act(m)}
         saved={db.savedMatchIds.includes(m.id)}
         onToggleSave={() => actions.toggleSaveMatch(m.id)}

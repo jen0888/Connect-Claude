@@ -4,6 +4,7 @@ import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, M
 import { onboarding, resetOnboarding } from './onboarding'
 import { computeStatus, noShowReportThreshold, resultsCorroborated } from './status'
 import { clearHostedMatch } from './hostedMatch'
+import { sportImageCount } from './matchImage'
 import { clearProfileSports } from './profile'
 import { clearPersistedState } from './usePersistedState'
 import { supabase, isSupabaseConfigured } from './supabase'
@@ -406,6 +407,23 @@ function finalizeMatchIfConfirmed(matchId: string) {
 
 export function getUser(d: DB, id: string): User | undefined {
   return d.users.find((u) => u.id === id)
+}
+
+/** Cover-photo index for a match: its round-robin rank among ALL same-sport
+ *  matches (stable id sort) modulo the sport's image count. This spreads photos
+ *  evenly across every match — every image is used before any repeats — and is
+ *  GLOBAL/stable, so a match shows the same photo on every screen (Home,
+ *  Discover, Details). Returns undefined when the sport has no cover art, so the
+ *  card falls back to the SVG SportArt. (Dense filtered feeds can still override
+ *  with a per-feed index — see DiscoverScreen.) */
+export function coverIndexFor(d: DB, matchId: string): number | undefined {
+  const m = d.matches.find((x) => x.id === matchId)
+  if (!m || sportImageCount(m.sport) === 0) return undefined
+  const rank = d.matches
+    .filter((x) => x.sport === m.sport)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .findIndex((x) => x.id === matchId)
+  return rank < 0 ? undefined : rank
 }
 
 /** Win rate over CONFIRMED (closed) matches only — an unconfirmed solo entry
@@ -1448,12 +1466,41 @@ export const actions = {
    *  Optimistic in both modes (mirrors toggleSaveMatch). No cron, no triggers. */
   checkIn(matchId: string, on = true) {
     const attended = on ? true : null
-    mutate((d) => ({
-      ...d,
-      matchPlayers: d.matchPlayers.map((mp) =>
-        mp.match_id === matchId && mp.player_id === currentUserId ? { ...mp, attended } : mp,
-      ),
-    }))
+    mutate((d) => {
+      const already = d.matchPlayers.some(
+        (mp) => mp.match_id === matchId && mp.player_id === currentUserId && mp.attended === true,
+      )
+      const next: DB = {
+        ...d,
+        matchPlayers: d.matchPlayers.map((mp) =>
+          mp.match_id === matchId && mp.player_id === currentUserId ? { ...mp, attended } : mp,
+        ),
+      }
+      // Announce the check-in in the match group chat so everyone sees who's
+      // showed up (mirrors the "X joined / left" lines). Mock only + only on the
+      // transition into checked-in — live mode posts this via the DB trigger
+      // trg_thread_checkin (no double line).
+      if (liveReady || !on || already) return next
+      const me = getUser(d, currentUserId)
+      const thread = threadForMatch(d, matchId)
+      if (!me || !thread) return next
+      return {
+        ...next,
+        chatMessages: [
+          ...next.chatMessages,
+          {
+            id: newId('msg'),
+            thread_id: thread.id,
+            sender_id: currentUserId,
+            body: `${me.name.split(' ')[0]} checked in for this match`,
+            created_at: new Date().toISOString(),
+            system: true,
+            tone: 'pos' as const,
+            icon: 'check' as const,
+          },
+        ],
+      }
+    })
     if (liveReady && supabase) {
       afterWrite(
         supabase.from('match_players').update({ attended }).eq('match_id', matchId).eq('player_id', currentUserId),

@@ -5,6 +5,7 @@ import type { Match, MatchStatus, User } from '@/lib/types'
 import { artType, courtLabel, courtNumberLabel, dayDateLabel, hm, matchKind, skillRangeText, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
 import { matchImage } from '@/lib/matchImage'
+import { coverIndexFor, useDB } from '@/lib/store'
 import { useI18n } from '@/i18n'
 import { VENUES } from '@/lib/mock/venues'
 import { AvatarStack } from './Avatar'
@@ -95,6 +96,7 @@ export function MatchCard({
 }: MatchCardProps) {
   const navigate = useNavigate()
   const { t } = useI18n()
+  const db = useDB()
   const ladies = match.gender_restriction === 'ladies'
   // a male viewer on a 'ladies' match: no tappable join CTA — a disabled state instead
   const blocked = genderBlocked && action === 'join' && joinStatus !== 'joined'
@@ -113,7 +115,15 @@ export function MatchCard({
   const imgH = featured ? 140 : 118
   // Cover photo for this match (null for sports without art → SVG SportArt
   // fallback). Variant-specific crop: full-width banner vs 96px brief thumb.
-  const coverImg = matchImage(match.sport, match.id, variant === 'brief' ? 'brief' : 'full', coverIndex)
+  // Default index = the match's global round-robin rank (coverIndexFor) so
+  // photos spread evenly + consistently across every screen; a caller may pass
+  // coverIndex to override (e.g. a per-feed assignment).
+  const coverImg = matchImage(
+    match.sport,
+    match.id,
+    variant === 'brief' ? 'brief' : 'full',
+    coverIndex ?? coverIndexFor(db, match.id),
+  )
   const detailHref = `/matches/${match.id}`
 
   /* Location line on the card art: court name · court no. · indoor/outdoor.

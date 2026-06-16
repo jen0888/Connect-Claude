@@ -24,12 +24,21 @@ export function matchImagePath(sport: Sport, index: number, variant: 'full' | 'b
   return `/sports/${sport}/${variant}/${idx}.jpg`
 }
 
-/** Stable, deterministic string hash (djb2). Same matchId → same image every
- *  render/reload, so a match keeps its cover photo. */
+/** Stable, deterministic string hash (FNV-1a + a final avalanche mix). Same
+ *  matchId → same image every render/reload. The avalanche step spreads the
+ *  low bits so `% count` doesn't cluster (plain FNV/djb2 mod a small N piles
+ *  similar UUIDs onto the same bucket). Used only when no explicit index is
+ *  given — lists pass a round-robin index for a guaranteed even spread. */
 function hashString(s: string): number {
-  let h = 5381
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
-  return h
+  let h = 2166136261 >>> 0
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619) >>> 0
+  }
+  h ^= h >>> 13
+  h = Math.imul(h, 0x5bd1e995) >>> 0
+  h ^= h >>> 15
+  return h >>> 0
 }
 
 /** Resolve a match's cover image path for the given card variant, or null when
