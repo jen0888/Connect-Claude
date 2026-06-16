@@ -309,6 +309,9 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
               {recent.map((m) => {
                 const res = db.matchResults.find((r) => r.match_id === m.id && r.player_id === user.id)
                 const cancelled = m.status === 'cancelled'
+                // casual & running matches aren't head-to-head — they show a plain
+                // "Played", never a win/loss. Only competition matches surface a result.
+                const showResult = m.match_type === 'competition' && m.sport !== 'running' && !!res
                 return (
                   <div key={m.id} className="flex items-center gap-3 rounded-[16px] border bg-card px-3.5 py-3" style={{ borderColor: 'rgba(26,26,26,0.08)' }}>
                     <div className="h-[42px] w-[42px] shrink-0 overflow-hidden rounded-[11px]" style={{ filter: cancelled ? 'grayscale(0.6)' : 'none', opacity: cancelled ? 0.6 : 1 }}>
@@ -327,13 +330,13 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
                       style={{
                         background: cancelled
                           ? 'color-mix(in srgb, var(--color-danger) 8%, transparent)'
-                          : res?.result === 'win'
+                          : showResult && res?.result === 'win'
                             ? 'color-mix(in srgb, var(--color-success) 9%, transparent)'
                             : 'rgba(26,26,26,0.06)',
-                        color: cancelled ? 'var(--color-danger)' : res?.result === 'win' ? 'var(--color-success)' : 'var(--color-text-muted)',
+                        color: cancelled ? 'var(--color-danger)' : showResult && res?.result === 'win' ? 'var(--color-success)' : 'var(--color-text-muted)',
                       }}
                     >
-                      {cancelled ? 'Cancelled' : res ? (res.result === 'win' ? 'Won' : res.result === 'loss' ? 'Lost' : 'Draw') : 'Played'}
+                      {cancelled ? 'Cancelled' : showResult ? (res!.result === 'win' ? 'Won' : res!.result === 'loss' ? 'Lost' : 'Draw') : 'Played'}
                     </span>
                   </div>
                 )

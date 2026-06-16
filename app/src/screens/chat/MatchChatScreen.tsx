@@ -116,7 +116,7 @@ export function MatchChatScreen() {
           style={{ background: 'rgba(244,240,232,0.86)', borderColor: 'rgba(26,26,26,0.06)' }}
         >
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/chat')}
             aria-label="Back"
             className="inline-flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full border-none text-ink"
             style={{ background: 'rgba(26,26,26,0.06)' }}

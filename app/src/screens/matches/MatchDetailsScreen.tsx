@@ -7,9 +7,9 @@ import { LadiesBadge } from '@/components/LadiesBadge'
 import { MiniMap, PlayerDots } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
-import { actions, currentUserId, getUser, invitablePlayers, isJoined, matchPlayers, pendingRequest, requestIsActionable, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, currentUserId, getUser, isJoined, matchPlayers, pendingRequest, requestIsActionable, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
-import { courtNumberLabel, dayLabel, hm, initials, skillLabel, skillRangeText, skillTierLabel, sportLabel, whenLabel } from '@/lib/format'
+import { courtNumberLabel, dayLabel, hm, initials, skillRangeText, skillTierLabel, sportLabel, whenLabel } from '@/lib/format'
 import { SKILL_TIERS, skillOrd, type Match } from '@/lib/types'
 import { DecisionButtons, ProfilePeek, ResolvedNote } from './ApprovalCard'
 
@@ -453,84 +453,40 @@ function MatchDetailsBody({
                 )
               })}
 
-          {/* host of an invite-only match: invite specific players (§5 — host→player,
-              the invite holds no slot; first to fill wins) */}
-          {hostView && m.join_mode === 'invite' && (
-            <div className="mt-6">
-              <Eyebrow accent="var(--color-brand)">Invite players</Eyebrow>
-              {(() => {
-                const pending = db.matchRequests.filter((r) => r.match_id === m.id && r.kind === 'invite' && r.status === 'invited')
-                const candidates = invitablePlayers(db, m.id)
-                return (
-                  <div className="mt-3 flex flex-col gap-3">
-                    {pending.length > 0 && (
-                      <div className={`flex flex-col gap-2.5 p-[18px] ${cardCls}`} style={cardStyle}>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-text-muted)' }}>
-                          Invited · awaiting reply
-                        </div>
-                        {pending.map((r) => {
-                          const u = getUser(db, r.player_id)
-                          if (!u) return null
-                          return (
-                            <div key={r.id} className="flex items-center gap-3">
-                              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent font-display text-[15px] italic text-onbrand">{initials(u)}</span>
-                              <div className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{u.name}</div>
-                              <span
-                                className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-medium"
-                                style={{ background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', color: 'var(--color-warning)' }}
-                              >
-                                <Hourglass size={11} strokeWidth={2} /> Pending
-                              </span>
-                            </div>
-                          )
-                        })}
+          {/* host-only: a READ-ONLY roster of players the host has invited who
+              haven't answered yet. Invites are private, host-initiated offers —
+              not public slots (§5) — so only the host sees this, and there's no
+              add/remove here; editing invites lives in Match Edit
+              (/matches/:id/edit). An accepted invitee moves into the normal
+              roster above (visible to everyone). Hidden when none are pending
+              (no empty-state copy). */}
+          {hostView && m.join_mode === 'invite' && (() => {
+            const invited = db.matchRequests.filter((r) => r.match_id === m.id && r.kind === 'invite' && r.status === 'invited')
+            if (invited.length === 0) return null
+            return (
+              <div className="mt-6">
+                <Eyebrow accent="var(--color-brand)">Invite players</Eyebrow>
+                <div className={`mt-3 flex flex-col gap-2.5 p-[18px] ${cardCls}`} style={cardStyle}>
+                  {invited.map((r) => {
+                    const u = getUser(db, r.player_id)
+                    if (!u) return null
+                    return (
+                      <div key={r.id} className="flex items-center gap-3">
+                        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent font-display text-[15px] italic text-onbrand">{initials(u)}</span>
+                        <div className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{u.name}</div>
+                        <span
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-medium"
+                          style={{ background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', color: 'var(--color-warning)' }}
+                        >
+                          <Hourglass size={11} strokeWidth={2} /> Invited
+                        </span>
                       </div>
-                    )}
-
-                    {isFull ? (
-                      <div className="text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                        Match is full — no more invites needed.
-                      </div>
-                    ) : candidates.length > 0 ? (
-                      <div className={`flex flex-col p-[18px] ${cardCls}`} style={cardStyle}>
-                        {candidates.map((u) => (
-                          <div key={u.id} className="flex items-center gap-3 py-1.5">
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/players/${u.id}`)}
-                              className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 border-none bg-transparent p-0 text-start"
-                            >
-                              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent font-display text-[15px] italic text-onbrand">{initials(u)}</span>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-[14px] font-medium text-ink">{u.name}</div>
-                                <div className="text-[11.5px] nums-tabular" style={{ color: 'var(--color-text-muted)' }}>
-                                  {skillLabel(u.skill_level)} · {u.matches_played} played
-                                </div>
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                actions.invitePlayer(m.id, u.id)
-                                showToast(`Invited ${u.name.split(' ')[0]}`)
-                              }}
-                              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-pill border-none bg-brand px-3.5 py-2 text-[12.5px] font-semibold text-onbrand"
-                            >
-                              <Plus size={13} strokeWidth={2.4} /> Invite
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                        Everyone's been invited or has joined.
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
-            </div>
-          )}
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* invited player: accept/decline — the invite holds no slot */}
           {!hostView &&

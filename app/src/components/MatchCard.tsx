@@ -19,7 +19,8 @@ import { LifecycleAction, LifecycleChip, LifecycleNote, StatusBadge, lifecycleHa
  *          'join'   – open matches (filled Join; Request when approval mode)
  *          'cancel' – pending request (outlined Cancel)
  *          'edit'   – matches you host (outlined pencil Edit → edit screen)
- *          'attend' – imminent joined match (filled Attend ⇄ subdued Attended)
+ *          'attend' – NEXT UP check-in (filled Attend ⇄ success "Checked in"); the
+ *                     caller gates visibility by the read-time window (§5)
  *  badge:  optional { text, pulse } dark pill on the image (e.g. Awaiting host) */
 export interface MatchCardProps {
   match: Match
@@ -30,7 +31,8 @@ export interface MatchCardProps {
    *  never a separate per-section card (CLAUDE.md §4/§8). */
   variant?: 'brief' | 'full'
   action?: 'view' | 'join' | 'cancel' | 'edit' | 'attend'
-  /** attend-toggle state (action='attend') */
+  /** checked-in state (action='attend') — true once the viewer has tapped attend
+   *  (match_players.attended === true). Positive-only; never reflects a no-show. */
   attended?: boolean
   /** join-state override after acting: null | 'joined' | 'requested' | 'waitlisted' */
   joinStatus?: 'joined' | 'requested' | 'waitlisted' | null
@@ -143,7 +145,32 @@ export function MatchCard({
 
   /* footer action */
   let actionEl: ReactNode
-  if (requested) {
+  if (action === 'attend') {
+    // NEXT UP attend check-in (§5): a low-friction POSITIVE presence signal,
+    // never a no-show verdict. The caller (Home) gates *whether* this renders by
+    // the read-time window (`attendCheckInOpen`); here it just reflects the
+    // checked-in state. Takes priority over the lifecycle action so it is honored
+    // through the live + just-played window too. Idempotent — once checked in it
+    // shows a clear "Checked in" state; tapping again only returns to neutral.
+    actionEl = (
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onAct?.()
+        }}
+        aria-pressed={attended}
+        className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-[7px] whitespace-nowrap rounded-pill border-none px-[18px] text-[13px] font-semibold tracking-[0.01em] transition-colors"
+        style={{
+          background: attended ? 'color-mix(in srgb, var(--color-success) 13%, transparent)' : 'var(--color-brand)',
+          color: attended ? 'var(--color-success)' : 'var(--color-text-onbrand)',
+          boxShadow: attended ? 'none' : '0 8px 20px -6px var(--color-brand)',
+        }}
+      >
+        {attended ? <Check size={13} strokeWidth={2.6} /> : <CalendarCheck size={14} strokeWidth={2} />}
+        {attended ? t('match.action.checkedIn') : t('match.action.attend')}
+      </button>
+    )
+  } else if (requested) {
     // pending approval request → actionable "Cancel request" (withdraw, §5).
     // The Ladies-only badge stacks above this button in the render below.
     actionEl = (
@@ -263,24 +290,6 @@ export function MatchCard({
       >
         <Pencil size={12} strokeWidth={1.9} /> Edit
       </Link>
-    )
-  } else if (action === 'attend') {
-    actionEl = (
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onAct?.()
-        }}
-        className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-[7px] whitespace-nowrap rounded-pill border-none px-[18px] text-[13px] font-semibold tracking-[0.01em] transition-colors"
-        style={{
-          background: attended ? 'rgba(26,26,26,0.10)' : 'var(--color-brand)',
-          color: attended ? 'rgba(26,26,26,0.6)' : 'var(--color-text-onbrand)',
-          boxShadow: attended ? 'none' : '0 8px 20px -6px var(--color-brand)',
-        }}
-      >
-        {attended ? <Check size={13} strokeWidth={2.6} /> : <CalendarCheck size={14} strokeWidth={2} />}
-        {attended ? 'Attended' : 'Attend'}
-      </button>
     )
   } else if (action === 'cancel') {
     actionEl = (

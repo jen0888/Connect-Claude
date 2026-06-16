@@ -14,26 +14,30 @@ const fieldCls = 'w-full rounded-md border bg-card px-3.5 py-[11px] text-[14px] 
 const fieldStyle = { borderColor: 'rgba(26,26,26,0.18)' }
 
 export function InvitePicker({
-  selected,
+  excludeIds = [],
   femaleOnly = false,
   onClose,
   onConfirm,
 }: {
-  selected: string[]
+  /** players already invited (or otherwise excluded) — hidden from the picker so
+   *  the host can only ADD new invitees; removal happens via the inline list (§5) */
+  excludeIds?: string[]
   /** restrict the directory to female players (a 'ladies' match — §6) */
   femaleOnly?: boolean
   onClose: () => void
+  /** the newly-picked player ids to ADD to the invited list (never the full set) */
   onConfirm: (ids: string[]) => void
 }) {
   const db = useDB()
-  const [picked, setPicked] = useState<string[]>(selected)
+  const [picked, setPicked] = useState<string[]>([])
   const [query, setQuery] = useState('')
 
-  // everyone but the host (the current user); the host always holds their own
-  // spot. A 'ladies' match can only invite women, so males are filtered out.
+  // Eligibility is filtered at the DATA layer, not by hiding rows: the host
+  // (current user), already-invited players (excludeIds), and ineligible genders
+  // are never selectable or searchable. A 'ladies' match shows only women (§5/§6).
   const people = useMemo(
-    () => db.users.filter((u) => u.id !== currentUserId && (!femaleOnly || u.gender === 'female')),
-    [db.users, femaleOnly],
+    () => db.users.filter((u) => u.id !== currentUserId && !excludeIds.includes(u.id) && (!femaleOnly || u.gender === 'female')),
+    [db.users, excludeIds, femaleOnly],
   )
   const list = useMemo(
     () => people.filter((u) => !query.trim() || u.name.toLowerCase().includes(query.toLowerCase())),

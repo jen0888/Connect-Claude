@@ -21,6 +21,7 @@ export const en = {
   'match.action.view': 'View',
   'match.action.attend': 'Attend',
   'match.action.attended': 'Attended',
+  'match.action.checkedIn': 'Checked in', // NEXT UP attend check-in: positive presence recorded (§5)
   'match.action.cancel': 'Cancel',
   'match.action.edit': 'Edit',
   'match.cancelRequest': 'Cancel request', // withdraw a pending approval request (Home "This week")
@@ -32,9 +33,12 @@ export const en = {
 
   // Ladies-only gender restriction (CLAUDE.md §6)
   'match.ladiesOnly': 'Ladies only',
-  'match.gender.womenOnly': 'Women only', // compact disabled card pill
+  'match.gender.womenOnly': 'Ladies only', // compact disabled card pill
   'match.gender.blockedInline': 'This match is for women only.', // disabled CTA on Match Details
   'match.gender.blockedToast': 'This match is open to women only.', // RPC safety-net toast
+  // Invite-players section on the create/edit form (CLAUDE.md §5/§6)
+  'match.invite.ladiesNotice': 'Ladies-only match — only women can be invited.',
+  'match.invite.ineligible': 'Not eligible for a ladies-only match — remove.',
 
   // Sports
   'sport.padel': 'Padel',

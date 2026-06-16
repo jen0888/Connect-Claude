@@ -5,6 +5,7 @@ export const RESULT_CONFIRM_MIN = 2
 
 export const POST_MATCH_WINDOW_MS = 24 * 60 * 60 * 1000 // recording window
 export const CANCEL_CUTOFF_MS = 2 * 60 * 60 * 1000 // cancel ≥2h before start, else no-show
+export const ATTEND_CHECKIN_LEAD_MS = 30 * 60 * 1000 // attend check-in opens ~30 min before start
 
 /**
  * Read-time match status (CLAUDE.md §5) — computed from timestamps,
@@ -22,6 +23,28 @@ export function computeStatus(match: Match, now: Date = new Date()): MatchStatus
   if (t < end) return 'live'
   if (t < end + POST_MATCH_WINDOW_MS) return 'completed'
   return 'closed'
+}
+
+/**
+ * Read-time visibility of the NEXT UP "attend" check-in (CLAUDE.md §5).
+ * The attend button is a low-friction POSITIVE presence signal, never a no-show
+ * verdict — so it is only meaningful around match time. The window is derived
+ * from `start_time`/status at read time (NO cron, NO triggers — consistent with
+ * `computeStatus`):
+ *  - opens ~30 min before `start_time` (an earlier tap is meaningless — never shows
+ *    days ahead in NEXT UP),
+ *  - stays open through the `live` state and the just-played (`completed`, ≤24h) window,
+ *  - closed once the match is `closed`/`cancelled`.
+ * A tap pre-fills the player as "Played" in the post-match step 1; it carries no
+ * score (win/lose/draw is separate and still required for win rate).
+ */
+export function attendCheckInOpen(match: Match, now: Date = new Date()): boolean {
+  const st = computeStatus(match, now)
+  if (st === 'live' || st === 'completed') return true
+  if (st === 'open' || st === 'full') {
+    return new Date(match.start_time).getTime() - now.getTime() <= ATTEND_CHECKIN_LEAD_MS
+  }
+  return false // closed / cancelled — recording is over or the match never happened
 }
 
 /** Can this participant still cancel without it counting as a no-show? */

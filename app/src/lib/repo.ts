@@ -95,6 +95,8 @@ function mapMatch(row: any): Match {
     fee_total: fee(row.fee_total),
     fee_per_player: fee(row.fee_per_player),
     join_mode: row.join_mode === 'approval' || row.join_mode === 'invite' ? row.join_mode : 'open',
+    // no match_type column in the Stage-1 live schema yet → default to casual
+    match_type: row.match_type === 'competition' ? 'competition' : 'casual',
     gender_restriction: row.gender_restriction === 'ladies' ? 'ladies' : 'mixed',
     // DB lifecycle status → stored shape; computeStatus re-derives open/full/live.
     // `closed` (set server-side once results are corroborated) is preserved so

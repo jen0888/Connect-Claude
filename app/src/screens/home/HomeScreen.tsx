@@ -7,14 +7,15 @@ import { Eyebrow } from '@/components/Eyebrow'
 import { MatchCard } from '@/components/MatchCard'
 import { useToast } from '@/components/Toast'
 import { InviteApprovalSheet, type Invite } from '@/components/InviteApprovalSheet'
-import { actions, currentUserId, getUser, hasPendingRequest, hostedMatches, joinedMatches, matchPlayers, myInvites, pendingRequestCount, requestedMatches, savedMatches, thisWeekMatches, upcomingJoinedMatches, useDB, useHydrated, waitlistPosition } from '@/lib/store'
-import { computeStatus } from '@/lib/status'
+import { actions, currentUserId, getUser, hasCheckedIn, hasPendingRequest, hostedMatches, joinedMatches, justPlayedMatches, matchPlayers, myInvites, pendingRequestCount, requestedMatches, savedMatches, thisWeekMatches, upcomingJoinedMatches, useDB, useHydrated, waitlistPosition } from '@/lib/store'
+import { attendCheckInOpen, computeStatus } from '@/lib/status'
 import { artType, countdownUntil, courtNumberLabel, greetingDate, hm, initials, matchKind, skillLabel, sportLabel, timeRange, whenLabel } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
 import { HOST_CREATE_ROUTE, useHostedMatch } from '@/lib/hostedMatch'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { LIFECYCLE } from '@/components/lifecycle'
 import { HostedMatchCard } from './HostedMatchCard'
+import { RecordResultHomeCard } from './RecordResultHomeCard'
 import { FirstTimerHome } from './FirstTimerHome'
 
 /** Per-section cap on Home: You're hosting / My Matches / Matches you saved each
@@ -97,7 +98,6 @@ export function HomeScreen() {
   const hydrated = useHydrated()
   const navigate = useNavigate()
   const { showToast } = useToast()
-  const [attended, setAttended] = useState(false)
   // invite-approval bottom sheet: `sheet` holds a snapshot of the tapped invite
   // so the resolved state + exit animation survive the store mutation that
   // removes the invite from the list; `sheetOpen` drives the slide in/out.
@@ -121,6 +121,10 @@ export function HomeScreen() {
       return s === 'open' || s === 'full'
     })
     const nextUp = upcomingJoinedMatches(db)[0]
+    // transient JUST PLAYED card: a match you were in that just finished (≤24h)
+    // and awaits your result → RECORD RESULTS (CLAUDE.md §4). Picks up where
+    // NEXT UP leaves off at end_time.
+    const justPlayed = justPlayedMatches(db)[0]
     // My Matches = joined-but-not-hosted upcoming matches, folding in pending-
     // request matches (sorted by start_time) shown with a "Requested" state —
     // no separate Home section (CLAUDE.md §4/§5). See-all → /my-matches.
@@ -128,7 +132,7 @@ export function HomeScreen() {
     const requested = requestedMatches(db) // for the empty-state guard below
     const invited = myInvites(db)
     const saved = savedMatches(db) // bookmarked, not joined, still joinable
-    return { joined, hosted, nextUp, week, requested, invited, saved }
+    return { joined, hosted, nextUp, justPlayed, week, requested, invited, saved }
   }, [db])
 
   // Auto-greet the first not-yet-seen pending invite with the approval pop-up,
@@ -180,6 +184,11 @@ export function HomeScreen() {
   const nextUpStatus = data.nextUp ? computeStatus(data.nextUp) : null
   const nextUpLc = nextUpStatus ? LIFECYCLE[nextUpStatus] : null
   const nextUpIsPlain = nextUpStatus === 'open' || nextUpStatus === 'full'
+  // Attend check-in (§5): read-time window from start_time (no cron) — shows from
+  // ~30 min before start through live + just-played; otherwise the card is a
+  // plain "View" so there are no meaningless early taps.
+  const nextUpCheckInOpen = data.nextUp ? attendCheckInOpen(data.nextUp) : false
+  const nextUpCheckedIn = data.nextUp ? hasCheckedIn(db, data.nextUp.id) : false
 
   return (
     <Shell>
@@ -212,6 +221,12 @@ export function HomeScreen() {
           </div>
         </div>
 
+        {/* just played — transient post-match prompt during the 24h window (§4).
+            Picks up a match the moment it leaves NEXT UP at end_time; CTA is
+            RECORD RESULTS (the 2-step post-match flow, attendance pre-filled from
+            attend check-ins) — no standalone attend button here (§5). */}
+        {data.justPlayed && <RecordResultHomeCard match={data.justPlayed} />}
+
         {/* next up — featured */}
         {data.nextUp && nextUpLc && (
           <>
@@ -235,10 +250,18 @@ export function HomeScreen() {
                 match={data.nextUp}
                 host={data.nextUp.host_id !== currentUserId ? getUser(db, data.nextUp.host_id) : null}
                 players={matchPlayers(db, data.nextUp.id)}
-                action="attend"
-                attended={attended}
-                onAct={() => setAttended((v) => !v)}
-                showStatusBadge={false}
+                action={nextUpCheckInOpen ? 'attend' : 'view'}
+                attended={nextUpCheckedIn}
+                onAct={
+                  nextUpCheckInOpen
+                    ? () => {
+                        const id = data.nextUp!.id
+                        const next = !nextUpCheckedIn
+                        actions.checkIn(id, next)
+                        if (next) showToast('Checked in — positive presence noted')
+                      }
+                    : undefined
+                }
               />
             </div>
           </>
@@ -298,7 +321,6 @@ export function HomeScreen() {
                     match={m}
                     host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
                     players={matchPlayers(db, m.id)}
-                    showStatusBadge={false}
                   />
                 )
               })}
@@ -333,7 +355,6 @@ export function HomeScreen() {
                     host={getUser(db, m.host_id)}
                     players={matchPlayers(db, m.id)}
                     action="edit"
-                    showStatusBadge={false}
                     requestCount={m.join_mode === 'approval' ? pendingRequestCount(db, m.id) : 0}
                   />
                 ))}

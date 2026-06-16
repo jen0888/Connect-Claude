@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeftRight, ArrowRight, Check, Trophy, X } from 'lucide-react'
+import { ArrowLeftRight, ArrowRight, CalendarCheck, Check, Pencil, Trophy, X } from 'lucide-react'
 import { actions, currentUserId, matchPlayers, useDB } from '@/lib/store'
 import { initials } from '@/lib/format'
 import type { Match, User } from '@/lib/types'
@@ -47,9 +47,17 @@ export function RecordResultForm({ match, onSaved, savedSlot }: { match: Match; 
   const [editing, setEditing] = useState(!myResult)
   const locked = !editing
 
-  // who played — default everyone to Played; flag no-shows by tap
+  // who played — default everyone to Played; flag no-shows by tap. attend
+  // check-ins already pre-fill this: a player who tapped attend has
+  // attended === true, so they are NOT in `absent` and default to "Played" (§5).
   const [absent, setAbsent] = useState<Set<string>>(
     () => new Set(db.matchPlayers.filter((mp) => mp.match_id === match.id && mp.attended === false).map((mp) => mp.player_id)),
+  )
+  // self-reported attend check-ins (attended === true) — surfaced as a subtle tag
+  // so the host sees the pre-fill is honored and only confirms/flags exceptions.
+  const checkedIn = useMemo(
+    () => new Set(db.matchPlayers.filter((mp) => mp.match_id === match.id && mp.attended === true).map((mp) => mp.player_id)),
+    [db.matchPlayers, match.id],
   )
   // doubles pick teams on the day → capture sides here
   const [sideOf, setSideOf] = useState<Record<string, 'A' | 'B'>>(() =>
@@ -60,6 +68,9 @@ export function RecordResultForm({ match, onSaved, savedSlot }: { match: Match; 
   const present = roster.filter((p) => !absent.has(p.id))
   const absentList = roster.filter((p) => absent.has(p.id))
   const isDoubles = match.total_spots > 2
+  // running isn't head-to-head — there's no winner, so the form captures only
+  // who played (no "Who won" section); submit records a neutral result (§5).
+  const isRunning = match.sport === 'running'
 
   const sideTeams = useMemo(
     () =>
@@ -71,7 +82,7 @@ export function RecordResultForm({ match, onSaved, savedSlot }: { match: Match; 
     [present, sideOf, isDoubles],
   )
   const sidesValid = sideTeams[0].players.length > 0 && sideTeams[1].players.length > 0
-  const canSubmit = !!winner && sidesValid
+  const canSubmit = isRunning ? true : !!winner && sidesValid
 
   const toggleAbsent = (id: string) => {
     if (locked || id === currentUserId) return
@@ -88,16 +99,24 @@ export function RecordResultForm({ match, onSaved, savedSlot }: { match: Match; 
   }
 
   const submit = () => {
-    if (!canSubmit || !winner) return
+    if (!canSubmit) return
     // attendance + corroborating no-show reports (threshold computed at read time)
     for (const p of roster) {
       const att = !absent.has(p.id)
       actions.setAttendance(match.id, p.id, att)
       if (!att) actions.reportNoShow(match.id, p.id)
     }
-    // result is recorded for yourself; win if your side won
-    const mySide = sideTeams.find((t) => t.players.some((p) => p.id === currentUserId))?.id
-    actions.recordResult(match.id, currentUserId, mySide === winner ? 'win' : 'loss')
+    if (isRunning) {
+      // running has no winner — a neutral 'draw' still confirms/closes the match
+      // and counts it as played, without touching win/loss stats (draws are
+      // excluded from win rate, §5).
+      actions.recordResult(match.id, currentUserId, 'draw')
+    } else {
+      if (!winner) return
+      // result is recorded for yourself; win if your side won
+      const mySide = sideTeams.find((t) => t.players.some((p) => p.id === currentUserId))?.id
+      actions.recordResult(match.id, currentUserId, mySide === winner ? 'win' : 'loss')
+    }
     setEditing(false)
     onSaved?.()
   }
@@ -194,6 +213,12 @@ export function RecordResultForm({ match, onSaved, savedSlot }: { match: Match; 
                     {p.name}
                     {you && <span className="font-medium" style={{ color: 'var(--color-text-muted)' }}> · you</span>}
                   </div>
+                  {/* attend check-in pre-fill — positive signal only (§5) */}
+                  {!locked && !isAbsent && checkedIn.has(p.id) && (
+                    <div className="mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: 'var(--color-success)' }}>
+                      <CalendarCheck size={11} strokeWidth={2.2} /> Checked in
+                    </div>
+                  )}
                 </div>
                 {locked ? (
                   <PmTag tone={isAbsent ? 'alert' : 'pos'} icon={isAbsent ? <X size={11} strokeWidth={2.4} /> : <Check size={11} strokeWidth={2.4} />}>
@@ -240,21 +265,23 @@ export function RecordResultForm({ match, onSaved, savedSlot }: { match: Match; 
         )}
       </div>
 
-      {/* Q2 · who won */}
-      <div className="mt-[18px]">
-        {sectionHead('Who won', winner ? <PmTag tone="accent" icon={<Trophy size={11} strokeWidth={2.2} />}>{sideTeams.find((t) => t.id === winner)?.label}</PmTag> : null)}
-        {isDoubles && !locked && (
-          <div className="-mt-0.5 mb-2.5 text-[11.5px] leading-[1.45]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
-            Casual doubles pick teams on the day. Set the sides — tap a name to move them across — then mark who won.
-          </div>
-        )}
-        <div className="flex items-stretch gap-[9px]">{sideTeams.map(sideColumn)}</div>
-        {!sidesValid && !locked && (
-          <div className="mt-[9px] flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: 'var(--color-danger)' }}>
-            <X size={12} strokeWidth={2.4} /> Put at least one player on each side.
-          </div>
-        )}
-      </div>
+      {/* Q2 · who won — skipped for running (no head-to-head winner, §5) */}
+      {!isRunning && (
+        <div className="mt-[18px]">
+          {sectionHead('Who won', winner ? <PmTag tone="accent" icon={<Trophy size={11} strokeWidth={2.2} />}>{sideTeams.find((t) => t.id === winner)?.label}</PmTag> : null)}
+          {isDoubles && !locked && (
+            <div className="-mt-0.5 mb-2.5 text-[11.5px] leading-[1.45]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
+              Casual doubles pick teams on the day. Set the sides — tap a name to move them across — then mark who won.
+            </div>
+          )}
+          <div className="flex items-stretch gap-[9px]">{sideTeams.map(sideColumn)}</div>
+          {!sidesValid && !locked && (
+            <div className="mt-[9px] flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: 'var(--color-danger)' }}>
+              <X size={12} strokeWidth={2.4} /> Put at least one player on each side.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* seal */}
       <div className="mt-[18px]">
@@ -280,10 +307,10 @@ export function RecordResultForm({ match, onSaved, savedSlot }: { match: Match; 
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="inline-flex h-[46px] flex-1 cursor-pointer items-center justify-center gap-[7px] rounded-pill text-[13px] font-semibold text-ink"
-                style={{ border: '1.5px solid rgba(26,26,26,0.18)', background: 'rgba(244,240,232,0.5)' }}
+                className="inline-flex h-[46px] flex-1 cursor-pointer items-center justify-center gap-[7px] rounded-pill bg-transparent text-[13px] font-semibold text-brand"
+                style={{ border: '1.5px solid color-mix(in srgb, var(--color-brand) 40%, transparent)' }}
               >
-                Edit result
+                <Pencil size={14} strokeWidth={2} /> Edit result
               </button>
               {savedSlot}
             </div>

@@ -66,7 +66,9 @@ export function PostMatchScreen() {
             <p className="mt-[9px] mb-[18px] max-w-[300px] text-[13px] leading-[1.4]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
               {saved
                 ? 'This match is recorded. Edit it any time until the match closes.'
-                : "Two quick questions. Mark who showed and which side won — it saves straight to everyone's history."}
+                : match.sport === 'running'
+                  ? "One quick step. Mark who showed up — it saves straight to everyone's history."
+                  : "Two quick questions. Mark who showed and which side won — it saves straight to everyone's history."}
             </p>
           </div>
 
@@ -78,7 +80,7 @@ export function PostMatchScreen() {
               <button
                 type="button"
                 onClick={() => navigate(`/chat/match/${match.id}`)}
-                className="inline-flex h-[46px] flex-1 cursor-pointer items-center justify-center gap-[7px] rounded-pill border-none bg-ink text-[13px] font-semibold text-onbrand"
+                className="inline-flex h-[46px] flex-1 cursor-pointer items-center justify-center gap-[7px] rounded-pill border-none bg-brand text-[13px] font-semibold text-onbrand"
               >
                 <MessageCircle size={14} strokeWidth={1.9} /> Chat
               </button>

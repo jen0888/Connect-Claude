@@ -195,7 +195,7 @@ export const MATCHES: Match[] = [
     court_number: 'Court 1', route_start: null, route_end: null, round_trip: false, distance_km: null,
     start_time: iso(-170), end_time: iso(-169), skill_min: 'int', skill_max: 'int',
     total_spots: 4, spots_available: 0, fee_total: 100, fee_per_player: 25,
-    join_mode: 'open', status: 'active', notes: null, created_at: iso(-250),
+    join_mode: 'open', match_type: 'competition', status: 'active', notes: null, created_at: iso(-250),
   },
   // CANCELLED — was tomorrow
   {

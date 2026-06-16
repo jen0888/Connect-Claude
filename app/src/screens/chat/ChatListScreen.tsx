@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Archive, ArchiveRestore, ArrowRight, Check, ChevronRight, Layers, Lock, MailPlus, PenLine, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowRight, Check, Layers, Lock, PenLine, Send, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { SportArt } from '@/components/SportArt'
@@ -268,9 +268,16 @@ export function ChatListScreen() {
           {/* invitations — host→player invites awaiting your reply (incl. ones
               you deferred with "Decide later", §4). Accept/Decline inline; the
               card opens Match Details for the full picture. */}
+          {/* "New for you · N to review" — single CTA-tinted header leading the
+              action stack; each card's kicker now carries its own type label. */}
+          {showNotifications && notifCount > 0 && (
+            <div className="mt-0.5 inline-flex items-center gap-2 whitespace-nowrap text-[10.5px] font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-brand)' }}>
+              <span className="h-[5px] w-[5px] rounded-full" style={{ background: 'var(--color-brand)' }} />
+              New for you · <span className="nums-tabular">{notifCount}</span> to review
+            </div>
+          )}
           {showNotifications && invites.length > 0 && (
             <>
-              <Eyebrow>Invitations</Eyebrow>
               {invites.map((r) => {
                 const m = db.matches.find((x) => x.id === r.match_id)
                 if (!m) return null
@@ -278,24 +285,29 @@ export function ChatListScreen() {
                 return (
                   <div
                     key={r.id}
-                    className="flex shrink-0 flex-col gap-2.5 rounded-[16px] border px-3.5 py-3"
-                    style={{ background: 'color-mix(in srgb, var(--color-brand) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-brand) 25%, transparent)' }}
+                    className="flex shrink-0 flex-col gap-2.5 rounded-[18px] border p-[14px] transition-transform hover:-translate-y-px"
+                    style={{
+                      background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 14%, var(--surface-card)) 0%, var(--surface-card) 70%)',
+                      borderColor: 'color-mix(in srgb, var(--color-accent) 45%, transparent)',
+                      boxShadow: '0 12px 26px -20px color-mix(in srgb, var(--color-accent) 70%, transparent)',
+                    }}
                   >
                     <Link to={`/matches/${m.id}`} className="flex items-center gap-[13px] text-inherit no-underline">
-                      <div className="h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[14px]">
-                        <SportArt type={artType(m)} />
+                      <div className="relative shrink-0">
+                        <div className="inline-flex h-[50px] w-[50px] items-center justify-center rounded-full font-display text-[21px] italic text-onbrand" style={{ background: 'var(--color-accent)' }}>
+                          {host ? initials(host) : '?'}
+                        </div>
+                        <span className="conn-pulse absolute -bottom-1 -end-1 inline-flex h-[19px] w-[19px] items-center justify-center rounded-full text-onbrand" style={{ background: 'var(--color-accent)', border: '1.5px solid var(--surface-page)' }}>
+                          <Send size={9} strokeWidth={2.4} />
+                        </span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <span className="block truncate text-[14.5px] font-semibold text-ink">
-                          {matchKind(m)} · {courtLabel(m)}
-                        </span>
-                        <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                          {host?.name.split(' ')[0]} invited you · {whenLabel(m.start_time)}
+                        <div className="text-[9.5px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--color-accent)' }}>Match invitation</div>
+                        <div className="mt-1 truncate text-[14.5px] font-semibold text-ink">{host?.name} invited you</div>
+                        <div className="mt-[2px] truncate text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                          {matchKind(m)} · {courtLabel(m)} · {whenLabel(m.start_time)} <span className="ltr-nums">{hm(m.start_time)}</span>
                         </div>
                       </div>
-                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill bg-brand px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ boxShadow: '0 6px 14px -6px var(--color-brand)' }}>
-                        <MailPlus size={12} strokeWidth={2} /> Invite
-                      </span>
                     </Link>
                     <div className="flex gap-2.5">
                       <button
@@ -305,7 +317,7 @@ export function ChatListScreen() {
                           showToast('Invite declined')
                         }}
                         className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill bg-transparent text-[13px] font-semibold"
-                        style={{ color: 'color-mix(in srgb, var(--color-danger) 78%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 24%, transparent)' }}
+                        style={{ color: 'var(--color-danger)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 27%, transparent)' }}
                       >
                         <X size={14} strokeWidth={2.2} /> Decline
                       </button>
@@ -322,7 +334,7 @@ export function ChatListScreen() {
                           }
                         }}
                         className="inline-flex h-[40px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill border-none text-[13px] font-semibold text-onbrand"
-                        style={{ background: 'var(--color-brand)', boxShadow: '0 10px 20px -10px var(--color-brand)' }}
+                        style={{ background: 'var(--color-success)', boxShadow: '0 10px 20px -10px var(--color-success)' }}
                       >
                         <Check size={14} strokeWidth={2.4} /> Accept
                       </button>
@@ -340,7 +352,6 @@ export function ChatListScreen() {
               remains the in-conversation action surface. */}
           {showNotifications && hostReqs.length > 0 && (
             <>
-              <Eyebrow>Join requests</Eyebrow>
               {hostReqs.map((r) => {
                 const m = db.matches.find((x) => x.id === r.match_id)
                 const player = getUser(db, r.player_id)
@@ -351,11 +362,11 @@ export function ChatListScreen() {
                   return (
                     <div
                       key={r.id}
-                      className="flex shrink-0 items-center gap-[13px] rounded-[16px] border px-3.5 py-3"
+                      className="flex shrink-0 items-center gap-[13px] rounded-[18px] border p-[14px]"
                       style={{ background: 'rgba(255,255,255,0.55)', borderColor: 'rgba(26,26,26,0.08)' }}
                     >
                       <div
-                        className="inline-flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full font-display text-[21px] italic"
+                        className="inline-flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-full font-display text-[21px] italic"
                         style={{ background: 'color-mix(in srgb, var(--color-neutral) 20%, transparent)', color: 'var(--color-neutral)' }}
                       >
                         {initials(player)}
@@ -374,22 +385,32 @@ export function ChatListScreen() {
                   <Link
                     key={r.id}
                     to={`/matches/${m.id}`}
-                    className="flex shrink-0 items-center gap-[13px] rounded-[16px] border px-3.5 py-3 text-inherit no-underline transition-all hover:bg-card"
-                    style={{ background: 'color-mix(in srgb, var(--color-info) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-info) 25%, transparent)' }}
+                    className="flex shrink-0 items-center gap-[13px] rounded-[18px] border p-[14px] text-inherit no-underline transition-transform hover:-translate-y-px"
+                    style={{
+                      background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-brand) 12%, var(--surface-card)) 0%, var(--surface-card) 70%)',
+                      borderColor: 'color-mix(in srgb, var(--color-brand) 45%, transparent)',
+                      boxShadow: '0 12px 26px -20px color-mix(in srgb, var(--color-brand) 70%, transparent)',
+                    }}
                   >
-                    <div className="inline-flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-accent font-display text-[21px] italic text-onbrand">
-                      {initials(player)}
+                    <div className="relative shrink-0">
+                      <div className="inline-flex h-[50px] w-[50px] items-center justify-center rounded-full font-display text-[21px] italic text-onbrand" style={{ background: 'var(--color-brand)' }}>
+                        {initials(player)}
+                      </div>
+                      <span className="conn-pulse absolute -bottom-1 -end-1 inline-flex h-[19px] w-[19px] items-center justify-center rounded-full text-onbrand" style={{ background: 'var(--color-brand)', border: '1.5px solid var(--surface-page)' }}>
+                        <UserPlus size={9} strokeWidth={2.4} />
+                      </span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate text-[14.5px] font-semibold text-ink">{player.name}</span>
-                      <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                        Wants to join {matchKind(m)} · {courtLabel(m)}
+                      <div className="text-[9.5px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--color-brand)' }}>Request to join</div>
+                      <div className="mt-1 truncate text-[14.5px] font-semibold text-ink">{player.name} wants to join</div>
+                      <div className="mt-[2px] truncate text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                        {matchKind(m)} · {courtLabel(m)} · {whenLabel(m.start_time)} <span className="ltr-nums">{hm(m.start_time)}</span>
+                        {m.spots_available > 0 ? ` — ${m.spots_available} spot${m.spots_available === 1 ? '' : 's'} left` : ''}
                       </div>
                     </div>
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-onbrand" style={{ background: 'var(--color-info)', boxShadow: '0 6px 14px -6px var(--color-info)' }}>
-                      <UserPlus size={12} strokeWidth={2} /> Review
+                    <span className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill px-3.5 text-[12px] font-semibold text-onbrand" style={{ background: 'var(--color-brand)', boxShadow: '0 8px 18px -8px var(--color-brand)' }}>
+                      Review <ArrowRight size={12} strokeWidth={2.2} className="rtl:rotate-180" />
                     </span>
-                    <ChevronRight size={16} strokeWidth={2} className="shrink-0 rtl:rotate-180" style={{ color: 'rgba(26,26,26,0.3)' }} />
                   </Link>
                 )
               })}
@@ -400,27 +421,37 @@ export function ChatListScreen() {
               is FIFO; review your position or leave the queue (§5). */}
           {showNotifications && waitReviews.length > 0 && (
             <>
-              <Eyebrow>Waitlist</Eyebrow>
               {waitReviews.map((r) => {
                 const m = db.matches.find((x) => x.id === r.match_id)
                 if (!m) return null
                 const pos = waitlistPosition(db, m.id)
+                const host = getUser(db, m.host_id)
                 return (
                   <div
                     key={r.id}
-                    className="flex shrink-0 flex-col gap-2.5 rounded-[16px] border px-3.5 py-3"
-                    style={{ background: 'color-mix(in srgb, var(--color-info) 5%, var(--surface-card))', borderColor: 'color-mix(in srgb, var(--color-info) 22%, transparent)' }}
+                    className="flex shrink-0 flex-col gap-2.5 rounded-[18px] border p-[14px]"
+                    style={{
+                      background: 'linear-gradient(180deg, color-mix(in srgb, var(--color-info) 12%, var(--surface-card)) 0%, var(--surface-card) 70%)',
+                      borderColor: 'color-mix(in srgb, var(--color-info) 45%, transparent)',
+                      boxShadow: '0 12px 26px -20px color-mix(in srgb, var(--color-info) 70%, transparent)',
+                    }}
                   >
                     <Link to={`/matches/${m.id}`} className="flex items-center gap-[13px] text-inherit no-underline">
-                      <div className="h-[52px] w-[52px] shrink-0 overflow-hidden rounded-[14px]">
-                        <SportArt type={artType(m)} />
+                      <div className="relative shrink-0">
+                        <div className="h-[50px] w-[50px] overflow-hidden rounded-[14px]">
+                          <SportArt type={artType(m)} />
+                        </div>
+                        <span className="absolute -bottom-1 -end-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-pill px-[5px] text-[9.5px] font-semibold text-onbrand nums-tabular" style={{ background: 'var(--color-info)', border: '1.5px solid var(--surface-page)' }}>
+                          <span className="ltr-nums">{m.total_spots}/{m.total_spots}</span>
+                        </span>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <span className="block truncate text-[14.5px] font-semibold text-ink">
+                        <div className="text-[9.5px] font-bold uppercase tracking-[0.16em]" style={{ color: 'var(--color-info)' }}>Match full · waitlist</div>
+                        <div className="mt-1 truncate text-[14.5px] font-semibold text-ink">
                           {matchKind(m)} · {courtLabel(m)}
-                        </span>
-                        <div className="mt-[3px] truncate text-[12.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                          {m.venue_name} · {whenLabel(m.start_time)}
+                        </div>
+                        <div className="mt-[2px] truncate text-[12px]" style={{ color: 'var(--color-text-muted)' }}>
+                          Hosted by {host?.name.split(' ')[0]} · {whenLabel(m.start_time)}
                         </div>
                       </div>
                       <span className="inline-flex shrink-0 items-center gap-1.5 rounded-pill px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ background: 'color-mix(in srgb, var(--color-info) 12%, transparent)', color: 'var(--color-info)' }}>

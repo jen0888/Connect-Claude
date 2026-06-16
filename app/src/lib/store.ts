@@ -446,6 +446,15 @@ export function isJoined(d: DB, matchId: string, userId = currentUserId): boolea
   return d.matchPlayers.some((mp) => mp.match_id === matchId && mp.player_id === userId)
 }
 
+/** Has this participant recorded a positive attend check-in (CLAUDE.md §5)?
+ *  `match_players.attended === true` — a self-reported "I'm here / played"
+ *  presence signal. NEVER a no-show verdict: `false` (post-match no-show flag)
+ *  and `null` (no signal) both read as "not checked in" here. Drives the NEXT UP
+ *  card's tapped state and the post-match step-1 pre-fill. */
+export function hasCheckedIn(d: DB, matchId: string, userId = currentUserId): boolean {
+  return d.matchPlayers.some((mp) => mp.match_id === matchId && mp.player_id === userId && mp.attended === true)
+}
+
 /** The "Ladies only" gate, read-time. True when a user is barred from a match
  *  because it's `gender_restriction='ladies'` and they aren't female. The server
  *  is the real gate (RLS + RPCs raise 'gender_restricted'); this mirrors it so
@@ -645,12 +654,16 @@ export function joinedNotHostedMatches(d: DB, userId = currentUserId): Match[] {
   return joinedMatches(d, userId).filter((m) => m.host_id !== userId)
 }
 
-/** matches you've joined that are still ahead (open/full), soonest first. The
- *  first is NEXT UP; the rest (minus ones you host) are "This week" (§4). */
+/** matches you've joined that are still current — open/full (ahead) OR `live`
+ *  (in progress), soonest first. The first is NEXT UP; the rest (minus ones you
+ *  host) are "This week" (§4). Including `live` keeps a joined match on Home
+ *  through kickoff so the attend check-in stays reachable across pre-start +
+ *  live (§5) — it only drops off at `end_time` (→ `completed`, picked up by the
+ *  transient JUST PLAYED card). Read-time status, no cron/triggers. */
 export function upcomingJoinedMatches(d: DB, userId = currentUserId): Match[] {
   return joinedMatches(d, userId).filter((m) => {
     const s = computeStatus(m)
-    return s === 'open' || s === 'full'
+    return s === 'open' || s === 'full' || s === 'live'
   })
 }
 
@@ -700,6 +713,20 @@ export function savedMatches(d: DB): Match[] {
   return d.matches
     .filter((m) => d.savedMatchIds.includes(m.id) && !isJoined(d, m.id) && computeStatus(m) === 'open')
     .sort(byStartThenCreated)
+}
+
+/** Home transient JUST PLAYED card (CLAUDE.md §4): a match you were in (joined or
+ *  hosted — the host is seated in `match_players`) that finished within the 24h
+ *  post-match window (read-time `completed`) and still awaits YOUR result. It
+ *  drops off the moment you record (no `match_results` row for you), or when the
+ *  match closes on consensus / the 24h window lapses — all read-time, no cron.
+ *  Most-recently-ended first. The card's CTA is RECORD RESULTS (the post-match
+ *  flow), NOT a standalone attend button — recording covers attendance (§5). */
+export function justPlayedMatches(d: DB, userId = currentUserId): Match[] {
+  return joinedMatches(d, userId)
+    .filter((m) => computeStatus(m) === 'completed')
+    .filter((m) => !d.matchResults.some((r) => r.match_id === m.id && r.player_id === userId))
+    .sort((a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime())
 }
 
 /* ── chat selectors — one canonical thread per match / per pair,
@@ -1286,6 +1313,18 @@ export const actions = {
     }))
   },
 
+  /** Host revokes an invite they sent (from Match Edit). The pending invite is
+   *  expired so it stops surfacing on the invitee's side — an invite holds no
+   *  slot, so there's nothing to free (CLAUDE.md §5). Optimistic in both modes;
+   *  live has no host-side revoke RPC yet (Stage-1 gap, §7), so this updates the
+   *  local store only and a rehydrate may restore it until the RPC lands. */
+  cancelInvite(requestId: string) {
+    mutate((d) => ({
+      ...d,
+      matchRequests: d.matchRequests.map((x) => (x.id === requestId && x.status === 'invited' ? { ...x, status: 'expired' as const } : x)),
+    }))
+  },
+
   declineRequest(requestId: string) {
     if (liveReady) { void rpc('decline_request', { p_request: requestId }); return }
     mutate((d) => ({
@@ -1394,6 +1433,31 @@ export const actions = {
       if (dbPatch.fee_per_player == null && 'fee_per_player' in dbPatch) dbPatch.fee_per_player = 0
       if ('gender_restriction' in dbPatch && dbPatch.gender_restriction == null) dbPatch.gender_restriction = 'mixed'
       afterWrite(supabase.from('matches').update(dbPatch).eq('id', matchId))
+    }
+  },
+
+  /** NEXT UP attend check-in (CLAUDE.md §5): a low-friction POSITIVE presence
+   *  signal recorded on the player's OWN match_players row (attended = true).
+   *  - never marks a no-show: un-checking returns to neutral (`null`), NEVER
+   *    `false` (false is reserved for the post-match no-show flag);
+   *  - idempotent + self-only — always operates on `currentUserId`, and the live
+   *    write is RLS-guarded (mp_update_self: player_id = auth.uid());
+   *  - pre-fills "Played" in post-match step 1 (RecordResultForm reads attended);
+   *  - carries NO score — win/lose/draw (step 2) is untouched and still the only
+   *    source of win rate.
+   *  Optimistic in both modes (mirrors toggleSaveMatch). No cron, no triggers. */
+  checkIn(matchId: string, on = true) {
+    const attended = on ? true : null
+    mutate((d) => ({
+      ...d,
+      matchPlayers: d.matchPlayers.map((mp) =>
+        mp.match_id === matchId && mp.player_id === currentUserId ? { ...mp, attended } : mp,
+      ),
+    }))
+    if (liveReady && supabase) {
+      afterWrite(
+        supabase.from('match_players').update({ attended }).eq('match_id', matchId).eq('player_id', currentUserId),
+      )
     }
   },
 

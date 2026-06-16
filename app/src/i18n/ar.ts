@@ -15,6 +15,10 @@ export const ar: Partial<Record<MessageKey, string>> = {
   'gender.male': 'ذكر',
   'gender.female': 'أنثى',
 
+  // NEXT UP attend check-in — positive presence signal (CLAUDE.md §5)
+  'match.action.attend': 'تأكيد الحضور',
+  'match.action.checkedIn': 'تم تأكيد الحضور',
+
   // Pending approval-request — withdraw CTA (Home "This week" card)
   'match.cancelRequest': 'إلغاء الطلب',
 
@@ -23,6 +27,8 @@ export const ar: Partial<Record<MessageKey, string>> = {
   'match.gender.womenOnly': 'للسيدات فقط',
   'match.gender.blockedInline': 'هذه المباراة للسيدات فقط.',
   'match.gender.blockedToast': 'هذه المباراة مفتوحة للسيدات فقط.',
+  'match.invite.ladiesNotice': 'مباراة للسيدات فقط — يمكن دعوة اللاعبات فقط.',
+  'match.invite.ineligible': 'غير مؤهّل لمباراة السيدات — يُرجى الإزالة.',
 
   // Skill ladder — 7 tiers, lowest → highest (sign-up, profile, match range)
   'skill.baby': 'مبتدئ تمامًا',

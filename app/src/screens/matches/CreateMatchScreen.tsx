@@ -11,7 +11,7 @@ import { clearPersistedState, usePersistedState } from '@/lib/usePersistedState'
 import { writeHostedMatch, type HostedMatch } from '@/lib/hostedMatch'
 import type { JoinMode, SkillTier, Sport } from '@/lib/types'
 import { useI18n } from '@/i18n'
-import { initials, skillLabel, skillTierLabel, skillTierLabelFull } from '@/lib/format'
+import { initials, skillTierLabel, skillTierLabelFull } from '@/lib/format'
 import { diffMinutes, keyOf, labelFromKey } from '@/lib/datetime'
 import { sportEmoji } from '@/lib/sports'
 import { VenuePicker, type VenueSelection } from './VenuePicker'
@@ -155,6 +155,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       fee_per_player: price,
       fee_total: price ? price * totalSpots : null,
       join_mode: (joinMode ?? 'open') as JoinMode,
+      match_type: matchType,
       gender_restriction: effectiveGender,
       waitlist_open: waitlistOpen,
       waitlist_size: waitlistOpen ? waitlistSize : undefined,
@@ -563,7 +564,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                     <div className="min-w-0 flex-1">
                       <div className="text-[13.5px] font-medium text-ink">Invite players</div>
                       <div className="mt-0.5 truncate text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                        {invitedIds.length === 0 ? 'Choose who can join this match.' : 'Tap to add or remove players.'}
+                        Choose who can join this match.
                       </div>
                     </div>
                     {invitedIds.length > 0 ? (
@@ -578,34 +579,58 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
                   </button>
                 )}
 
+                {/* ladies-only notice — informational (not a warning); shown only
+                    when the match is restricted to women (§6) */}
+                {joinMode === 'invite' && effectiveGender === 'ladies' && (
+                  <div className="mt-2 flex items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
+                    <UserRound size={12} strokeWidth={1.8} className="shrink-0" />
+                    {t('match.invite.ladiesNotice')}
+                  </div>
+                )}
+
                 {/* the invited players, listed under the button so the host can
-                    see (and remove) exactly who's been invited */}
+                    see (and remove) exactly who's been invited. An invite holds
+                    no slot, so removing one cancels the pending invite instantly
+                    (no confirm) and, on an existing match, expires the real
+                    invite row so it stops surfacing on the invitee's side (§5).
+                    A player made ineligible by switching to ladies-only is flagged
+                    for removal rather than silently kept. */}
                 {joinMode === 'invite' && invitedIds.length > 0 && (
                   <div className="mt-2.5 flex flex-col gap-1.5">
                     {invitedIds.map((pid) => {
                       const u = getUser(db, pid)
                       if (!u) return null
+                      const ineligible = effectiveGender === 'ladies' && u.gender !== 'female'
+                      const remove = () => {
+                        if (existing) {
+                          const inv = matchInvites(db, existing.id).find((r) => r.player_id === pid && r.status === 'invited')
+                          if (inv) actions.cancelInvite(inv.id)
+                        }
+                        setInvitedIds(invitedIds.filter((x) => x !== pid))
+                      }
                       return (
                         <div
                           key={pid}
                           className="flex items-center gap-2.5 rounded-[14px] border bg-page px-3 py-2"
-                          style={{ borderColor: 'rgba(26,26,26,0.10)' }}
+                          style={{ borderColor: ineligible ? 'color-mix(in srgb, var(--color-warning) 45%, transparent)' : 'rgba(26,26,26,0.10)' }}
                         >
                           <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-[13px] italic text-onbrand" style={{ background: 'var(--color-accent)' }}>
                             {initials(u)}
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-[13px] font-medium text-ink">{u.name}</div>
-                            <div className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                              {skillLabel(u.skill_level)}
-                            </div>
+                            {ineligible && (
+                              <div className="mt-px flex items-center gap-1 text-[11px]" style={{ color: 'var(--color-warning)' }}>
+                                <TriangleAlert size={11} strokeWidth={2} className="shrink-0" /> {t('match.invite.ineligible')}
+                              </div>
+                            )}
                           </div>
                           <button
                             type="button"
                             aria-label={`Remove ${u.name}`}
-                            onClick={() => setInvitedIds(invitedIds.filter((x) => x !== pid))}
-                            className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent text-ink"
-                            style={{ border: '1.5px solid rgba(26,26,26,0.18)' }}
+                            onClick={remove}
+                            className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full bg-transparent"
+                            style={{ border: `1.5px solid ${ineligible ? 'color-mix(in srgb, var(--color-warning) 55%, transparent)' : 'rgba(26,26,26,0.18)'}`, color: ineligible ? 'var(--color-warning)' : 'var(--color-text)' }}
                           >
                             <X size={13} strokeWidth={2} />
                           </button>
@@ -789,10 +814,10 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
 
         {showInvite && (
           <InvitePicker
-            selected={invitedIds}
+            excludeIds={invitedIds}
             femaleOnly={effectiveGender === 'ladies'}
             onClose={() => setShowInvite(false)}
-            onConfirm={(ids) => { setInvitedIds(ids); setShowInvite(false) }}
+            onConfirm={(ids) => { setInvitedIds([...invitedIds, ...ids.filter((x) => !invitedIds.includes(x))]); setShowInvite(false) }}
           />
         )}
       </div>

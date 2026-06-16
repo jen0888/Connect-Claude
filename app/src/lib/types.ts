@@ -90,6 +90,10 @@ export interface Match {
   fee_total: number | null // informational only — never a transaction
   fee_per_player: number | null // display only
   join_mode: JoinMode
+  /** casual = just for fun (no win/loss shown); competition = ranked & rated.
+   *  Absent ⇒ casual. Captured on the create form; persisted in the mock store
+   *  today (no live column yet — see §7). Running matches are never competitive. */
+  match_type?: 'casual' | 'competition'
   /** 'ladies' restricts the match to female players (server-enforced); absent ⇒ 'mixed' */
   gender_restriction?: GenderRestriction
   waitlist_open?: boolean // queue allowed once full (default off)
