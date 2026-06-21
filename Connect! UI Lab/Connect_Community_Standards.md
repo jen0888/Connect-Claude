@@ -17,7 +17,7 @@ When you join or host a match, people are counting on you. One no-show can cance
 - Only join matches you actually intend to play.
 - If your plans change, **cancel at least 2 hours before the match starts** so your spot can be filled in time. This applies to players and hosts alike.
 - **Cancelling within 2 hours of start counts as a no-show** — and so does simply not turning up. A no-show is a no-show, whichever way it happens.
-- **Confirming you're coming doesn't protect you.** Even if you've tapped the confirm / attend button, if you don't actually show, the host *and* the other players can report you as a no-show.
+- **If you don't turn up, the match host can mark it** — and if a host doesn't show, the players in the match can flag it. You'll be notified and can dispute it. (Players can't flag each other.)
 - **A no-show is recorded on your profile** for other players to see — there's no block or penalty beyond that. Your attendance record speaks for itself.
 
 ## 2. Be honest about your level
@@ -74,7 +74,7 @@ To be clear, these will get you removed:
 
 Safety isn't negotiable. Reliability is public — your track record shows on your profile.
 
-- **Reliability issues:** a no-show — cancelling within 2 hours of start, or not turning up — is recorded on your profile for other players to see. There's no automatic block; your attendance record is public and speaks for itself. Confirming attendance doesn't exempt you; hosts and players can both report a no-show.
+- **Reliability issues:** a no-show — cancelling within 2 hours of start, or not turning up — is recorded on your profile for other players to see. There's no automatic block; your attendance record is public and speaks for itself.
 - **Serious or repeated violations:** temporary or permanent removal from Connect!.
 - **Anything threatening someone's safety:** immediate action.
 
@@ -113,7 +113,7 @@ Connect! is only as good as the people in it — and that's you. Play hard, be d
 - انضمّ فقط إلى المباريات التي تنوي لعبها فعلًا.
 - إذا تغيّرت خططك، **فألغِ مشاركتك قبل بداية المباراة بساعتين على الأقل** ليتمكّن غيرك من شغل مكانك في الوقت المناسب. وهذا ينطبق على اللاعبين والمستضيفين على حدٍّ سواء.
 - **الإلغاء خلال أقل من ساعتين من البداية يُحتسب تخلّفًا عن الحضور** — وكذلك عدم الحضور أصلًا. التخلّف عن الحضور هو تخلّف، أيًّا كانت طريقته.
-- **تأكيد حضورك لا يحميك.** حتى لو ضغطت زرّ التأكيد/الحضور، إن لم تحضر فعلًا فبإمكان المستضيف *وبقية اللاعبين* الإبلاغ عنك كمتخلّف عن الحضور.
+- **إن لم تحضر، فبإمكان مستضيف المباراة تسجيل ذلك** — وإن لم يحضر المستضيف نفسه، فبإمكان اللاعبين في المباراة الإبلاغ عنه. سيصلك إشعار ويمكنك الاعتراض. (لا يمكن للاعبين الإبلاغ عن بعضهم بعضًا.)
 - **يُسجَّل التخلّف عن الحضور في ملفك الشخصي** ليراه بقية اللاعبين — دون أي حظر أو عقوبة أخرى. سجلّ حضورك يتحدّث عن نفسه.
 
 ## ٢. كن صادقًا بشأن مستواك
@@ -170,7 +170,7 @@ Connect! is only as good as the people in it — and that's you. Play hard, be d
 
 السلامة غير قابلة للتفاوض. والالتزام علنيّ — سجلّك يظهر في ملفك الشخصي.
 
-- **مشكلات الالتزام:** التخلّف عن الحضور — سواء بالإلغاء خلال أقل من ساعتين من البداية أو بعدم الحضور — يُسجَّل في ملفك الشخصي ليراه بقية اللاعبين. لا يوجد حظر تلقائي؛ فسجلّ حضورك علنيّ ويتحدّث عن نفسه. وتأكيد الحضور لا يُعفيك؛ إذ يمكن للمستضيف واللاعبين معًا الإبلاغ عن التخلّف.
+- **مشكلات الالتزام:** التخلّف عن الحضور — سواء بالإلغاء خلال أقل من ساعتين من البداية أو بعدم الحضور — يُسجَّل في ملفك الشخصي ليراه بقية اللاعبين. لا يوجد حظر تلقائي؛ فسجلّ حضورك علنيّ ويتحدّث عن نفسه.
 - **المخالفات الجسيمة أو المتكرّرة:** إزالة مؤقتة أو دائمة من Connect!.
 - **أي ما يهدّد سلامة أحد:** إجراء فوري.
 

@@ -82,7 +82,7 @@ begin
   --    (public.users / auth.users) ARE NOT TOUCHED.
   -- =================================================================
   delete from public.match_results   where match_id = any(test_matches) or player_id = any(test_users);
-  delete from public.no_show_reports  where match_id = any(test_matches) or reporter_id = any(test_users) or reported_player = any(test_users);
+  delete from public.no_show_flags    where match_id = any(test_matches) or set_by = any(test_users) or subject_player = any(test_users);
   delete from public.match_requests   where match_id = any(test_matches) or player_id = any(test_users);
   delete from public.match_players    where match_id = any(test_matches) or player_id = any(test_users);
   delete from public.notifications    where user_id  = any(test_users);

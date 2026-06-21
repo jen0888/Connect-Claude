@@ -1,62 +1,69 @@
-# Connect! — No-Show Reporting Spec (Stage 1.7)
+# Connect! — No-Show / Attendance Spec (Stage 1.7)
 
-*Drafted 2026-05-30 · Stage 1 build reference*
+*Drafted 2026-05-30 · Trimmed to the light model 2026-06-19 · Stage 1 build reference*
+*Authoritative source: **CLAUDE.md §5** (no-show rules) + **§6** (data model). If this doc and CLAUDE.md ever diverge, CLAUDE.md wins.*
 
 ## Model in one line
 
-A no-show is **reputation-only**: it appears as a mark on the player's profile, alongside their attendance rate. There is **no block or join penalty**. The deterrent is the public record itself.
+A no-show is **reputation-only**: a visible mark on the player's profile next to their attendance rate. **No block, no penalty.** The deterrent is the public record itself. Stage 1 keeps the whole system deliberately light — most casual players just fill a court and leave, so attendance has to need near-zero effort.
 
-## Two ways a no-show is created
+## Default
 
-There are two distinct paths, and they behave differently:
+**Everyone who joined a match is treated as "played."** Nobody has to check in, confirm, or mark anyone. A no-show is the exception, and it lands only in the ways below.
 
-1. **Cancellation within 2 hours of start — lands immediately.** This is an objective fact (a timestamp), so it needs no corroboration. When any player or host cancels and `now` is within 2h of match start, the system records a confirmed no-show automatically. Applies equally to hosts and joiners.
-2. **Didn't turn up — needs corroboration.** This is a human judgment, so it requires a threshold of independent reports before the mark lands (see below). Captured in the Step 1 "Who played?" post-match screen.
+## How a no-show is created
 
-## Report threshold by match size
+1. **Within-2h cancellation → automatic.** If a player or host cancels and `now` is within 2 hours of `start_time`, the system records a no-show automatically — objective, immediate, no UI, no corroboration. Applies equally to hosts and joiners. (Cancelling **≥2 hours** before start is always safe — no mark.)
+2. **"Didn't show up" → an optional manual flag.** For the rare case someone simply ghosts:
+   - The **host can flag a player** who didn't show.
+   - **Any player who showed can flag the host** (a host won't flag themselves).
+   - **Players cannot flag each other** — only host↔player. This removes player-vs-player false-flagging.
+   - **One flag lands it** — no corroboration threshold. Results/attendance are low-stakes and reputation-only, so a single flag is enough.
+   - The flagged person is **notified** and may **dispute** → the mark shows as `contested` until resolved.
 
-The number of independent reports needed to confirm a "didn't turn up" no-show scales with how many people were in the match:
-
-| Players in match | Reports needed |
-|---|---|
-| 2 | 1 |
-| 3–4 | 2 |
-| 5–8 | 3 |
-| 9+ | 4 (cap) |
-
-Feasibility safety net: the required count is also clamped to the number of players who actually showed up, so the threshold is always reachable even if several people no-showed at once.
-
-## Reporting rules
-
-- **Only match participants can report** — enforce with a Supabase row-level security policy, not app code.
-- **One report per reporter per player** — a unique constraint guarantees nobody can pad the count.
-- **No self-reporting**, and a player flagged as a no-show can't act as a reporter.
-- **24-hour window** — reports are only valid within 24h after match start, so stale grudges can't land a mark days later.
-
-## Data model
-
-A single new table:
-
-```
-no_show_reports
-  id              uuid primary key
-  match_id        uuid references matches(id)
-  reported_player uuid references users(id)
-  reporter_id     uuid references users(id)
-  created_at      timestamptz default now()
-  unique (match_id, reported_player, reporter_id)
-```
-
-"Confirmed" no-shows are computed at read time — no triggers or background jobs needed. A Postgres view groups reports per match+player, counts distinct reporters, and keeps only those that meet the size-based threshold. The profile screen reads confirmed no-shows from that view. Auto-recorded within-2h cancellations are written as already-confirmed (e.g. a system reporter row, or a separate `source = 'late_cancel'` flag that bypasses the count).
+There is **no attend/check-in button, no provisional drafting, and no required "who played" review** in Stage 1. (All were considered and cut — they assume post-match engagement we don't yet know exists. Revisit only if real usage shows flaking is a genuine problem.)
 
 ## What shows on the profile
 
-- Attendance rate (% of joined matches actually played).
-- Confirmed no-show count.
-- These sit next to the optional "win rate (for fun)" stat from the post-match result step.
+- **Attendance rate** (% of joined matches actually played).
+- **No-show count.**
+- Both are **public by default** — that visibility is the deterrent.
+- They sit next to the optional "win rate (for fun)" from the post-match result step.
+
+## Data model
+
+A single table (replaces the old `no_show_reports`):
+
+```
+no_show_flags
+  id             uuid primary key
+  match_id       uuid references matches(id)
+  subject_player uuid references users(id)
+  set_by         uuid references users(id)
+  status         text         -- 'confirmed' | 'contested'
+  created_at     timestamptz default now()
+  unique (match_id, subject_player)
+```
+
+- Attendance also lives on `match_players.attended` (default = played; set `false` by a within-2h cancel or a landed flag).
+- **RLS:** the host may write a flag against a player **in their own match**; a player who showed may write a flag **only against the host**. No peer-vs-peer.
+- Within-2h cancellations are recorded automatically from the objective timestamp — no flag row needed.
+- Confirmed/contested status is read at **read time** — no triggers, no cron, no background jobs.
+
+## Host no-show
+
+**No role reassignment.** The host role is pre-match only (approve / invite / edit / cancel), so once the match starts there's nothing for a successor to do. A no-show host just gets the mark like anyone — automatically from a within-2h cancel, or flagged by any player who showed. The result stays first-submitter and the group chat persists. (See CLAUDE.md §5 "Host departure".)
+
+## Removed from earlier drafts (do NOT reintroduce in Stage 1)
+
+- The scaled report-threshold / corroboration model (2→1, 3–4→2, 5–8→3, 9+→4).
+- Peer-to-peer reporting (any player reporting any player).
+- The attend / check-in button + provisional "no-tap = no-show" drafting + host review-both-ways.
+- The old `no_show_reports` table (replaced by `no_show_flags`).
+- Any automatic block / penalty ladder.
 
 ## Open / revisit during build
 
-- Whether confirmed no-shows ever "age out" of the profile after a long clean streak.
-- Exact display treatment of the no-show count (number vs. badge) — tie to the profile design.
-- Notification timing: do we notify a player the moment a no-show is confirmed against them?
+- Whether no-show marks ever "age out" after a long clean streak.
+- Display treatment of the no-show count (number vs. badge) — tie to profile design.
+- Notification copy when a flag lands / is disputed.

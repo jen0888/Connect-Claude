@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
-  ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult,
-  NoShowReport, SkillLevel, SkillTier, Sport, User,
+  ChatMention, ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult,
+  NoShowFlag, SkillLevel, SkillTier, Sport, User,
 } from './types'
 
 /**
@@ -21,9 +21,12 @@ export interface RepoSnapshot {
   matchPlayers: MatchPlayer[]
   matchRequests: MatchRequest[]
   matchResults: MatchResult[]
-  noShowReports: NoShowReport[]
+  noShowFlags: NoShowFlag[]
   chatThreads: ChatThread[]
   chatMessages: ChatMessage[]
+  chatMentions: ChatMention[]
+  /** viewer's per-thread last-read timestamps (chat_reads, RLS-scoped to them) */
+  chatReads: Record<string, string>
   /** match ids the signed-in viewer has bookmarked (RLS scopes the table to them) */
   savedMatchIds: string[]
 }
@@ -62,7 +65,7 @@ function mapUser(row: any, playedById: Map<string, number>): User {
     attendance_rate: Number(row.attendance_rate ?? 100),
     created_at: row.created_at ?? new Date(0).toISOString(),
     matches_played: playedById.get(row.id) ?? 0,
-    no_show_count: 0, // RLS scopes no_show_reports to the viewer — not derivable for others
+    no_show_count: 0, // read-time `noShowCount(db, id)` derives this from attendance + flags
     languages: Array.isArray(row.languages) ? row.languages : [],
     bio: row.bio ?? undefined,
     area: row.area ?? undefined,
@@ -99,8 +102,8 @@ function mapMatch(row: any): Match {
     match_type: row.match_type === 'competition' ? 'competition' : 'casual',
     gender_restriction: row.gender_restriction === 'ladies' ? 'ladies' : 'mixed',
     // DB lifecycle status → stored shape; computeStatus re-derives open/full/live.
-    // `closed` (set server-side once results are corroborated) is preserved so
-    // the early terminal state survives rehydrate; everything else → 'active'.
+    // A LEGACY `closed` row (old consensus model) is preserved so it still reads
+    // as a terminal state; nothing writes `closed` anymore. Everything else → 'active'.
     status: row.status === 'cancelled' ? 'cancelled' : row.status === 'closed' ? 'closed' : 'active',
     notes: row.notes ?? null,
     created_at: row.created_at,
@@ -117,10 +120,12 @@ const mapRequest = (r: any): MatchRequest => ({
 
 const mapResult = (r: any): MatchResult => ({
   id: r.id, match_id: r.match_id, player_id: r.player_id, result: r.result,
+  created_at: r.created_at ?? new Date(0).toISOString(),
 })
 
-const mapReport = (r: any): NoShowReport => ({
-  id: r.id, match_id: r.match_id, reported_player: r.reported_player, reporter_id: r.reporter_id, created_at: r.created_at,
+const mapFlag = (r: any): NoShowFlag => ({
+  id: r.id, match_id: r.match_id, subject_player: r.subject_player, set_by: r.set_by,
+  status: r.status === 'contested' ? 'contested' : 'confirmed', created_at: r.created_at,
 })
 
 const mapThread = (r: any): ChatThread => ({
@@ -132,23 +137,29 @@ const mapMessage = (r: any): ChatMessage => ({
   ...(r.system ? { system: true, tone: r.tone ?? undefined, icon: r.icon ?? undefined } : {}),
 })
 
+const mapMention = (r: any): ChatMention => ({
+  id: r.id, message_id: r.message_id, thread_id: r.thread_id, mentioned_user: r.mentioned_user, created_at: r.created_at,
+})
+
 /** One round-trip hydrate of every table the store needs. RLS scopes
- *  match_requests / chat_* / no_show_reports to the signed-in viewer
+ *  match_requests / chat_* / no_show_flags to the signed-in viewer
  *  automatically — we just map whatever comes back. */
 export async function fetchSnapshot(supabase: SupabaseClient): Promise<RepoSnapshot> {
-  const [users, matches, players, requests, results, reports, threads, messages, saved] = await Promise.all([
+  const [users, matches, players, requests, results, flags, threads, messages, mentions, reads, saved] = await Promise.all([
     supabase.from('users').select('*'),
     supabase.from('matches').select('*'),
     supabase.from('match_players').select('*'),
     supabase.from('match_requests').select('*'),
     supabase.from('match_results').select('*'),
-    supabase.from('no_show_reports').select('*'),
+    supabase.from('no_show_flags').select('*'),
     supabase.from('chat_threads').select('*'),
     supabase.from('chat_messages').select('*'),
+    supabase.from('chat_mentions').select('*'),
+    supabase.from('chat_reads').select('thread_id, last_read_at'), // RLS → only the viewer's reads
     supabase.from('saved_matches').select('match_id'), // RLS → only the viewer's saves
   ])
 
-  const firstError = [users, matches, players, requests, results, reports, threads, messages, saved].find((r) => r.error)?.error
+  const firstError = [users, matches, players, requests, results, flags, threads, messages, mentions, reads, saved].find((r) => r.error)?.error
   if (firstError) throw firstError
 
   const playerRows = players.data ?? []
@@ -161,9 +172,11 @@ export async function fetchSnapshot(supabase: SupabaseClient): Promise<RepoSnaps
     matchPlayers: playerRows.map(mapPlayer),
     matchRequests: (requests.data ?? []).map(mapRequest),
     matchResults: (results.data ?? []).map(mapResult),
-    noShowReports: (reports.data ?? []).map(mapReport),
+    noShowFlags: (flags.data ?? []).map(mapFlag),
     chatThreads: (threads.data ?? []).map(mapThread),
     chatMessages: (messages.data ?? []).map(mapMessage),
+    chatMentions: (mentions.data ?? []).map(mapMention),
+    chatReads: Object.fromEntries((reads.data ?? []).map((r) => [r.thread_id as string, r.last_read_at as string])),
     savedMatchIds: (saved.data ?? []).map((r) => r.match_id as string),
   }
 }

@@ -59,7 +59,7 @@ export function RecordResultHomeCard({ match }: { match: Match }) {
             <div className="min-w-0">
               <div className="whitespace-nowrap text-[13.5px] font-semibold text-ink">How did it go?</div>
               <div className="mt-px text-[11.5px]" style={{ color: 'var(--color-text-muted)' }}>
-                Mark who played &amp; who won
+                Log the result &middot; all optional
               </div>
             </div>
             <span className="inline-flex h-11 shrink-0 items-center gap-[7px] whitespace-nowrap rounded-pill bg-brand px-[18px] text-[13.5px] font-semibold tracking-[0.01em] text-onbrand" style={{ boxShadow: '0 10px 22px -8px var(--color-brand)' }}>

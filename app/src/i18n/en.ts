@@ -19,14 +19,14 @@ export const en = {
   'match.action.join': 'Join',
   'match.action.request': 'Request',
   'match.action.view': 'View',
-  'match.action.attend': 'Attend',
-  'match.action.attended': 'Attended',
-  'match.action.checkedIn': 'Checked in', // NEXT UP attend check-in: positive presence recorded (§5)
   'match.action.cancel': 'Cancel',
   'match.action.edit': 'Edit',
   'match.cancelRequest': 'Cancel request', // withdraw a pending approval request (Home "This week")
   'match.action.recordResult': 'Record result',
   'match.action.openChat': 'Open chat',
+  // @mentions (Stage 1.8). `mentionedYou` is left ready for the §1.10 push payload.
+  'chat.mentionedYou': '{name} mentioned you',
+  'chat.mention.empty': 'No members to mention',
   'match.spotsLeft': '{count} spots left',
   'match.spotLeft': '1 spot left',
   'match.hostedBy': 'Hosted by {name}',

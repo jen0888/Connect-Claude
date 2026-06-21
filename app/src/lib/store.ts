@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react'
-import type { ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult, NoShowReport, SkillLevel, Sport, TimelineItem, User } from './types'
+import type { ChatMention, ChatMessage, ChatThread, Gender, Match, MatchPlayer, MatchRequest, MatchResult, NoShowFlag, SkillLevel, Sport, TimelineItem, User } from './types'
 import { CHAT_MESSAGES, CHAT_THREADS, CURRENT_USER_ID, MATCHES, MATCH_PLAYERS, MATCH_REQUESTS, MATCH_RESULTS, USERS } from './mock/data'
 import { onboarding, resetOnboarding } from './onboarding'
-import { computeStatus, noShowReportThreshold, resultsCorroborated } from './status'
+import { canCancelCleanly, computeStatus } from './status'
 import { clearHostedMatch } from './hostedMatch'
 import { sportImageCount } from './matchImage'
 import { clearProfileSports } from './profile'
@@ -51,10 +51,13 @@ interface DB {
   matchPlayers: MatchPlayer[]
   matchRequests: MatchRequest[]
   matchResults: MatchResult[]
-  noShowReports: NoShowReport[]
+  noShowFlags: NoShowFlag[]
   chatThreads: ChatThread[]
   chatMessages: ChatMessage[]
-  /** per-thread last-read timestamps for the current user */
+  chatMentions: ChatMention[]
+  /** server-side per-thread last-read timestamps (chat_reads), live mode only */
+  chatReads: Record<string, string>
+  /** per-thread last-read timestamps for the current user (localStorage; mock + offline) */
   threadReadAt: Record<string, string>
   blockedUserIds: string[] // users the current user has blocked
   savedMatchIds: string[]
@@ -107,9 +110,11 @@ const SEEDED: DB = {
   matchPlayers: MATCH_PLAYERS,
   matchRequests: MATCH_REQUESTS,
   matchResults: MATCH_RESULTS,
-  noShowReports: [],
+  noShowFlags: [],
   chatThreads: CHAT_THREADS,
   chatMessages: CHAT_MESSAGES,
+  chatMentions: [],
+  chatReads: {},
   threadReadAt: { 't-run': new Date().toISOString(), 't-dm-sara': new Date().toISOString(), 't-hosted': new Date().toISOString() },
   blockedUserIds: [],
   savedMatchIds: [],
@@ -172,7 +177,7 @@ function freshDB(): DB {
 /** empty graph for live mode — hydrated from Supabase once a session lands */
 const EMPTY_DB: DB = {
   users: [], matches: [], matchPlayers: [], matchRequests: [], matchResults: [],
-  noShowReports: [], chatThreads: [], chatMessages: [], threadReadAt: {},
+  noShowFlags: [], chatThreads: [], chatMessages: [], chatMentions: [], chatReads: {}, threadReadAt: {},
   blockedUserIds: [], savedMatchIds: [],
   archivedThreadIds: CHAT_PREFS.archivedThreadIds, deletedThreadAt: CHAT_PREFS.deletedThreadAt,
   notifSeenCount: CHAT_PREFS.notifSeenCount,
@@ -384,27 +389,6 @@ function afterWrite(p: PromiseLike<{ error: unknown }>) {
   })
 }
 
-/** Auto-close a FINISHED match once 2+ players record a corroborating result
- *  (CLAUDE.md §5). `closed` is stored (optimistic in both modes); win rate +
- *  no-show count then derive from the closed match via confirmedWinRate /
- *  confirmedNoShowCount. Idempotent — a no-op once closed/cancelled or while the
- *  match is still in progress. The live DB trigger is the durable path; the
- *  afterWrite here just confirms the optimistic close for the recording client. */
-function finalizeMatchIfConfirmed(matchId: string) {
-  const m = db.matches.find((x) => x.id === matchId)
-  if (!m || m.status === 'closed' || m.status === 'cancelled') return
-  if (Date.now() < new Date(m.end_time).getTime()) return // hasn't finished yet
-  const results = db.matchResults.filter((r) => r.match_id === matchId)
-  if (!resultsCorroborated(results)) return
-  mutate((d) => ({
-    ...d,
-    matches: d.matches.map((x) => (x.id === matchId ? { ...x, status: 'closed' as const } : x)),
-  }))
-  if (liveReady && supabase) {
-    afterWrite(supabase.from('matches').update({ status: 'closed' }).eq('id', matchId))
-  }
-}
-
 export function getUser(d: DB, id: string): User | undefined {
   return d.users.find((u) => u.id === id)
 }
@@ -426,31 +410,69 @@ export function coverIndexFor(d: DB, matchId: string): number | undefined {
   return rank < 0 ? undefined : rank
 }
 
-/** Win rate over CONFIRMED (closed) matches only — an unconfirmed solo entry
- *  doesn't move the number until 2+ players corroborate and the match closes.
- *  Draws are excluded from the denominator. null when nothing's decided yet. */
-export function confirmedWinRate(d: DB, userId: string): number | null {
-  const closed = new Set(d.matches.filter((m) => computeStatus(m) === 'closed').map((m) => m.id))
-  const decided = d.matchResults.filter((r) => r.player_id === userId && closed.has(r.match_id) && r.result !== 'draw')
+/** Win rate over the user's OWN recorded results (CLAUDE.md §5, light model).
+ *  First-submitter-canonical — a single recorded result counts immediately; no
+ *  consensus/closed gate. Draws are excluded from the denominator. null when the
+ *  user has recorded no decided (win/loss) result yet. */
+export function winRate(d: DB, userId: string): number | null {
+  const decided = d.matchResults.filter((r) => r.player_id === userId && r.result !== 'draw')
   if (!decided.length) return null
   return Math.round((decided.filter((r) => r.result === 'win').length / decided.length) * 100)
 }
 
-/** No-shows corroborated against the player on CONFIRMED (closed) matches, added
- *  to any seeded baseline. A no-show only counts once enough co-players report it
- *  (noShowReportThreshold) — the same corroboration gate that confirms the match. */
-export function confirmedNoShowCount(d: DB, userId: string): number {
-  const base = getUser(d, userId)?.no_show_count ?? 0
-  let extra = 0
-  for (const m of d.matches) {
-    if (computeStatus(m) !== 'closed') continue
-    const reports = d.noShowReports.filter((r) => r.match_id === m.id && r.reported_player === userId)
-    if (!reports.length) continue
-    const roster = d.matchPlayers.filter((mp) => mp.match_id === m.id)
-    const showedUp = roster.filter((mp) => mp.attended !== false).length
-    if (reports.length >= noShowReportThreshold(roster.length, showedUp)) extra += 1
+/** The confirmed no-show flag against a subject on a match, if any (contested
+ *  flags are excluded — a dispute drops the mark). */
+export function noShowFlagFor(d: DB, matchId: string, subjectId: string): NoShowFlag | undefined {
+  return d.noShowFlags.find(
+    (f) => f.match_id === matchId && f.subject_player === subjectId && f.status === 'confirmed',
+  )
+}
+
+/** Did this user no-show this match? (CLAUDE.md §5) Either their own
+ *  `match_players.attended === false` (auto within-2h cancel / host bail) OR a
+ *  CONFIRMED no-show flag against them. Contested flags don't count. */
+export function isNoShow(d: DB, matchId: string, userId: string): boolean {
+  const mp = d.matchPlayers.find((x) => x.match_id === matchId && x.player_id === userId)
+  if (mp?.attended === false) return true
+  return !!noShowFlagFor(d, matchId, userId)
+}
+
+/** Matches a user is on the hook for, attendance-wise: ones they joined that have
+ *  come due (past start → live/completed/closed) PLUS any where a no-show is
+ *  already recorded (an auto within-2h cancel marks `attended=false` before the
+ *  match even starts). Read-time, de-duped by match id. */
+function obligationMatchIds(d: DB, userId: string): Set<string> {
+  const ids = new Set<string>()
+  for (const mp of d.matchPlayers) {
+    if (mp.player_id !== userId) continue
+    const m = d.matches.find((x) => x.id === mp.match_id)
+    if (!m) continue
+    const st = computeStatus(m)
+    if (st === 'live' || st === 'completed' || st === 'closed' || mp.attended === false) ids.add(m.id)
   }
-  return base + extra
+  for (const f of d.noShowFlags) {
+    if (f.subject_player === userId && f.status === 'confirmed') ids.add(f.match_id)
+  }
+  return ids
+}
+
+/** Public no-show count (CLAUDE.md §5) — distinct due matches the user no-showed.
+ *  Reputation-only; no blocks/penalties derive from it. */
+export function noShowCount(d: DB, userId: string): number {
+  let n = 0
+  for (const id of obligationMatchIds(d, userId)) if (isNoShow(d, id, userId)) n += 1
+  return n
+}
+
+/** Public attendance % (CLAUDE.md §5) — played / (played + no-shows) over the
+ *  user's due matches. null when they have no due matches yet (shown as a fresh
+ *  100% by callers). */
+export function attendanceRate(d: DB, userId: string): number | null {
+  const ids = obligationMatchIds(d, userId)
+  if (!ids.size) return null
+  let noShows = 0
+  for (const id of ids) if (isNoShow(d, id, userId)) noShows += 1
+  return Math.round(((ids.size - noShows) / ids.size) * 100)
 }
 
 export function matchPlayers(d: DB, matchId: string): User[] {
@@ -462,15 +484,6 @@ export function matchPlayers(d: DB, matchId: string): User[] {
 
 export function isJoined(d: DB, matchId: string, userId = currentUserId): boolean {
   return d.matchPlayers.some((mp) => mp.match_id === matchId && mp.player_id === userId)
-}
-
-/** Has this participant recorded a positive attend check-in (CLAUDE.md §5)?
- *  `match_players.attended === true` — a self-reported "I'm here / played"
- *  presence signal. NEVER a no-show verdict: `false` (post-match no-show flag)
- *  and `null` (no signal) both read as "not checked in" here. Drives the NEXT UP
- *  card's tapped state and the post-match step-1 pre-fill. */
-export function hasCheckedIn(d: DB, matchId: string, userId = currentUserId): boolean {
-  return d.matchPlayers.some((mp) => mp.match_id === matchId && mp.player_id === userId && mp.attended === true)
 }
 
 /** The "Ladies only" gate, read-time. True when a user is barred from a match
@@ -733,16 +746,24 @@ export function savedMatches(d: DB): Match[] {
     .sort(byStartThenCreated)
 }
 
+/** Did this match actually happen as a match? True only when someone BESIDES the
+ *  host was on the roster (≥2 participants). A match nobody joined before kickoff
+ *  never really took place — so there's nothing to record and it must not surface
+ *  on JUST PLAYED or offer result-recording anywhere (user request, §5). */
+export function matchHadParticipants(d: DB, matchId: string): boolean {
+  return d.matchPlayers.filter((mp) => mp.match_id === matchId).length >= 2
+}
+
 /** Home transient JUST PLAYED card (CLAUDE.md §4): a match you were in (joined or
  *  hosted — the host is seated in `match_players`) that finished within the 24h
  *  post-match window (read-time `completed`) and still awaits YOUR result. It
  *  drops off the moment you record (no `match_results` row for you), or when the
- *  match closes on consensus / the 24h window lapses — all read-time, no cron.
- *  Most-recently-ended first. The card's CTA is RECORD RESULTS (the post-match
- *  flow), NOT a standalone attend button — recording covers attendance (§5). */
+ *  24h window lapses — all read-time, no cron. Most-recently-ended first.
+ *  A match NOBODY joined (host only) never shows — nothing to record (§5). */
 export function justPlayedMatches(d: DB, userId = currentUserId): Match[] {
   return joinedMatches(d, userId)
     .filter((m) => computeStatus(m) === 'completed')
+    .filter((m) => matchHadParticipants(d, m.id))
     .filter((m) => !d.matchResults.some((r) => r.match_id === m.id && r.player_id === userId))
     .sort((a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime())
 }
@@ -766,9 +787,41 @@ export function threadMessages(d: DB, threadId: string): ChatMessage[] {
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
 }
 
+/** My last-read marker for a thread (CLAUDE.md §4). ONE source: server-side
+ *  `chat_reads` in live mode (persists per-user across devices), the localStorage
+ *  `threadReadAt` in mock/offline. Both normal unread + @mention alerts read this,
+ *  and `markThreadRead` advances both, so they can never diverge. */
+export function lastReadAt(d: DB, threadId: string): string {
+  return (liveReady ? d.chatReads[threadId] : d.threadReadAt[threadId]) ?? ''
+}
+
 export function unreadCount(d: DB, threadId: string): number {
-  const readAt = d.threadReadAt[threadId] ?? ''
+  const readAt = lastReadAt(d, threadId)
   return threadMessages(d, threadId).filter((m) => !m.system && m.sender_id !== currentUserId && m.created_at > readAt).length
+}
+
+/** @mentions of ME in a thread newer than my last read (CLAUDE.md §5, Stage 1.8).
+ *  Computed at read time from structured `chat_mentions` rows — never by scanning
+ *  message text. A distinct, stronger signal than plain unread. */
+export function unreadMentionCount(d: DB, threadId: string, userId = currentUserId): number {
+  const readAt = lastReadAt(d, threadId)
+  return d.chatMentions.filter(
+    (m) => m.thread_id === threadId && m.mentioned_user === userId && m.created_at > readAt,
+  ).length
+}
+
+export function hasUnreadMention(d: DB, threadId: string, userId = currentUserId): boolean {
+  return unreadMentionCount(d, threadId, userId) > 0
+}
+
+/** Total unread @mentions across the inbox — drives the distinct Chat-tab "@" badge. */
+export function totalUnreadMentions(d: DB, userId = currentUserId): number {
+  return inboxThreads(d).reduce((n, t) => n + unreadMentionCount(d, t.id, userId), 0)
+}
+
+/** The user ids mentioned in a given message (for rendering chips in the bubble). */
+export function mentionsForMessage(d: DB, messageId: string): string[] {
+  return d.chatMentions.filter((m) => m.message_id === messageId).map((m) => m.mentioned_user)
 }
 
 export function isThreadArchived(d: DB, threadId: string): boolean {
@@ -1074,10 +1127,44 @@ export const actions = {
     })
   },
 
+  /** Player self-cancel (CLAUDE.md §5). Two paths, derived from the timestamp —
+   *  no UI asks which: a CLEAN cancel (≥2h before start) frees the seat, promotes
+   *  the waitlist, and leaves NO mark; a LATE cancel (<2h) is an automatic
+   *  no-show — the player keeps their seat with `attended=false` (which records
+   *  the no-show), no waitlist churn right before kickoff. */
   leaveMatch(matchId: string) {
-    if (liveReady) { void rpc('cancel_participation', { p_match: matchId }); return }
+    const m = db.matches.find((x) => x.id === matchId)
+    const clean = m ? canCancelCleanly(m) : true
+    if (liveReady) {
+      if (clean) {
+        void rpc('cancel_participation', { p_match: matchId })
+      } else {
+        // late cancel → auto no-show. Self-update allowed by RLS mp_update_self.
+        mutate((d) => ({
+          ...d,
+          matchPlayers: d.matchPlayers.map((mp) =>
+            mp.match_id === matchId && mp.player_id === currentUserId ? { ...mp, attended: false } : mp,
+          ),
+        }))
+        if (supabase) {
+          afterWrite(
+            supabase.from('match_players').update({ attended: false }).eq('match_id', matchId).eq('player_id', currentUserId),
+          )
+        }
+      }
+      return
+    }
     mutate((d) => {
       if (!isJoined(d, matchId)) return d
+      if (!clean) {
+        // late cancel (mock) — mark the no-show, keep the seat + chat membership.
+        return {
+          ...d,
+          matchPlayers: d.matchPlayers.map((mp) =>
+            mp.match_id === matchId && mp.player_id === currentUserId ? { ...mp, attended: false } : mp,
+          ),
+        }
+      }
       const me = getUser(d, currentUserId)
       const thread = threadForMatch(d, matchId)
       const freed: DB = {
@@ -1352,6 +1439,12 @@ export const actions = {
   },
 
   cancelMatch(matchId: string) {
+    // A host cancelling WITHIN 2h of start is itself an automatic no-show on the
+    // host — same objective 2h rule as a player (CLAUDE.md §5). Mark the host's
+    // own match_players row attended=false (RLS mp_update_self allows the host to
+    // self-update); ≥2h leaves no mark.
+    const m = db.matches.find((x) => x.id === matchId)
+    const hostNoShow = !!m && m.host_id === currentUserId && !canCancelCleanly(m)
     // Optimistically mark the match cancelled in both modes so Home (which
     // navigates immediately after cancel) drops it on the next render; in live
     // mode afterWrite then persists + rehydrates to confirm. Without this the
@@ -1360,6 +1453,11 @@ export const actions = {
     mutate((d) => ({
       ...d,
       matches: d.matches.map((x) => (x.id === matchId ? { ...x, status: 'cancelled' as const } : x)),
+      matchPlayers: hostNoShow
+        ? d.matchPlayers.map((mp) =>
+            mp.match_id === matchId && mp.player_id === currentUserId ? { ...mp, attended: false } : mp,
+          )
+        : d.matchPlayers,
       // cancelled match → all remaining waitlist entries expire (§5)
       matchRequests: d.matchRequests.map((r) =>
         r.match_id === matchId && r.kind === 'waitlist' && r.status === 'waitlisted' ? { ...r, status: 'expired' as const } : r,
@@ -1367,6 +1465,11 @@ export const actions = {
     }))
     if (liveReady && supabase) {
       afterWrite(supabase.from('matches').update({ status: 'cancelled' }).eq('id', matchId))
+      if (hostNoShow) {
+        afterWrite(
+          supabase.from('match_players').update({ attended: false }).eq('match_id', matchId).eq('player_id', currentUserId),
+        )
+      }
     }
   },
 
@@ -1454,36 +1557,28 @@ export const actions = {
     }
   },
 
-  /** NEXT UP attend check-in (CLAUDE.md §5): a low-friction POSITIVE presence
-   *  signal recorded on the player's OWN match_players row (attended = true).
-   *  - never marks a no-show: un-checking returns to neutral (`null`), NEVER
-   *    `false` (false is reserved for the post-match no-show flag);
-   *  - idempotent + self-only — always operates on `currentUserId`, and the live
-   *    write is RLS-guarded (mp_update_self: player_id = auth.uid());
-   *  - pre-fills "Played" in post-match step 1 (RecordResultForm reads attended);
-   *  - carries NO score — win/lose/draw (step 2) is untouched and still the only
-   *    source of win rate.
-   *  Optimistic in both modes (mirrors toggleSaveMatch). No cron, no triggers. */
-  checkIn(matchId: string, on = true) {
-    const attended = on ? true : null
+  /** Log a result (CLAUDE.md §5, light model). FIRST-SUBMITTER sets it: the first
+   *  participant to record win/lose/draw makes it canonical immediately — no
+   *  second confirmation, no consensus. Any participant (and the host) can edit
+   *  within 24h; the upsert keeps one row per player. On the very first result for
+   *  a match we post a system line into the match chat (mock; live system lines
+   *  are trigger-driven and not wired for results yet — the result still shows on
+   *  Match Details live). Feeds `winRate` directly. Optimistic in both modes. */
+  recordResult(matchId: string, playerId: string, result: MatchResult['result']) {
+    const isFirst = !db.matchResults.some((r) => r.match_id === matchId)
     mutate((d) => {
-      const already = d.matchPlayers.some(
-        (mp) => mp.match_id === matchId && mp.player_id === currentUserId && mp.attended === true,
-      )
       const next: DB = {
         ...d,
-        matchPlayers: d.matchPlayers.map((mp) =>
-          mp.match_id === matchId && mp.player_id === currentUserId ? { ...mp, attended } : mp,
-        ),
+        matchResults: [
+          ...d.matchResults.filter((r) => !(r.match_id === matchId && r.player_id === playerId)),
+          { id: newId('res'), match_id: matchId, player_id: playerId, result, created_at: new Date().toISOString() },
+        ],
       }
-      // Announce the check-in in the match group chat so everyone sees who's
-      // showed up (mirrors the "X joined / left" lines). Mock only + only on the
-      // transition into checked-in — live mode posts this via the DB trigger
-      // trg_thread_checkin (no double line).
-      if (liveReady || !on || already) return next
-      const me = getUser(d, currentUserId)
+      if (liveReady || !isFirst) return next
+      const me = getUser(d, playerId)
       const thread = threadForMatch(d, matchId)
       if (!me || !thread) return next
+      const outcome = result === 'win' ? 'a win' : result === 'loss' ? 'a loss' : 'a draw'
       return {
         ...next,
         chatMessages: [
@@ -1491,8 +1586,8 @@ export const actions = {
           {
             id: newId('msg'),
             thread_id: thread.id,
-            sender_id: currentUserId,
-            body: `${me.name.split(' ')[0]} checked in for this match`,
+            sender_id: playerId,
+            body: `${me.name.split(' ')[0]} logged the result — ${outcome}`,
             created_at: new Date().toISOString(),
             system: true,
             tone: 'pos' as const,
@@ -1502,64 +1597,58 @@ export const actions = {
       }
     })
     if (liveReady && supabase) {
-      afterWrite(
-        supabase.from('match_players').update({ attended }).eq('match_id', matchId).eq('player_id', currentUserId),
-      )
-    }
-  },
-
-  /** post-match step 1: everyone defaults to Played; flag no-shows */
-  setAttendance(matchId: string, playerId: string, attended: boolean) {
-    if (liveReady) { void rpc('set_attendance', { p_match: matchId, p_player: playerId, p_attended: attended }); return }
-    mutate((d) => ({
-      ...d,
-      matchPlayers: d.matchPlayers.map((mp) =>
-        mp.match_id === matchId && mp.player_id === playerId ? { ...mp, attended } : mp,
-      ),
-    }))
-  },
-
-  /** post-match step 2: record YOUR result, feeds win rate. Optimistic in BOTH
-   *  modes (mirrors cancelMatch/updateMatch) so the consensus check sees this
-   *  submission immediately; once 2+ players corroborate, finalizeMatchIfConfirmed
-   *  closes the match and the stats follow (CLAUDE.md §5). */
-  recordResult(matchId: string, playerId: string, result: MatchResult['result']) {
-    mutate((d) => ({
-      ...d,
-      matchResults: [
-        ...d.matchResults.filter((r) => !(r.match_id === matchId && r.player_id === playerId)),
-        { id: newId('res'), match_id: matchId, player_id: playerId, result },
-      ],
-    }))
-    if (liveReady && supabase) {
       // RLS results_insert_self → only your own result persists. Upsert so editing
       // a result you already recorded can't trip unique(match_id, player_id).
       afterWrite(supabase.from('match_results').upsert({ match_id: matchId, player_id: playerId, result }, { onConflict: 'match_id,player_id' }))
     }
-    finalizeMatchIfConfirmed(matchId)
   },
 
-  reportNoShow(matchId: string, reportedPlayer: string) {
+  /** Flag a no-show (CLAUDE.md §5). One flag lands it. The rule is mirrored from
+   *  the DB (RLS + flag_no_show RPC): a HOST flags a participant in their match,
+   *  OR a participant WHO SHOWED flags the host — never peer-vs-peer, never self.
+   *  The flagged user is notified (live, via the RPC) and may dispute → contested. */
+  flagNoShow(matchId: string, subjectId: string) {
+    if (subjectId === currentUserId) return
     if (liveReady) {
-      if (reportedPlayer === currentUserId) return
-      if (supabase) afterWrite(supabase.from('no_show_reports').insert({ match_id: matchId, reported_player: reportedPlayer, reporter_id: currentUserId }))
+      if (supabase) afterWrite(supabase.rpc('flag_no_show', { p_match: matchId, p_subject: subjectId }))
       return
     }
     mutate((d) => {
-      // unique(match_id, reported_player, reporter_id); no self-report
-      if (reportedPlayer === currentUserId) return d
-      const dup = d.noShowReports.some(
-        (r) => r.match_id === matchId && r.reported_player === reportedPlayer && r.reporter_id === currentUserId,
-      )
-      if (dup) return d
+      const m = d.matches.find((x) => x.id === matchId)
+      if (!m) return d
+      // 24h post-match flag window only — mirrors the flag_no_show RPC (§5)
+      if (computeStatus(m) !== 'completed') return d
+      const subjectIsParticipant = d.matchPlayers.some((mp) => mp.match_id === matchId && mp.player_id === subjectId)
+      const actor = d.matchPlayers.find((mp) => mp.match_id === matchId && mp.player_id === currentUserId)
+      const actorShowed = !!actor && actor.attended !== false
+      const allowed =
+        (m.host_id === currentUserId && subjectIsParticipant) || // host → participant
+        (m.host_id === subjectId && actorShowed) // shower → host
+      if (!allowed) return d
+      if (d.noShowFlags.some((f) => f.match_id === matchId && f.subject_player === subjectId)) return d // one flag lands it
       return {
         ...d,
-        noShowReports: [
-          ...d.noShowReports,
-          { id: newId('nsr'), match_id: matchId, reported_player: reportedPlayer, reporter_id: currentUserId, created_at: new Date().toISOString() },
+        noShowFlags: [
+          ...d.noShowFlags,
+          { id: newId('nsf'), match_id: matchId, subject_player: subjectId, set_by: currentUserId, status: 'confirmed' as const, created_at: new Date().toISOString() },
         ],
       }
     })
+  },
+
+  /** Dispute a no-show flag raised against you → status 'contested' (a contested
+   *  flag no longer counts toward reputation). One-way; RLS nsf_dispute enforces
+   *  that only the subject can do this. */
+  disputeNoShow(flagId: string) {
+    mutate((d) => ({
+      ...d,
+      noShowFlags: d.noShowFlags.map((f) =>
+        f.id === flagId && f.subject_player === currentUserId ? { ...f, status: 'contested' as const } : f,
+      ),
+    }))
+    if (liveReady && supabase) {
+      afterWrite(supabase.from('no_show_flags').update({ status: 'contested' }).eq('id', flagId))
+    }
   },
 
   blockUser(userId: string) {
@@ -1570,7 +1659,12 @@ export const actions = {
     mutate((d) => ({ ...d, blockedUserIds: d.blockedUserIds.filter((id) => id !== userId) }))
   },
 
-  sendMessage(threadId: string, body: string) {
+  /** Send a message, optionally carrying structured @mentions (Stage 1.8). Live:
+   *  the `send_message` RPC atomically writes the message + mention rows (members
+   *  only) and advances the sender's read marker — so a self-mention never alerts.
+   *  Mentions are passed as user ids resolved by the composer from the thread
+   *  roster (never free-text). */
+  sendMessage(threadId: string, body: string, mentions: string[] = []) {
     const text = body.trim()
     if (!text) return
     // Sending implies you've read this thread: advance your read marker so a
@@ -1579,16 +1673,26 @@ export const actions = {
     // only messages RECEIVED from others ever contribute to the unread count.
     actions.markThreadRead(threadId)
     if (liveReady) {
-      if (supabase) afterWrite(supabase.from('chat_messages').insert({ thread_id: threadId, sender_id: currentUserId, body: text }))
+      if (supabase) afterWrite(supabase.rpc('send_message', { p_thread: threadId, p_body: text, p_mentions: mentions }))
       return
     }
-    mutate((d) => ({
-      ...d,
-      chatMessages: [
-        ...d.chatMessages,
-        { id: newId('msg'), thread_id: threadId, sender_id: currentUserId, body: text, created_at: new Date().toISOString() },
-      ],
-    }))
+    mutate((d) => {
+      const msgId = newId('msg')
+      const now = new Date().toISOString()
+      const members = new Set(threadById(d, threadId)?.participant_ids ?? [])
+      const mentionRows = [...new Set(mentions)]
+        .filter((uid) => members.has(uid))
+        .map((uid) => ({ id: newId('cmen'), message_id: msgId, thread_id: threadId, mentioned_user: uid, created_at: now }))
+      return {
+        ...d,
+        chatMessages: [...d.chatMessages, { id: msgId, thread_id: threadId, sender_id: currentUserId, body: text, created_at: now }],
+        chatMentions: [...d.chatMentions, ...mentionRows],
+        // stamp the sender's read marker to the message time so a self-mention
+        // (or your own message) never reads as unread — mirrors the live RPC.
+        threadReadAt: { ...d.threadReadAt, [threadId]: now },
+        chatReads: { ...d.chatReads, [threadId]: now },
+      }
+    })
   },
 
   postSystemLine(threadId: string, body: string, tone: ChatMessage['tone'] = 'info', icon: ChatMessage['icon'] = 'flag') {
@@ -1616,6 +1720,7 @@ export const actions = {
   },
 
   markThreadRead(threadId: string) {
+    const now = new Date().toISOString()
     mutate((d) => {
       // opening a thread you'd deleted brings it back (you're using it again)
       const deleted = { ...d.deletedThreadAt }
@@ -1624,10 +1729,20 @@ export const actions = {
         delete deleted[threadId]
         changed = true
       }
-      const next = { ...d, threadReadAt: { ...d.threadReadAt, [threadId]: new Date().toISOString() }, deletedThreadAt: deleted }
+      // advance BOTH markers: localStorage (mock/offline) + the server-side
+      // chat_reads mirror (live) so normal unread + @mention alerts clear together.
+      const next: DB = {
+        ...d,
+        threadReadAt: { ...d.threadReadAt, [threadId]: now },
+        chatReads: { ...d.chatReads, [threadId]: now },
+        deletedThreadAt: deleted,
+      }
       if (changed) saveChatPrefs(next)
       return next
     })
+    // persist the read server-side (RLS-guarded RPC) so it survives reopen/relaunch
+    // across devices — the durable source of truth in live mode.
+    if (liveReady && supabase) afterWrite(supabase.rpc('mark_thread_read', { p_thread: threadId }))
   },
 
   /** swipe action: move a thread to the Archive pill (reversible) */

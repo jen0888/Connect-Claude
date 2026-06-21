@@ -10,8 +10,10 @@ import { RecordResultForm } from './RecordResultForm'
 
 /** Post-Match Detail — the full "Record result" page (postmatch-sheet.jsx).
  *  A thin editorial wrapper around the SHARED RecordResultForm — the exact
- *  same form that drops down inside the chat pinned bar. Auto-closes 24h
- *  after the match ends (status → closed, computed at read time). */
+ *  same form that drops down inside the chat pinned bar. Everything here is
+ *  optional and has NO deadline: a result is canonical the moment one person
+ *  logs it (first-submitter, §5) and stays editable/shareable anytime; only the
+ *  no-show flag honours the 24h window. */
 export function PostMatchScreen() {
   const { id } = useParams()
   const db = useDB()
@@ -65,10 +67,8 @@ export function PostMatchScreen() {
             </h1>
             <p className="mt-[9px] mb-[18px] max-w-[300px] text-[13px] leading-[1.4]" style={{ color: 'var(--color-text-muted)', textWrap: 'pretty' }}>
               {saved
-                ? 'This match is recorded. Edit it any time until the match closes.'
-                : match.sport === 'running'
-                  ? "One quick step. Mark who showed up — it saves straight to everyone's history."
-                  : "Two quick questions. Mark who showed and which side won — it saves straight to everyone's history."}
+                ? 'Logged. Edit it any time today, or share the result whenever you like.'
+                : 'All optional. Log the result if you like, or flag a no-show — nothing here is required.'}
             </p>
           </div>
 

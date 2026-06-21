@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowUp,
   Bell,
   BellOff,
   ChevronLeft,
@@ -17,11 +16,12 @@ import { Shell } from '@/components/Shell'
 import { AvatarStack } from '@/components/Avatar'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, matchPlayers, threadForMatch, threadMessages, threadTimeline, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, matchPlayers, threadForMatch, threadMessages, threadTimeline, useDB } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, courtLabel, hm, initials, matchKind, timeRange, whenLabel } from '@/lib/format'
-import type { MatchStatus } from '@/lib/types'
+import type { MatchStatus, User } from '@/lib/types'
 import { ChatTimeline } from '@/screens/chat/ChatTimeline'
+import { MentionInput } from '@/screens/chat/MentionInput'
 import { RecordResultForm } from '@/screens/postmatch/RecordResultForm'
 
 /** Match group chat (match-group-chat.jsx MatchThread) — auto thread with all
@@ -36,7 +36,6 @@ export function MatchChatScreen() {
   const db = useDB()
   const navigate = useNavigate()
   const { showToast } = useToast()
-  const [draft, setDraft] = useState('')
   const [expanded, setExpanded] = useState(false)
   const [muted, setMuted] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -63,15 +62,13 @@ export function MatchChatScreen() {
   const played = status === 'completed' || status === 'closed'
   const full = match.spots_available <= 0 && !cancelled && !played
   const players = matchPlayers(db, match.id)
+  // a match nobody joined (host only) never really happened → no result to record
+  const recordable = played && players.length >= 2
   const recorded = db.matchResults.some((r) => r.match_id === match.id && r.player_id === currentUserId)
   const myResult = db.matchResults.find((r) => r.match_id === match.id && r.player_id === currentUserId)
   const title = `${matchKind(match)} · ${courtLabel(match)}`
-
-  const send = () => {
-    if (!draft.trim()) return
-    actions.sendMessage(thread.id, draft)
-    setDraft('')
-  }
+  // mention roster = every thread member (MentionInput drops self)
+  const roster = thread.participant_ids.map((uid) => getUser(db, uid)).filter((u): u is User => !!u)
 
   const onResultSaved = () => {
     setExpanded(false)
@@ -88,12 +85,15 @@ export function MatchChatScreen() {
         <Trophy size={11} strokeWidth={2} /> {myResult?.result === 'win' ? 'You won' : myResult?.result === 'loss' ? 'You lost' : 'Draw'}
       </span>
     )
-  else if (played)
+  else if (recordable)
     statusEl = (
       <span className="inline-flex items-center gap-1 font-semibold text-brand">
         <Trophy size={11} strokeWidth={2} /> Record result
       </span>
     )
+  else if (played)
+    // finished but nobody joined → just a closed match, nothing to record
+    statusEl = <span className="font-semibold" style={{ color: 'var(--color-text-muted)' }}>Just played</span>
   else if (full)
     statusEl = (
       <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--color-success)' }}>
@@ -180,8 +180,12 @@ export function MatchChatScreen() {
                   {played ? (
                     <>
                       {statusEl}
-                      <span className="opacity-40">·</span>
-                      <span>{recorded ? 'recorded' : 'tap to fill in'}</span>
+                      {recordable && (
+                        <>
+                          <span className="opacity-40">·</span>
+                          <span>{recorded ? 'recorded' : 'tap to fill in'}</span>
+                        </>
+                      )}
                     </>
                   ) : (
                     <>
@@ -202,9 +206,10 @@ export function MatchChatScreen() {
               />
             </button>
 
-            {/* drop-down detail */}
-            <div className="overflow-hidden transition-all" style={{ maxHeight: expanded ? (played ? 560 : 260) : 0, opacity: expanded ? 1 : 0 }}>
-              {played ? (
+            {/* drop-down detail — the record form only when the match actually
+                happened (≥2 players); otherwise just the match details. */}
+            <div className="overflow-hidden transition-all" style={{ maxHeight: expanded ? (recordable ? 560 : 260) : 0, opacity: expanded ? 1 : 0 }}>
+              {recordable ? (
                 <div className="scroll-area max-h-[524px] overflow-y-auto bg-page pt-3.5 pb-4">
                   <RecordResultForm match={match} onSaved={onResultSaved} />
                 </div>
@@ -239,21 +244,22 @@ export function MatchChatScreen() {
           </div>
         </div>
 
-        {/* result recorded · waiting-to-close bar */}
-        {played && recorded && status !== 'closed' && (
+        {/* result recorded · canonical immediately (first-submitter, §5) — no lock,
+            no second result, no deadline; editable + shareable anytime. */}
+        {played && recorded && (
           <div
             className="relative z-2 mx-4 mb-1.5 flex shrink-0 items-center gap-[11px] rounded-[14px] px-[13px] py-2.5"
-            style={{ background: 'color-mix(in srgb, var(--color-brand) 7%, transparent)', border: '1px solid color-mix(in srgb, var(--color-brand) 20%, transparent)' }}
+            style={{ background: 'color-mix(in srgb, var(--color-success) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-success) 22%, transparent)' }}
           >
-            <span className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-brand" style={{ background: 'color-mix(in srgb, var(--color-brand) 12%, transparent)' }}>
-              <Clock size={13} strokeWidth={1.9} />
+            <span className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-white" style={{ background: 'var(--color-success)' }}>
+              <Check size={15} strokeWidth={2.4} />
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-[12.5px] font-semibold" style={{ textWrap: 'pretty' }}>
-                Waiting for one more result to lock the match
+                Result recorded
               </div>
               <div className="mt-px text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                Closes automatically in 24h
+                Edit or share it anytime — no deadline.
               </div>
             </div>
           </div>
@@ -271,33 +277,7 @@ export function MatchChatScreen() {
             <Lock size={12} strokeWidth={2} /> This match was cancelled — chat is read-only
           </div>
         ) : (
-          <div
-            className="relative z-3 flex shrink-0 items-end gap-[9px] border-t px-4 pt-2.5 pb-[30px] backdrop-blur-[16px]"
-            style={{ background: 'rgba(244,240,232,0.92)', borderColor: 'rgba(26,26,26,0.06)' }}
-          >
-            <div className="flex min-h-[42px] flex-1 items-center rounded-[22px] border bg-card pe-1.5 ps-4" style={{ borderColor: 'rgba(26,26,26,0.12)' }}>
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && send()}
-                placeholder="Message"
-                className="min-w-0 flex-1 border-none bg-transparent py-[11px] text-[14px] text-ink outline-none"
-              />
-              <button
-                onClick={send}
-                aria-label="Send"
-                disabled={!draft.trim()}
-                className="ms-1.5 inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border-none transition-colors"
-                style={{
-                  cursor: draft.trim() ? 'pointer' : 'default',
-                  background: draft.trim() ? 'var(--color-brand)' : 'rgba(26,26,26,0.12)',
-                  color: draft.trim() ? 'var(--color-text-onbrand)' : 'rgba(26,26,26,0.4)',
-                }}
-              >
-                <ArrowUp size={16} strokeWidth={2.2} />
-              </button>
-            </div>
-          </div>
+          <MentionInput roster={roster} onSend={(body, ids) => actions.sendMessage(thread.id, body, ids)} />
         )}
       </div>
     </Shell>

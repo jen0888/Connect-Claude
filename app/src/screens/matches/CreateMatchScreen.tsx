@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, Coins, Lock, LockOpen, MailPlus, MapPin, Plus, Sparkles, TriangleAlert, Trophy, UserRound, Users, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
@@ -59,6 +59,12 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
   const { showToast } = useToast()
   const { t } = useI18n()
   const existing = isEdit ? db.matches.find((m) => m.id === id) : undefined
+  // Guard against double-submit: createMatch awaits an RPC + rehydrate (~1s), and
+  // a second tap (or a touch+click double-fire) in that window would create the
+  // match twice → a duplicate "You're hosting" card. The ref blocks re-entry
+  // synchronously; `submitting` disables the CTA for feedback.
+  const submittingRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
 
   // Draft persistence: only "create" keeps a draft across refreshes — in edit
   // mode `dk()` returns null so the form always reflects the live match, never
@@ -132,6 +138,10 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
       setShowReminder(true)
       return
     }
+    if (submittingRef.current) return // already creating — ignore the double tap
+    submittingRef.current = true
+    setSubmitting(true)
+    try {
     const dayIso = dateKey
     const start = `${dayIso}T${startTime}:00`
     const end = `${dayIso}T${endTime}:00`
@@ -211,6 +221,10 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
     }
     writeHostedMatch(hosted)
     navigate('/home') // save-then-route: Match edit/create → Home + toast
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
   }
 
   const cancelMatch = () => {
@@ -739,7 +753,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
         >
           {isEdit ? (
             <>
-              <CTA onClick={save}>Save changes</CTA>
+              <CTA onClick={save} loading={submitting}>Save changes</CTA>
               <button
                 type="button"
                 onClick={cancelMatch}
@@ -750,7 +764,7 @@ export function CreateMatchScreen({ mode = 'create' }: { mode?: 'create' | 'edit
               </button>
             </>
           ) : (
-            <CTA onClick={save}>
+            <CTA onClick={save} loading={submitting}>
               Create match <ArrowRight size={14} strokeWidth={2} className="rtl:rotate-180" />
             </CTA>
           )}

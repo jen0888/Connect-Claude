@@ -7,7 +7,7 @@ import { MatchCard } from '@/components/MatchCard'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
-import { actions, confirmedNoShowCount, confirmedWinRate, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, pendingRequest, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, attendanceRate, currentUserId, discoverMatches, getUser, isJoined, matchPlayers, noShowCount, pendingRequest, useDB, waitlistEntry, waitlistPosition, winRate } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { artType, courtLabel, dayLabel, matchKind, sportLabel, initials as userInitials } from '@/lib/format'
 import { sportEmoji } from '@/lib/sports'
@@ -32,10 +32,12 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
   if (!user) return null
   const isMe = user.id === currentUserId
 
-  // win rate + no-shows reflect CONFIRMED (closed) matches only — they move once
-  // 2+ players corroborate a result and the match auto-closes (CLAUDE.md §5).
-  const rate = confirmedWinRate(db, user.id)
-  const noShows = confirmedNoShowCount(db, user.id)
+  // Public, read-time reputation (CLAUDE.md §5, light model). Win rate = your own
+  // recorded results (first-submitter, no consensus); attendance % + no-shows
+  // derive from played-vs-no-show across your due matches. Reputation-only.
+  const rate = winRate(db, user.id)
+  const attendance = attendanceRate(db, user.id)
+  const noShows = noShowCount(db, user.id)
   const joinedYear = new Date(user.created_at).getFullYear().toString().slice(-2)
 
   // Sports & level. The canonical primary sport + level is ALWAYS the one on the
@@ -201,7 +203,6 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
         {/* stats — public trust signals */}
         <div className="mt-6 grid grid-cols-3 gap-2.5">
           {[
-            { num: <span className="nums-tabular">{user.matches_played}</span>, lbl: 'Matches' },
             {
               num: rate != null ? (
                 <span>
@@ -212,6 +213,15 @@ export function ProfileScreen({ own = false }: { own?: boolean }) {
                 <span style={{ color: 'var(--color-text-faint)' }}>—</span>
               ),
               lbl: 'Win rate',
+            },
+            {
+              num: (
+                <span>
+                  <span className="nums-tabular">{attendance ?? 100}</span>
+                  <span className="text-[18px]" style={{ color: 'rgba(26,26,26,0.5)' }}>%</span>
+                </span>
+              ),
+              lbl: 'Attendance',
             },
             {
               num: (

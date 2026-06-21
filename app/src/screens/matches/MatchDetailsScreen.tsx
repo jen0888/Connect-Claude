@@ -1,17 +1,18 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { Bookmark, Check, ChevronLeft, ChevronRight, Hourglass, ListPlus, LogOut, MapPin, MessageCircle, Pencil, Plus, Send, Share, Star, UserRound } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Bookmark, Check, ChevronLeft, ChevronRight, Hourglass, ListPlus, LogOut, MapPin, MessageCircle, Pencil, Plus, Send, Share, ShieldQuestion, Star, Trophy, UserRound } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { LadiesBadge } from '@/components/LadiesBadge'
+import { ShareCard } from '@/components/ShareCard'
 import { MiniMap, PlayerDots } from '@/components/controls'
 import { useToast } from '@/components/Toast'
 import { useI18n } from '@/i18n'
-import { actions, currentUserId, getUser, isJoined, matchPlayers, pendingRequest, requestIsActionable, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
+import { actions, currentUserId, getUser, isJoined, matchHadParticipants, matchPlayers, noShowCount, pendingRequest, requestIsActionable, useDB, waitlistEntry, waitlistPosition } from '@/lib/store'
 import { computeStatus } from '@/lib/status'
 import { courtNumberLabel, dayLabel, hm, initials, skillRangeText, skillTierLabel, sportLabel, whenLabel } from '@/lib/format'
 import { SKILL_TIERS, skillOrd, type Match } from '@/lib/types'
-import { DecisionButtons, ProfilePeek, ResolvedNote } from './ApprovalCard'
+import { DecisionButtons, ProfilePeek } from './ApprovalCard'
 
 /** Match Details (match-details-other-v2.jsx, Editorial Calm).
  *  One screen, two views: player view (read-only + Join/Request CTA) and
@@ -119,6 +120,13 @@ function MatchDetailsBody({
   const isRunning = m.sport === 'running'
   const durationMin = Math.round((new Date(m.end_time).getTime() - new Date(m.start_time).getTime()) / 60000)
 
+  const [share, setShare] = useState(false)
+  // the canonical (first-submitter) result for this match, if any
+  const canonicalResult = [...db.matchResults.filter((r) => r.match_id === m.id)].sort((a, b) => a.created_at.localeCompare(b.created_at))[0]
+  const resultLabel = canonicalResult ? ({ win: 'Won', loss: 'Lost', draw: 'Draw' } as const)[canonicalResult.result] : null
+  // a no-show flag against ME on this match → I can dispute it (CLAUDE.md §5)
+  const myFlag = db.noShowFlags.find((f) => f.match_id === m.id && f.subject_player === currentUserId)
+
   const wl = waitlistEntry(db, m.id)
   const wlPos = wl ? waitlistPosition(db, m.id) : null
   const joinedState = joined ? 'joined' : wl ? 'waitlisted' : pending ? 'requested' : 'idle'
@@ -199,7 +207,7 @@ function MatchDetailsBody({
             </CalmIcon>
           </div>
           <div className="pointer-events-auto flex gap-2">
-            <CalmIcon ariaLabel="Share" onClick={() => showToast('Link copied')}>
+            <CalmIcon ariaLabel="Share" onClick={() => setShare(true)}>
               <Share size={14} strokeWidth={1.8} />
             </CalmIcon>
             {!hostView ? (
@@ -418,36 +426,31 @@ function MatchDetailsBody({
           </div>
 
           {/* host view: pending join requests — approve/decline, no slot hold (§5).
-              A request whose match has since filled is read-time expired: it stays
-              visible but flips to a non-actionable "no longer available" note. */}
+              Once the match fills, a request can no longer be approved, so it just
+              disappears (only ACTIONABLE requests render — user request). */}
           {hostView &&
             db.matchRequests
-              .filter((r) => r.match_id === m.id && r.kind === 'request' && (r.status === 'requested' || r.status === 'expired'))
+              .filter((r) => r.match_id === m.id && requestIsActionable(db, r))
               .map((r) => {
                 const requester = getUser(db, r.player_id)
                 if (!requester) return null
-                const actionable = requestIsActionable(db, r)
                 return (
                   <div key={r.id} className="mt-6">
                     <Eyebrow accent="var(--color-brand)">Wants to join</Eyebrow>
                     <div className="mt-3 flex flex-col gap-3">
                       <ProfilePeek user={requester} mode="request" />
-                      {actionable ? (
-                        <DecisionButtons
-                          mode="request"
-                          size="sm"
-                          onApprove={() => {
-                            const res = actions.approveRequest(r.id)
-                            showToast(res === 'full' ? 'Match just filled' : `${requester.name.split(' ')[0]} is in`)
-                          }}
-                          onDecline={() => {
-                            actions.declineRequest(r.id)
-                            showToast('Request declined')
-                          }}
-                        />
-                      ) : (
-                        <ResolvedNote status="expired" text="Match full — this request is no longer available." />
-                      )}
+                      <DecisionButtons
+                        mode="request"
+                        size="sm"
+                        onApprove={() => {
+                          const res = actions.approveRequest(r.id)
+                          showToast(res === 'full' ? 'Match just filled' : `${requester.name.split(' ')[0]} is in`)
+                        }}
+                        onDecline={() => {
+                          actions.declineRequest(r.id)
+                          showToast('Request declined')
+                        }}
+                      />
                     </div>
                   </div>
                 )
@@ -518,11 +521,7 @@ function MatchDetailsBody({
                       />
                     </div>
                   </div>
-                ) : r.status === 'expired' ? (
-                  <div key={r.id} className="mt-6">
-                    <ResolvedNote status="expired" text="This invite expired — the match filled up or the time passed." />
-                  </div>
-                ) : null,
+                ) : null /* expired/full invite → no "no longer available" note, just gone */,
               )}
 
           {/* Hosted by — trust signals, never a gate (CLAUDE.md §5) */}
@@ -550,10 +549,10 @@ function MatchDetailsBody({
                     <span>
                       <span className="font-semibold text-ink">{host.attendance_rate}%</span> attendance
                     </span>
-                    {host.no_show_count > 0 && (
+                    {noShowCount(db, host.id) > 0 && (
                       <>
                         <span className="opacity-40">·</span>
-                        <span>{host.no_show_count} no-shows</span>
+                        <span>{noShowCount(db, host.id)} no-shows</span>
                       </>
                     )}
                   </div>
@@ -600,18 +599,61 @@ function MatchDetailsBody({
             </div>
           )}
 
-          {/* completed: record result */}
-          {joined && status === 'completed' && (
+          {/* no-show flagged against you → dispute it (CLAUDE.md §5). Reputation-
+              only: a contested flag stops counting; nobody is blocked. */}
+          {myFlag && (
             <div className="mt-6">
+              <div className="px-4 py-3.5" style={{ ...cardStyle, borderRadius: 22, border: '1px solid color-mix(in srgb, var(--color-danger) 22%, transparent)', background: 'color-mix(in srgb, var(--color-danger) 4%, transparent)' }}>
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)', color: 'var(--color-danger)' }}>
+                    <ShieldQuestion size={17} strokeWidth={2} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-semibold text-ink">You were marked as a no-show</div>
+                    <div className="mt-0.5 text-[11.5px] leading-[1.45]" style={{ color: 'var(--color-text-muted)' }}>
+                      {myFlag.status === 'contested'
+                        ? "You've disputed this — it no longer counts toward your reputation."
+                        : "If you actually showed, dispute it and it won't count."}
+                    </div>
+                  </div>
+                </div>
+                {myFlag.status !== 'contested' && (
+                  <button
+                    type="button"
+                    onClick={() => { actions.disputeNoShow(myFlag.id); showToast('Flag disputed') }}
+                    className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-pill bg-transparent text-[13px] font-semibold"
+                    style={{ border: '1.5px solid color-mix(in srgb, var(--color-danger) 40%, transparent)', color: 'var(--color-danger)' }}
+                  >
+                    Dispute this flag
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* post-match: result + record / share. Reachable anytime once played —
+              results & cards have NO deadline (§5); only the no-show flag is
+              24h-bounded (status 'completed'), handled inside the post-match flow.
+              Skipped entirely when nobody joined (host only) — nothing to record. */}
+          {joined && (status === 'completed' || status === 'closed') && matchHadParticipants(db, m.id) && (
+            <div className="mt-6 grid gap-2.5">
+              {resultLabel && (
+                <div className="flex items-center gap-2.5 px-4 py-3" style={{ ...cardStyle, borderRadius: 22, borderWidth: 1, borderStyle: 'solid' }}>
+                  <Trophy size={15} strokeWidth={2} style={{ color: 'var(--color-brand)' }} />
+                  <span className="text-[13px] font-semibold text-ink">Result · {resultLabel}</span>
+                  <button type="button" onClick={() => setShare(true)} className="ms-auto text-[12.5px] font-semibold text-brand">Share</button>
+                </div>
+              )}
               <button
                 onClick={() => navigate(`/post-match/${m.id}`)}
                 className="inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-pill border-none bg-brand text-[14px] font-semibold text-onbrand shadow-cta"
               >
-                <Star size={15} strokeWidth={2} /> Record result
+                <Star size={15} strokeWidth={2} /> {resultLabel ? 'Edit result' : 'Log result'}{status === 'completed' ? ' / flag a no-show' : ''}
               </button>
             </div>
           )}
         </div>
+        {share && <ShareCard match={m} result={canonicalResult?.result ?? null} onClose={() => setShare(false)} />}
 
         {/* sticky footer CTA — player view only */}
         {!hostView && (status === 'open' || status === 'full') && !joined && (

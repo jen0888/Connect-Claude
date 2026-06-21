@@ -270,8 +270,9 @@ export const MATCH_REQUESTS: MatchRequest[] = [
 ]
 
 export const MATCH_RESULTS: MatchResult[] = [
-  { id: 'res-1', match_id: 'm-past-won', player_id: 'u-you', result: 'win' },
-  { id: 'res-2', match_id: 'm-past-won', player_id: 'u-marco', result: 'win' },
+  // First-submitter sets the canonical result (CLAUDE.md §5); res-1 (you) is first.
+  { id: 'res-1', match_id: 'm-past-won', player_id: 'u-you', result: 'win', created_at: iso(-44) },
+  { id: 'res-2', match_id: 'm-past-won', player_id: 'u-marco', result: 'win', created_at: iso(-43) },
 ]
 
 /** one canonical group thread per joined match + 1:1 DMs (CLAUDE.md §5) */

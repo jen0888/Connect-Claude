@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bookmark, CalendarCheck, Check, ChevronRight, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, UserPlus, UserRound, X } from 'lucide-react'
+import { Bookmark, Check, ChevronRight, Clock, Eye, Gauge, Hourglass, ListPlus, Lock, MapPin, Pencil, Plus, Send, UserPlus, UserRound, X } from 'lucide-react'
 import type { Match, MatchStatus, User } from '@/lib/types'
 import { artType, courtLabel, courtNumberLabel, dayDateLabel, hm, matchKind, skillRangeText, sportLabel, timeRange, whenLabel, initials as userInitials } from '@/lib/format'
 import { computeStatus } from '@/lib/status'
@@ -21,8 +21,6 @@ import { LifecycleAction, LifecycleChip, LifecycleNote, StatusBadge, lifecycleHa
  *          'join'   – open matches (filled Join; Request when approval mode)
  *          'cancel' – pending request (outlined Cancel)
  *          'edit'   – matches you host (outlined pencil Edit → edit screen)
- *          'attend' – NEXT UP check-in (filled Attend ⇄ success "Checked in"); the
- *                     caller gates visibility by the read-time window (§5)
  *  badge:  optional { text, pulse } dark pill on the image (e.g. Awaiting host) */
 export interface MatchCardProps {
   match: Match
@@ -32,10 +30,7 @@ export interface MatchCardProps {
    *  horizontal row (Home "This week" / "Matches you saved"). SAME component —
    *  never a separate per-section card (CLAUDE.md §4/§8). */
   variant?: 'brief' | 'full'
-  action?: 'view' | 'join' | 'cancel' | 'edit' | 'attend'
-  /** checked-in state (action='attend') — true once the viewer has tapped attend
-   *  (match_players.attended === true). Positive-only; never reflects a no-show. */
-  attended?: boolean
+  action?: 'view' | 'join' | 'cancel' | 'edit'
   /** join-state override after acting: null | 'joined' | 'requested' | 'waitlisted' */
   joinStatus?: 'joined' | 'requested' | 'waitlisted' | null
   /** 1-based FIFO queue position (joinStatus='waitlisted') */
@@ -76,7 +71,6 @@ export function MatchCard({
   players = [],
   variant = 'full',
   action = 'view',
-  attended = false,
   joinStatus = null,
   waitlistPosition = null,
   onAct,
@@ -164,32 +158,7 @@ export function MatchCard({
 
   /* footer action */
   let actionEl: ReactNode
-  if (action === 'attend') {
-    // NEXT UP attend check-in (§5): a low-friction POSITIVE presence signal,
-    // never a no-show verdict. The caller (Home) gates *whether* this renders by
-    // the read-time window (`attendCheckInOpen`); here it just reflects the
-    // checked-in state. Takes priority over the lifecycle action so it is honored
-    // through the live + just-played window too. Idempotent — once checked in it
-    // shows a clear "Checked in" state; tapping again only returns to neutral.
-    actionEl = (
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onAct?.()
-        }}
-        aria-pressed={attended}
-        className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-[7px] whitespace-nowrap rounded-pill border-none px-[18px] text-[13px] font-semibold tracking-[0.01em] transition-colors"
-        style={{
-          background: attended ? 'color-mix(in srgb, var(--color-success) 13%, transparent)' : 'var(--color-brand)',
-          color: attended ? 'var(--color-success)' : 'var(--color-text-onbrand)',
-          boxShadow: attended ? 'none' : '0 8px 20px -6px var(--color-brand)',
-        }}
-      >
-        {attended ? <Check size={13} strokeWidth={2.6} /> : <CalendarCheck size={14} strokeWidth={2} />}
-        {attended ? t('match.action.checkedIn') : t('match.action.attend')}
-      </button>
-    )
-  } else if (requested) {
+  if (requested) {
     // pending approval request → actionable "Cancel request" (withdraw, §5).
     // The Ladies-only badge stacks above this button in the render below.
     actionEl = (

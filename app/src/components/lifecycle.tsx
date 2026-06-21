@@ -22,7 +22,7 @@ export const LIFECYCLE: Record<MatchStatus, LifecycleInfo> = {
   cancelled: { key: 'cancelled', label: 'Cancelled', color: 'var(--color-danger)', pulse: false, note: 'Host or system cancelled', dim: true },
   live: { key: 'live', label: 'Live now', color: 'var(--color-live)', pulse: true, note: 'Happening now · joining is locked', dim: false },
   completed: { key: 'completed', label: 'Just played', color: 'var(--color-warning)', pulse: false, note: 'Post-match window open · record result', dim: false },
-  closed: { key: 'closed', label: 'Closed', color: 'var(--color-neutral)', pulse: false, note: '24h passed · results locked', dim: true },
+  closed: { key: 'closed', label: 'Closed', color: 'var(--color-neutral)', pulse: false, note: '24h passed · no-show window closed', dim: true },
 }
 
 /** glass status pill on the card image */
@@ -90,9 +90,9 @@ export function lifecycleSpots(status: MatchStatus, m: Pick<Match, 'spots_availa
     case 'live':
       return 'In progress'
     case 'completed':
-      return 'Awaiting result'
+      return 'Just played'
     case 'closed':
-      return 'Result locked'
+      return 'Match closed'
   }
 }
 

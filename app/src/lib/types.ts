@@ -35,9 +35,11 @@ export type JoinMode = 'open' | 'approval' | 'invite'
 export type GenderRestriction = 'mixed' | 'ladies'
 
 /** Stored status — time-based states are computed at read time, never stored.
- *  `closed` is the one *early* terminal state we DO store: a finished match is
- *  closed the moment 2+ players record a corroborating result (CLAUDE.md §5),
- *  rather than waiting out the 24h post-match window. */
+ *  `closed` is LEGACY-ONLY: the old consensus model stored it when 2+ players
+ *  corroborated a result. Nothing writes it anymore (the light model has no
+ *  consensus close — CLAUDE.md §5); it's kept in the union purely so we can still
+ *  read pre-existing closed rows. A finished match now just rides the read-time
+ *  24h window in `computeStatus`. */
 export type StoredMatchStatus = 'active' | 'cancelled' | 'closed'
 
 /** Read-time status (CLAUDE.md §5): open → full → live → completed → closed (+ cancelled). */
@@ -135,21 +137,29 @@ export interface MatchRequest {
   created_at: string
 }
 
-export interface NoShowReport {
+/** Optional "didn't show" flag (CLAUDE.md §5, light model). One flag lands it
+ *  (unique per match+subject). A host flags a participant; a participant who
+ *  showed flags the host — never peer-vs-peer. The subject may dispute → the
+ *  flag goes `contested` (a contested flag doesn't count toward reputation). */
+export interface NoShowFlag {
   id: string
   match_id: string
-  reported_player: string
-  reporter_id: string
+  subject_player: string // the player flagged as a no-show
+  set_by: string // the host or showing player who raised it
+  status: 'confirmed' | 'contested'
   created_at: string
 }
 
 export type MatchResultValue = 'win' | 'loss' | 'draw'
 
+/** First-submitter sets the canonical match result; any participant/host may
+ *  edit within 24h. `created_at` orders submissions (earliest = canonical). */
 export interface MatchResult {
   id: string
   match_id: string
   player_id: string
   result: MatchResultValue
+  created_at: string
 }
 
 export type VenueSetting = 'Indoor' | 'Outdoor' | 'Rooftop' | 'Indoor + Outdoor'
@@ -194,6 +204,17 @@ export interface ChatThread {
   /** match group thread when set; 1:1 DM or group chat otherwise */
   match_id: string | null
   participant_ids: string[]
+  created_at: string
+}
+
+/** A structured @mention (Stage 1.8) — one row per mentioned user per message,
+ *  written on send (never regex'd from text at read time). Drives the distinct
+ *  "you were mentioned" alert. Only thread members are ever mentioned. */
+export interface ChatMention {
+  id: string
+  message_id: string
+  thread_id: string
+  mentioned_user: string
   created_at: string
 }
 

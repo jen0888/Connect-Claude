@@ -15,12 +15,12 @@ export const ar: Partial<Record<MessageKey, string>> = {
   'gender.male': 'ذكر',
   'gender.female': 'أنثى',
 
-  // NEXT UP attend check-in — positive presence signal (CLAUDE.md §5)
-  'match.action.attend': 'تأكيد الحضور',
-  'match.action.checkedIn': 'تم تأكيد الحضور',
-
   // Pending approval-request — withdraw CTA (Home "This week" card)
   'match.cancelRequest': 'إلغاء الطلب',
+
+  // @mentions (Stage 1.8) — `mentionedYou` ready for the §1.10 push payload
+  'chat.mentionedYou': 'ذكرك {name}',
+  'chat.mention.empty': 'لا يوجد أعضاء للإشارة إليهم',
 
   // Ladies-only gender restriction (CLAUDE.md §6/§7)
   'match.ladiesOnly': 'للسيدات فقط',

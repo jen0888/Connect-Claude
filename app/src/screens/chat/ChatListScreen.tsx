@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Archive, ArchiveRestore, ArrowRight, Check, Layers, Lock, PenLine, Send, Trash2, UserPlus, Users, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowRight, AtSign, Check, Layers, PenLine, Send, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { Shell } from '@/components/Shell'
 import { Eyebrow } from '@/components/Eyebrow'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
-import { actions, archivedThreads, currentUserId, getUser, inboxThreads, isGroupThread, isThreadArchived, myHostRequests, myInvites, myWaitlistEntries, requestIsActionable, threadMessages, threadTitle, unreadCount, useDB, waitlistPosition } from '@/lib/store'
+import { actions, archivedThreads, currentUserId, getUser, hasUnreadMention, inboxThreads, isGroupThread, isThreadArchived, myHostRequests, myInvites, myWaitlistEntries, requestIsActionable, threadMessages, threadTitle, unreadCount, useDB, waitlistPosition } from '@/lib/store'
 import { SwipeRow, type SwipeAction } from '@/screens/chat/SwipeRow'
 import { usePersistedState } from '@/lib/usePersistedState'
 import { artType, hm, initials, matchKind, courtLabel, whenLabel } from '@/lib/format'
@@ -96,6 +96,7 @@ export function ChatListScreen() {
     const msgs = threadMessages(db, t.id).filter((x) => !x.system)
     const last = msgs.at(-1)
     const unread = unreadCount(db, t.id)
+    const mentioned = hasUnreadMention(db, t.id) // distinct, stronger-than-unread signal
     const title = isMatch && m ? `${matchKind(m)} · ${courtLabel(m)}` : isGroup ? threadTitle(db, t) : (other?.name ?? '')
     const lastSender = last ? (last.sender_id === currentUserId ? 'You' : getUser(db, last.sender_id)?.name.split(' ')[0]) : null
     const players = isMatch ? t.participant_ids.length : 0
@@ -179,9 +180,23 @@ export function ChatListScreen() {
           <span className="whitespace-nowrap text-[10.5px] tracking-[0.02em] nums-tabular" style={{ color: unread ? 'var(--color-brand)' : 'rgba(26,26,26,0.45)', fontWeight: unread ? 600 : 500 }}>
             {threadTime(last?.created_at ?? t.created_at)}
           </span>
-          {unread > 0 ? (
-            <span className="inline-flex h-[19px] min-w-[19px] items-center justify-center rounded-pill bg-brand px-[5px] text-[10.5px] font-semibold text-onbrand nums-tabular" style={{ boxShadow: '0 6px 12px -5px var(--color-brand)' }}>
-              {unread}
+          {unread > 0 || mentioned ? (
+            <span className="inline-flex items-center gap-1">
+              {/* distinct "you were mentioned" badge — stronger than plain unread (§5) */}
+              {mentioned && (
+                <span
+                  aria-label="You were mentioned"
+                  className="inline-flex h-[19px] w-[19px] items-center justify-center rounded-pill"
+                  style={{ background: 'var(--color-accent)', color: 'var(--color-text-onbrand)', boxShadow: '0 6px 12px -5px var(--color-accent)' }}
+                >
+                  <AtSign size={12} strokeWidth={2.6} />
+                </span>
+              )}
+              {unread > 0 && (
+                <span className="inline-flex h-[19px] min-w-[19px] items-center justify-center rounded-pill bg-brand px-[5px] text-[10.5px] font-semibold text-onbrand nums-tabular" style={{ boxShadow: '0 6px 12px -5px var(--color-brand)' }}>
+                  {unread}
+                </span>
+              )}
             </span>
           ) : (
             <span className="h-[7px] w-[7px]" />
@@ -350,36 +365,14 @@ export function ChatListScreen() {
               the actionable approve/decline bars live — no inline buttons here
               (and never inside an opened thread). The in-thread §7 decision card
               remains the in-conversation action surface. */}
-          {showNotifications && hostReqs.length > 0 && (
+          {/* Only ACTIONABLE requests show here — once a match fills, the requests
+              that can no longer be approved simply disappear (user request, §5). */}
+          {showNotifications && actionableReqs.length > 0 && (
             <>
-              {hostReqs.map((r) => {
+              {actionableReqs.map((r) => {
                 const m = db.matches.find((x) => x.id === r.match_id)
                 const player = getUser(db, r.player_id)
                 if (!m || !player) return null
-                // read-time expired — a sibling won the last spot (§5). Flips in
-                // place to a disabled, non-actionable row (neutral), not a pointer.
-                if (!requestIsActionable(db, r)) {
-                  return (
-                    <div
-                      key={r.id}
-                      className="flex shrink-0 items-center gap-[13px] rounded-[18px] border p-[14px]"
-                      style={{ background: 'rgba(255,255,255,0.55)', borderColor: 'rgba(26,26,26,0.08)' }}
-                    >
-                      <div
-                        className="inline-flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-full font-display text-[21px] italic"
-                        style={{ background: 'color-mix(in srgb, var(--color-neutral) 20%, transparent)', color: 'var(--color-neutral)' }}
-                      >
-                        {initials(player)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="block truncate text-[14.5px] font-semibold" style={{ color: 'var(--color-text-muted)' }}>{player.name}</span>
-                        <div className="mt-[3px] inline-flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: 'var(--color-neutral)' }}>
-                          <Lock size={12} strokeWidth={2} /> Match full · no longer available
-                        </div>
-                      </div>
-                    </div>
-                  )
-                }
                 // pending → passive pointer to Match Details (review there)
                 return (
                   <Link

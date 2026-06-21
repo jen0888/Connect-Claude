@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { SportArt } from '@/components/SportArt'
 import { useToast } from '@/components/Toast'
-import { actions, currentUserId, getUser, useDB } from '@/lib/store'
+import { actions, currentUserId, getUser, mentionsForMessage, useDB } from '@/lib/store'
 import { artType, courtLabel, hm, initials, matchKind, skillLabel, whenLabel } from '@/lib/format'
 import type { ChatMessage, Match, MatchRequest, SystemIcon, TimelineItem, User } from '@/lib/types'
 
@@ -76,7 +76,52 @@ export function SystemLine({ item }: { item: ChatMessage }) {
   )
 }
 
-function TextBubble({ msg, mine, sender, showName }: { msg: ChatMessage; mine: boolean; sender: User | undefined; showName: boolean }) {
+/** An @mention chip inside a bubble (Stage 1.8). Highlighted for everyone; the
+ *  VIEWER's own mention is emphasized with a solid brand chip so it stands out.
+ *  Bidi-safe — the name renders with `dir="auto"`, the `@` stays LTR. */
+function MentionChip({ user, isMe }: { user: User; isMe: boolean }) {
+  return (
+    <span
+      className="rounded-[6px] px-1 font-semibold"
+      style={
+        isMe
+          ? { background: 'var(--color-brand)', color: 'var(--color-text-onbrand)', fontWeight: 700 }
+          : { background: 'color-mix(in srgb, currentColor 14%, transparent)', color: 'inherit' }
+      }
+    >
+      @<span dir="auto">{user.name.split(' ')[0]}</span>
+    </span>
+  )
+}
+
+/** Render a message body, swapping each mentioned member's `@FirstName` for a
+ *  chip. Mentions come from STRUCTURED rows (mentionsForMessage), never a text
+ *  regex for alerting — this only styles the already-known tokens. */
+function MentionText({ body, mentioned, me }: { body: string; mentioned: User[]; me: string }) {
+  if (!mentioned.length) return <>{body}</>
+  // longest token first so "@Marco" wins over a "@Mar" prefix at the same spot
+  const tokens = mentioned.map((u) => ({ token: `@${u.name.split(' ')[0]}`, user: u })).sort((a, b) => b.token.length - a.token.length)
+  const out: React.ReactNode[] = []
+  let i = 0
+  let key = 0
+  while (i < body.length) {
+    let best: { idx: number; token: string; user: User } | null = null
+    for (const t of tokens) {
+      const idx = body.indexOf(t.token, i)
+      if (idx >= 0 && (best === null || idx < best.idx)) best = { idx, token: t.token, user: t.user }
+    }
+    if (!best) {
+      out.push(body.slice(i))
+      break
+    }
+    if (best.idx > i) out.push(body.slice(i, best.idx))
+    out.push(<MentionChip key={key++} user={best.user} isMe={best.user.id === me} />)
+    i = best.idx + best.token.length
+  }
+  return <>{out}</>
+}
+
+function TextBubble({ msg, mine, sender, showName, mentioned }: { msg: ChatMessage; mine: boolean; sender: User | undefined; showName: boolean; mentioned: User[] }) {
   return (
     <div className="flex items-end gap-2" style={{ justifyContent: mine ? 'flex-end' : 'flex-start' }}>
       {!mine && (
@@ -101,7 +146,7 @@ function TextBubble({ msg, mine, sender, showName }: { msg: ChatMessage; mine: b
           }}
         >
           {showName && !mine && sender && <div className="mb-[3px] text-[11px] font-semibold tracking-[0.01em] text-accent">{sender.name.split(' ')[0]}</div>}
-          {msg.body}
+          <MentionText body={msg.body} mentioned={mentioned} me={currentUserId} />
         </div>
         <span className="mx-1 mt-1 text-[10px] tracking-[0.03em] nums-tabular ltr-nums" style={{ color: 'rgba(26,26,26,0.4)' }}>
           {hm(msg.created_at)}
@@ -169,7 +214,7 @@ function InviteCard({ request, match, host, player }: { request: MatchRequest; m
       return <ResolvedLine color="var(--color-success)" icon={Check} text={iAmPlayer ? `You joined ${matchKind(match)} · ${courtLabel(match)}` : `${first} accepted your invite`} />
     if (request.status === 'declined')
       return <ResolvedLine color="muted" icon={X} text={iAmPlayer ? 'You declined this invite' : `${first} declined the invite`} />
-    return <ResolvedLine color="muted" icon={Clock} text="Invite expired — match no longer available" />
+    return null // expired/full invite → no "no longer available" line, just gone (user request)
   }
 
   return (
@@ -233,10 +278,11 @@ function DecisionCard({ request, match, player }: { request: MatchRequest; match
 
   if (request.status === 'declined') return <ResolvedLine color="muted" icon={X} text={`You declined ${first}'s request`} />
   if (request.status === 'joined' || request.status === 'approved') return null // the "joined" system line is the follow-up
-  // a sibling request won the last spot → this one is read-time expired (§5)
-  if (request.status === 'expired') return <ResolvedLine color="muted" icon={Lock} text={`${first}'s request — match full, no longer available`} />
+  // a sibling won the last spot → this request is read-time expired; once the
+  // match is full it can't be approved, so the card just disappears (user request).
+  if (request.status === 'expired') return null
   if (request.status !== 'requested') return null
-  const full = match.spots_available <= 0
+  if (match.spots_available <= 0) return null // full → no longer actionable, hide it
 
   return (
     <div className="my-1 flex justify-center">
@@ -261,39 +307,31 @@ function DecisionCard({ request, match, player }: { request: MatchRequest; match
           </span>
           <ChevronRight size={16} strokeWidth={2} className="shrink-0 rtl:rotate-180" style={{ color: 'rgba(26,26,26,0.3)' }} />
         </button>
-        {full ? (
-          <div
-            className="mt-2.5 inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-[11.5px] font-semibold"
-            style={{ background: 'color-mix(in srgb, var(--color-neutral) 14%, transparent)', color: 'var(--color-neutral)' }}
+        {/* only reachable while the match still has a free spot (full → card hidden) */}
+        <div className="mt-2.5 flex gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              actions.declineRequest(request.id)
+              showToast('Request declined')
+            }}
+            className="inline-flex h-[42px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill bg-transparent text-[13px] font-semibold"
+            style={{ color: 'color-mix(in srgb, var(--color-danger) 80%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 24%, transparent)' }}
           >
-            <Lock size={12} strokeWidth={2} /> Match full · no longer available
-          </div>
-        ) : (
-          <div className="mt-2.5 flex gap-2.5">
-            <button
-              type="button"
-              onClick={() => {
-                actions.declineRequest(request.id)
-                showToast('Request declined')
-              }}
-              className="inline-flex h-[42px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill bg-transparent text-[13px] font-semibold"
-              style={{ color: 'color-mix(in srgb, var(--color-danger) 80%, transparent)', border: '1.5px solid color-mix(in srgb, var(--color-danger) 24%, transparent)' }}
-            >
-              <X size={14} strokeWidth={2.2} /> Decline
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const res = actions.approveRequest(request.id)
-                showToast(res === 'full' ? 'Match just filled' : `${first} approved`)
-              }}
-              className="inline-flex h-[42px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill border-none text-[13px] font-semibold text-onbrand"
-              style={{ background: 'var(--color-success)', boxShadow: '0 10px 20px -10px var(--color-success)' }}
-            >
-              <Check size={14} strokeWidth={2.4} /> Approve
-            </button>
-          </div>
-        )}
+            <X size={14} strokeWidth={2.2} /> Decline
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const res = actions.approveRequest(request.id)
+              showToast(res === 'full' ? 'Match just filled' : `${first} approved`)
+            }}
+            className="inline-flex h-[42px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-pill border-none text-[13px] font-semibold text-onbrand"
+            style={{ background: 'var(--color-success)', boxShadow: '0 10px 20px -10px var(--color-success)' }}
+          >
+            <Check size={14} strokeWidth={2.4} /> Approve
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -319,6 +357,7 @@ export const ChatTimeline = forwardRef<HTMLDivElement, { items: TimelineItem[]; 
               mine={mine}
               sender={getUser(db, item.msg.sender_id)}
               showName={showSenderNames && runStart}
+              mentioned={mentionsForMessage(db, item.msg.id).map((uid) => getUser(db, uid)).filter((u): u is User => !!u)}
             />
           )
         })}

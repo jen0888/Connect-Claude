@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Compass, House, MessageCircle } from 'lucide-react'
+import { AtSign, Compass, House, MessageCircle } from 'lucide-react'
 import { useI18n } from '@/i18n'
-import { actions, notificationCount, useDB } from '@/lib/store'
+import { actions, notificationCount, totalUnreadMentions, useDB } from '@/lib/store'
 
 /** Floating frosted pill bar — three tabs only, never a fourth (CLAUDE.md §4).
  *  Active tab raises into a filled CTA bubble (home-screens.jsx BottomNav). */
@@ -23,6 +23,22 @@ function TabBadge({ count }: { count: number }) {
       style={{ background: 'var(--color-warning)', boxShadow: '0 0 0 2px var(--surface-page)' }}
     >
       {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
+/** Distinct "you were mentioned" marker on the Chat tab (Stage 1.8) — accent @,
+ *  separate corner + color from the warning alerts count so it reads as a
+ *  stronger, distinct signal. Clears server-side when the thread is opened. */
+function MentionDot({ show }: { show: boolean }) {
+  if (!show) return null
+  return (
+    <span
+      aria-label="You were mentioned"
+      className="absolute -top-1.5 -start-2 inline-flex h-[18px] w-[18px] items-center justify-center rounded-pill text-onbrand"
+      style={{ background: 'var(--color-accent)', boxShadow: '0 0 0 2px var(--surface-page)' }}
+    >
+      <AtSign size={11} strokeWidth={2.8} />
     </span>
   )
 }
@@ -60,6 +76,7 @@ export function BottomNav({ dark = false }: { dark?: boolean }) {
       {TABS.map(({ id, path, labelKey, Icon }) => {
         const on = pathname.startsWith(path)
         const badge = id === 'chat' ? chatBadge : 0
+        const mention = id === 'chat' && totalUnreadMentions(db) > 0
         if (on) {
           return (
             <NavLink key={id} to={path} className="relative -mt-[22px] flex flex-col items-center gap-1.5 no-underline">
@@ -69,6 +86,7 @@ export function BottomNav({ dark = false }: { dark?: boolean }) {
               >
                 <Icon size={22} strokeWidth={1.7} />
                 <TabBadge count={badge} />
+                <MentionDot show={mention} />
               </span>
               <span className="text-[10.5px] font-semibold tracking-[0.04em]" style={{ color: muted }}>
                 {t(labelKey)}
@@ -81,6 +99,7 @@ export function BottomNav({ dark = false }: { dark?: boolean }) {
             <span className="relative inline-flex">
               <Icon size={22} strokeWidth={1.7} />
               <TabBadge count={badge} />
+              <MentionDot show={mention} />
             </span>
             <span className="text-[10.5px] font-medium tracking-[0.04em]">{t(labelKey)}</span>
           </NavLink>
