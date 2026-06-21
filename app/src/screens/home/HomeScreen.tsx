@@ -39,6 +39,26 @@ function SeeAll({ to }: { to: string }) {
   )
 }
 
+/** Empty-section placeholder for "You're hosting" / "My Matches" when the user
+ *  has nothing in that bucket yet — keeps the section (+ its See-all) on Home so
+ *  the path to the archive is always present. Dashed hairline card + a muted line
+ *  and a single brand deep-link to the relevant next step (tokens only, §3/§6). */
+function SectionEmpty({ text, cta }: { text: string; cta: { to: string; label: string } }) {
+  return (
+    <div
+      className="flex flex-col items-start gap-2 rounded-[22px] px-[18px] py-5"
+      style={{ border: '1px dashed rgba(26,26,26,0.16)', background: 'color-mix(in srgb, var(--surface-card) 45%, transparent)' }}
+    >
+      <p className="m-0 text-[13px]" style={{ color: 'var(--color-text-muted)' }}>
+        {text}
+      </p>
+      <Link to={cta.to} className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand no-underline">
+        {cta.label} <ChevronRight size={11} strokeWidth={2.2} className="rtl:rotate-180" />
+      </Link>
+    </div>
+  )
+}
+
 /** Invites the auto-pop-up has already greeted the user with, so it fires once
  *  per invite (not on every Home visit/reload). Deferred invites stay pending
  *  and remain reachable from the invite card. */
@@ -301,32 +321,32 @@ export function HomeScreen() {
         {/* my matches — matches you JOINED but did not host, full card, sorted
             by timing; pending requests carry a "Requested" state (CLAUDE.md §4/§5).
             See-all → /my-matches (the joined archive's Upcoming/Past pills). */}
-        {data.week.length > 0 && (
-          <>
-            <div className="flex items-center justify-between gap-2.5">
-              <Eyebrow>My Matches</Eyebrow>
-              <SeeAll to="/my-matches" />
-            </div>
-            <div className="mt-2.5 mb-[26px] flex flex-col gap-3.5">
-              {data.week.slice(0, SECTION_CAP).map((m) => {
-                const req = hasPendingRequest(db, m.id)
-                const wlPos = waitlistPosition(db, m.id)
-                return (
-                  <MatchCard
-                    key={m.id}
-                    action="view"
-                    joinStatus={req ? 'requested' : wlPos != null ? 'waitlisted' : null}
-                    waitlistPosition={wlPos}
-                    onAct={req ? () => { actions.cancelRequest(m.id); showToast('Request cancelled') } : undefined}
-                    match={m}
-                    host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
-                    players={matchPlayers(db, m.id)}
-                  />
-                )
-              })}
-            </div>
-          </>
-        )}
+        <div className="flex items-center justify-between gap-2.5">
+          <Eyebrow>My Matches</Eyebrow>
+          <SeeAll to="/my-matches" />
+        </div>
+        <div className="mt-2.5 mb-[26px] flex flex-col gap-3.5">
+          {data.week.length > 0 ? (
+            data.week.slice(0, SECTION_CAP).map((m) => {
+              const req = hasPendingRequest(db, m.id)
+              const wlPos = waitlistPosition(db, m.id)
+              return (
+                <MatchCard
+                  key={m.id}
+                  action="view"
+                  joinStatus={req ? 'requested' : wlPos != null ? 'waitlisted' : null}
+                  waitlistPosition={wlPos}
+                  onAct={req ? () => { actions.cancelRequest(m.id); showToast('Request cancelled') } : undefined}
+                  match={m}
+                  host={m.host_id !== currentUserId ? getUser(db, m.host_id) : null}
+                  players={matchPlayers(db, m.id)}
+                />
+              )
+            })
+          ) : (
+            <SectionEmpty text="You haven't joined any matches yet." cta={{ to: '/discover', label: 'Find a match' }} />
+          )}
+        </div>
 
         {/* you're hosting — the host's own match from the localStorage source of
             truth wins (mock mode); otherwise ALL the user's hosted matches are
@@ -341,12 +361,12 @@ export function HomeScreen() {
             </div>
           </div>
         ) : (
-          data.hosted.length > 0 && (
-            <div className="mb-[26px]">
-              <div className="mb-2.5 flex items-center justify-between gap-2.5">
-                <Eyebrow>You're hosting</Eyebrow>
-                <SeeAll to="/hosting" />
-              </div>
+          <div className="mb-[26px]">
+            <div className="mb-2.5 flex items-center justify-between gap-2.5">
+              <Eyebrow>You're hosting</Eyebrow>
+              <SeeAll to="/hosting" />
+            </div>
+            {data.hosted.length > 0 ? (
               <div className="flex flex-col gap-3.5">
                 {data.hosted.slice(0, SECTION_CAP).map((m) => (
                   <MatchCard
@@ -359,42 +379,47 @@ export function HomeScreen() {
                   />
                 ))}
               </div>
-            </div>
-          )
+            ) : (
+              <SectionEmpty text="You're not hosting any matches yet." cta={{ to: HOST_CREATE_ROUTE, label: 'Host a match' }} />
+            )}
+          </div>
         )}
 
-        {/* matches you saved — bookmarked, not joined, still joinable; brief card */}
-        {data.saved.length > 0 && (
-          <>
-            <div className="flex items-center justify-between gap-2.5">
-              <Eyebrow>Matches you saved</Eyebrow>
-              {data.saved.length > SECTION_CAP && <SeeAll to="/saved" />}
-            </div>
-            <div className="mt-2.5 flex flex-col gap-3.5">
-              {data.saved.slice(0, SECTION_CAP).map((m) => (
-                <MatchCard
-                  key={m.id}
-                  variant="brief"
-                  match={m}
-                  host={getUser(db, m.host_id)}
-                  players={matchPlayers(db, m.id)}
-                  action="join"
-                  onAct={() => {
-                    if (m.join_mode === 'approval') {
-                      actions.requestToJoin(m.id)
-                      showToast('Request sent')
-                    } else {
-                      actions.joinMatch(m.id)
-                      showToast('Joined')
-                    }
-                  }}
-                  saved={db.savedMatchIds.includes(m.id)}
-                  onToggleSave={() => actions.toggleSaveMatch(m.id)}
-                />
-              ))}
-            </div>
-          </>
-        )}
+        {/* matches you saved — bookmarked, not joined, still joinable; brief card.
+            Always rendered (with an empty state) so the section is a stable Home
+            fixture; its See-all is still gated on >3 (the /saved list has no Past
+            archive, unlike hosting / My Matches — §6). */}
+        <div className="flex items-center justify-between gap-2.5">
+          <Eyebrow>Matches you saved</Eyebrow>
+          {data.saved.length > SECTION_CAP && <SeeAll to="/saved" />}
+        </div>
+        <div className="mt-2.5 flex flex-col gap-3.5">
+          {data.saved.length > 0 ? (
+            data.saved.slice(0, SECTION_CAP).map((m) => (
+              <MatchCard
+                key={m.id}
+                variant="brief"
+                match={m}
+                host={getUser(db, m.host_id)}
+                players={matchPlayers(db, m.id)}
+                action="join"
+                onAct={() => {
+                  if (m.join_mode === 'approval') {
+                    actions.requestToJoin(m.id)
+                    showToast('Request sent')
+                  } else {
+                    actions.joinMatch(m.id)
+                    showToast('Joined')
+                  }
+                }}
+                saved={db.savedMatchIds.includes(m.id)}
+                onToggleSave={() => actions.toggleSaveMatch(m.id)}
+              />
+            ))
+          ) : (
+            <SectionEmpty text="You haven't saved any matches yet." cta={{ to: '/discover', label: 'Browse matches' }} />
+          )}
+        </div>
       </div>
 
       {/* invite-approval bottom sheet — slides up over the dimmed Home screen */}
